@@ -114,8 +114,10 @@ class AssetStore {
     index() {
         const sheets = Math.ceil(this.count / SPRITES_PER_SHEET);
         const files = [];
+        const revisions = [];
         for (let i = 0; i < sheets; i += 1) {
             files.push(Assets.sheetFileName(i));
+            revisions.push(this._revision(Assets.sheetFileName(i)));
         }
         return {
             format: Assets.SPRITES_FORMAT,
@@ -124,8 +126,24 @@ class AssetStore {
             columns: SHEET_COLUMNS,
             rows: SHEET_ROWS,
             count: this.count,
-            sheets: files
+            sheets: files,
+            revisions
         };
+    }
+
+    /**
+     * LA REVISIÓN DE UNA HOJA: un resumen corto de su contenido. El cliente la pone en la URL de
+     * la hoja para que el navegador no use una copia vieja. Antes se usaba el número de sprites,
+     * y ese número se repite cuando se reimporta (el arte HD reescribe la última hoja): el
+     * navegador mezclaba un things.json nuevo con una hoja vieja y los objetos salían a trozos.
+     */
+    _revision(archivo) {
+        try {
+            const datos = fs.readFileSync(path.join(this.spritesDirectory, archivo));
+            return crypto.createHash('sha1').update(datos).digest('hex').slice(0, 12);
+        } catch (e) {
+            return null;
+        }
     }
 
     _sheet(numero) {
