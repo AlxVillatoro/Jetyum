@@ -384,19 +384,18 @@ function enCelda(src, cw, ch) {
     return celda;
 }
 
-/** Un dibujo cualquiera, centrado y con la base a `pie` px del borde de abajo, cabiendo en la celda. */
-function centrado(img, cw, ch, pie, caja) {
-    const c = caja || img.caja();
-    const celda = new Img(cw, ch);
-    if (!c) {
-        return celda;
-    }
-    const recorte = img.recortar(c.x, c.y, c.w, c.h);
-    const f = Math.min(2, (cw - 2) / c.w, (ch - pie - 2) / c.h);
-    const g = escalar(recorte, f >= 2 ? 2 : f);
-    celda.pegar(g, Math.round((cw - g.w) / 2), ch - pie - g.h);
-    return celda;
+/**
+ * Un dibujo del pack (de 32 px por casilla) al doble y EN SU SITIO: anclado abajo a la derecha de
+ * la celda como en el juego y con su `offset` metido en el dibujo. Así lo HD se ve donde se veía lo
+ * de 32 px. Lo que se salga de la celda (lo que el dibujo tuviera fuera de su casilla) se pierde.
+ */
+function enSuSitio(img, cosa, cw, ch) {
+    const off = (cosa && cosa.flags && cosa.flags.offset) || { x: 0, y: 0 };
+    const lienzo = new Img(cw / 2, ch / 2);
+    lienzo.pegar(img, lienzo.w - img.w - (off.x || 0), lienzo.h - img.h - (off.y || 0));
+    return scale2x(lienzo);
 }
+
 
 /** El lado de una celda de `personajes/*.png`: 2x2 casillas de 64 px. */
 export const CELDA_PERSONAJE = 128;
@@ -427,14 +426,14 @@ export function plantillas(opciones) {
                 const n = dimensionsOf(cosa).frames;
                 for (let k = 0; k < 5; k++) {
                     const f = Math.round(k * (n - 1) / 4);
-                    img.pegar(centrado(componer(store, cosa, { frame: f }), cw, ch, 16), k * cw, pieza.fila * ch);
+                    img.pegar(enSuSitio(componer(store, cosa, { frame: f }), cosa, cw, ch), k * cw, pieza.fila * ch);
                 }
                 return;
             }
             pieza.celdas.forEach(([fila, col], k) => {
                 const plant = pieza.plantilla[Math.min(k, pieza.plantilla.length - 1)];
                 const src = fuente(plant, store, cosas, categorias);
-                const celda = hoja.tipo === 'cadaver' ? centrado(src.img, cw, ch, 6) : enCelda(src, cw, ch);
+                const celda = enCelda(src, cw, ch);
                 img.pegar(celda, col * cw, fila * ch);
             });
         });

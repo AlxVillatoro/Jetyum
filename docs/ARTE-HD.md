@@ -113,11 +113,14 @@ Personajes: `caballero`, `paladin`, `hechicero`, `druida` (jugadores, uno por vo
 
 ### `cadaveres.png` — 256×64 (4 celdas de 64×64)
 
-rata muerta · lobo muerto · goblin muerto · montón de huesos. Tumbados en el suelo, vistos desde arriba.
+rata muerta · lobo muerto · goblin muerto · montón de huesos. Tumbados en el suelo, vistos desde arriba,
+y anclados abajo a la derecha de la celda como cualquier objeto.
 
 ### `efectos.png` — 320×512 (5 columnas × 8 filas de 64×64)
 
-Cada fila es una animación de **5 fotogramas** que empieza pequeña, crece y se desvanece:
+Cada fila es una animación de **5 fotogramas** que empieza pequeña, crece y se desvanece. Cada
+celda es la casilla del efecto: se dibuja **en el mismo sitio que el efecto de 32 px** al que
+sustituye (anclado abajo a la derecha, sin centrar ni reescalar), así que un golpe cae donde caía.
 
 | Fila | Efecto |
 |---|---|

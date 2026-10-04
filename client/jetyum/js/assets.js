@@ -239,8 +239,11 @@ export class AssetsProvider {
             hoja.pedida = false;
             this.fallos.push('no se pudo cargar ' + this.indice.sheets[numero]);
         };
-        imagen.src = this.base + 'sprites/' + this.indice.sheets[numero] + '?v=' + this.indice.count +
-            '-' + this.version;
+        // La revisión cambia con el CONTENIDO de la hoja (ver AssetStore._revision): con sólo el
+        // número de sprites, una hoja reescrita con el mismo número salía de la caché del navegador.
+        const revision = this.indice.revisions && this.indice.revisions[numero];
+        imagen.src = this.base + 'sprites/' + this.indice.sheets[numero] + '?v=' +
+            (revision || this.indice.count) + '-' + this.version;
         return null;
     }
 

@@ -165,11 +165,15 @@ async function main() {
         check('los transparentes devuelven 0 y no ocupan sitio', r.ids[1] === 0 && store.count === 2, JSON.stringify(r.ids));
         check('un sprite repetido devuelve el número del que ya existe', r.ids[3] === r.ids[0] && r.reused === 1);
         store.flush();
+        const revisionAntes = JSON.parse(fs.readFileSync(path.join(dirStore, 'sprites', 'index.json'), 'utf8')).revisions[0];
         const otra = new AssetStore(dirStore);
         check('el índice y la hoja sobreviven a recargar', otra.count === 2 && otra.getSprite(2)[1] === 255);
         otra.setSprite(1, sprite(0, 0, 255, 3));
         otra.clearSprite(2);
         otra.flush();
+        const indiceDespues = JSON.parse(fs.readFileSync(path.join(dirStore, 'sprites', 'index.json'), 'utf8'));
+        check('la revisión de la hoja cambia con su contenido aunque no cambie el número de sprites (la caché del navegador)',
+            indiceDespues.count === 2 && !!revisionAntes && indiceDespues.revisions[0] !== revisionAntes);
         const tercera = new AssetStore(dirStore);
         check('reemplazar y vaciar se guardan, y vaciar no renumera', tercera.count === 2 &&
             tercera.getSprite(1)[2] === 255 && tercera.getSprite(2).every((b) => b === 0));
