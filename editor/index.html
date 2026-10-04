@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jetyum — herramientas</title>
+<style>
+    /*
+     * El editor es una herramienta, no un juego: la interfaz va en gris y sin
+     * adornos, y todo el color está en el lienzo. Un editor con interfaz llamativa
+     * compite con lo que se está editando.
+     */
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        height: 100%;
+        background: #0a0a0e;
+        color: #d0d0dc;
+        font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+        overflow: hidden;
+    }
+
+    #app { display: flex; flex-direction: column; height: 100%; }
+
+    header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 4px 10px;
+        background: #12121a;
+        border-bottom: 1px solid #22222e;
+    }
+
+    header h1 { margin: 0; font-size: 14px; letter-spacing: 0.5px; color: #e8e8f0; }
+
+    .tabs { display: flex; gap: 4px; }
+
+    .tab {
+        padding: 2px 12px;
+        background: #1a1a24;
+        border: 1px solid #26263a;
+        border-radius: 4px;
+        color: #9090a0;
+        font: inherit;
+        cursor: pointer;
+    }
+    .tab.active { background: #2a3a56; border-color: #3a5a86; color: #e8e8f0; }
+
+    #global-status { margin-left: auto; color: #6a7a6a; font-size: 11px; }
+    #global-status.error { color: #e08080; }
+
+    .panel { display: none; flex: 1; min-height: 0; }
+    .panel.active { display: flex; }
+
+    /* --- Editor de mapas --- */
+
+    /*
+     * LA PALETA, A LA IZQUIERDA, COMO EN RME: una cabecera (qué paleta y su buscador), el cuerpo
+     * que se recorre y, al pie, el pincel, que vale con cualquier paleta y no se desplaza.
+     *
+     * MIDE 320: la rejilla de la hoja de terreno pinta sus casillas a 32x32 —1:1, los mismos
+     * píxeles que se ponen en el mapa—, cada botón necesita 34 (el dibujo y su borde) y ocho por
+     * fila, con sus huecos, piden 286. Con 320, menos el borde, el relleno de 4 por lado y una
+     * barra de desplazamiento de 17, quedan 294: caben las ocho.
+     */
+    #panel-map { flex-direction: column; }
+    #map-cuerpo { flex: 1; display: flex; min-height: 0; }
+
+    #map-side {
+        width: 320px;
+        flex: 0 0 320px;
+        display: flex;
+        flex-direction: column;
+        background: #0e0e14;
+        border-right: 1px solid #1e1e2a;
+        min-height: 0;
+    }
+
+    #map-side-cabecera, #map-inspector-cabecera {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 6px;
+        background: #12121a;
+        border-bottom: 1px solid #22222e;
+    }
+    #map-inspector-cabecera { flex-direction: row; align-items: center; justify-content: space-between; }
+    .cabecera-titulo { color: #8a8a9a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; }
+    #palette-buscador { display: flex; gap: 4px; }
+    #palette-buscador input { flex: 1 1 55%; }
+    #palette-buscador select { flex: 1 1 45%; }
+    #palette-buscador:has(#palette-filter[hidden]) { display: none; }
+    #palette-grupo[hidden] { display: none; }
+
+    #map-side-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 4px;
+    }
+
+    #map-side-footer {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 6px;
+        background: #12121a;
+        border-top: 1px solid #2a2a3a;
+    }
+    .pincel-fila button { padding: 2px 6px; }
+    #pincel-pasos { gap: 3px; }
+
+    /* Las propiedades de lo elegido, a la derecha: se abren solas al elegir algo. */
+    #map-inspector {
+        width: 300px;
+        flex: 0 0 300px;
+        display: flex;
+        flex-direction: column;
+        background: #0e0e14;
+        border-left: 1px solid #1e1e2a;
+        min-height: 0;
+    }
+    #map-inspector[hidden] { display: none; }
+    #map-inspector-cuerpo { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 10px 10px; }
+    .insp-seccion { border-top: 1px solid #1a1a24; padding-bottom: 6px; }
+    .insp-seccion:first-child { border-top: 0; }
+    #paleta-criaturas { padding: 0 4px; }
+    .criaturas-botones { margin-bottom: 8px; }
+    .criaturas-botones button { flex: 1; }
+
+    /* El rótulo de un ajuste del pie: dice QUÉ es sin gastar una línea entera. */
+    .pie-etiqueta { color: #8a8a9a; font-size: 11px; min-width: 42px; }
+
+    /* Un grupo del cuerpo: se separa del anterior con una línea, para que se vea dónde empieza. */
+    .grupo { border-top: 1px solid #1a1a24; padding-top: 2px; }
+    .grupo:first-child { border-top: 0; }
+
+    /* El subtítulo de un grupo: separa las herramientas dentro del mismo bloque sin abrir otro. */
+    .sub-title {
+        margin: 8px 0 4px;
+        color: #66667a;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+    }
+
+    #map-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+    #map-canvas { flex: 1; display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+    .row { display: flex; gap: 6px; align-items: center; }
+
+    select, input[type=text], input[type=number] {
+        background: #08080c;
+        border: 1px solid #26263a;
+        border-radius: 3px;
+        color: #d0d0dc;
+        font: inherit;
+        padding: 4px 6px;
+        min-width: 0;
+        width: 100%;
+    }
+
+    button {
+        padding: 5px 10px;
+        background: #26364a;
+        border: 1px solid #34506e;
+        border-radius: 3px;
+        color: #d8e4f0;
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    button:hover { background: #2f4460; }
+    button.active { background: #3a6a9a; border-color: #4a8ac0; color: #fff; }
+    button.plain { background: #1a1a24; border-color: #2a2a3a; color: #a0a0b0; }
+    button.plain.active { background: #3a6a9a; border-color: #4a8ac0; color: #fff; }
+    button.danger { background: #4a2020; border-color: #6a3030; color: #f0c0c0; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .section-title {
+        margin: 10px 0 6px;
+        color: #7a7a90;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    /*
+     * LA PALETA ES UNA FILA QUE SE ENVUELVE, y es lo que permite que el TERRENO DE LA HOJA salga
+     * en rejilla: los botones que piden el 100 % del ancho salen uno por línea, como siempre, y
+     * los de la hoja —que piden una fracción del ancho— caben varios por línea. Cuántos, y por
+     * qué, lo dice la regla de la hoja de abajo.
+     */
+    #palette { display: flex; flex-wrap: wrap; gap: 2px; }
+    .palette-title {
+        flex: 0 0 100%;
+        margin: 10px 0 4px;
+        color: #7a7a90;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .palette-item {
+        display: flex;
+        flex: 1 0 100%;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 6px;
+        background: #12121a;
+        border: 1px solid #1e1e2a;
+        border-radius: 3px;
+        color: #c0c0d0;
+        text-align: left;
+        font-size: 12px;
+    }
+    .palette-item.selected { background: #2a3a56; border-color: #3a5a86; color: #fff; }
+    .palette-item em { margin-left: auto; color: #6a6a80; font-style: normal; font-size: 10px; }
+
+    /*
+     * LA HOJA DE TERRENO, EN REJILLA DE OCHO: una fila de botones es una fila de `tilesheet.png`,
+     * así que buscar un dibujo es mirarlo. La casilla de la hoja se enseña a 32x32 —el tamaño con
+     * el que se pinta en el mapa, 1:1, sin ampliarla—, de ahí que el botón mida 34 (el dibujo y su
+     * borde) y que ocho por fila pidan 340 px de barra lateral. Ocho y no diez: con diez, cada
+     * botón se quedaba en 20 px y los dibujos no se distinguían.
+     *
+     * El `min-width` es la red de seguridad: si la barra se estrechara, el botón no se encoge por
+     * debajo del dibujo —que se saldría de su casilla y taparía al vecino— sino que la fila pasa a
+     * siete. El reparto lo hace el navegador: no hay que contar píxeles ni saber si hay barra de
+     * desplazamiento; en una columna flex cada botón ocuparía su propia línea y recorrer 472
+     * casillas así no se puede.
+     *
+     * SÓLO LLEVA EL DIBUJO: 472 nombres con su id no caben en 32 píxeles, y lo que hace falta para
+     * recorrer la hoja es verla. El nombre y el id siguen ahí, en el globo del ratón, y el buscador
+     * sigue encontrando por los dos.
+     */
+    .palette-item.hoja {
+        flex: 0 0 calc(12.5% - 2px);
+        min-width: 34px;
+        justify-content: center;
+        padding: 0;
+    }
+    .palette-item.hoja .palette-nombre, .palette-item.hoja em { display: none; }
+
+    /*
+     * EL DIBUJO, A TAMAÑO DE VERDAD: 32x32, los mismos píxeles que se van a pintar en
+     * el mapa. Ampliarlo o interpolarlo enseñaría un objeto que no es el que se pinta.
+     * Vale para las dos formas del dibujo: la ficha de la lista y la casilla de la
+     * rejilla de la hoja.
+     */
+    .palette-dibujo {
+        flex: 0 0 auto;
+        width: 32px;
+        height: 32px;
+        background: #08080c;
+        border-radius: 2px;
+        image-rendering: pixelated;
+    }
+
+    .palette-nombre { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* --- Respawns y NPC --- */
+
+    .nota { color: #7a7a90; font-size: 11px; margin: 4px 0 0; line-height: 1.35; }
+    .field.mitad { flex: 1; min-width: 0; }
+
+    #marcador-monstruos {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin: 6px 0;
+    }
+    /* `hidden` hay que declararlo: una regla propia con `display: flex` gana a la del navegador. */
+    #marcador-monstruos[hidden], #marcador-acciones[hidden] { display: none; }
+
+    .monstruo-fila {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        padding: 2px 4px;
+        background: #12121a;
+        border: 1px solid #1e1e2a;
+        border-radius: 3px;
+    }
+    .monstruo-fila.selected { background: #22303f; border-color: #4a8ac0; }
+    .monstruo-fila select { flex: 1; }
+    .monstruo-fila button { padding: 1px 6px; line-height: 1.2; }
+    .monstruo-fila em { color: #6a6a80; font-style: normal; font-size: 10px; white-space: nowrap; }
+
+    /*
+     * `[hidden]` HAY QUE DECLARARLO. La hoja del navegador ya esconde lo que lleva el
+     * atributo, pero una regla propia con `display: flex` gana a la del navegador, y
+     * entonces el filtro de la paleta no escondería nada. Es el fallo clásico de
+     * `hidden` con `display` puesto a mano.
+     */
+    .palette-item[hidden], .palette-title[hidden] { display: none; }
+
+    /* --- La mano, el pincel y el objeto elegido --- */
+
+    /* El tamaño puesto, siempre a la vista, igual que la escala del zoom. */
+    #pincel-tamano {
+        flex: 1;
+        text-align: center;
+        color: #d8e4f0;
+        font-variant-numeric: tabular-nums;
+    }
+
+    #pincel-pasos button { flex: 1; padding: 2px 0; font-size: 11px; }
+
+    /*
+     * La lista de la pila se enseña DE ARRIBA ABAJO: lo primero es lo que se ve encima y lo
+     * último es el suelo. Es el orden de cualquier panel de capas y el único en el que «subir»
+     * significa subir.
+     */
+    #objeto-pila {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin: 6px 0;
+    }
+    /* `hidden` hay que declararlo: una regla propia con `display: flex` gana a la del navegador. */
+    #objeto-pila[hidden], #objeto-acciones[hidden] { display: none; }
+
+    .pila-fila {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        padding: 2px 6px;
+        background: #12121a;
+        border: 1px solid #1e1e2a;
+        border-radius: 3px;
+        color: #c0c0d0;
+        font-size: 11px;
+        text-align: left;
+        cursor: pointer;
+    }
+    .pila-fila.selected { background: #1e3328; border-color: #3fd6a0; color: #eafff6; }
+    .pila-fila em { margin-left: auto; color: #6a6a80; font-style: normal; font-size: 10px; }
+
+    #objeto-detalle { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+    .detalle-fila { display: flex; gap: 6px; align-items: baseline; font-size: 11px; }
+    .detalle-fila span { color: #8a8a9a; white-space: nowrap; }
+    .detalle-fila em { color: #c0c0d0; font-style: normal; }
+
+    /* --- Vista (zoom y mapa completo) --- */
+
+    #vista-escala {
+        flex: 1;
+        text-align: center;
+        color: #d8e4f0;
+        font-variant-numeric: tabular-nums;
+    }
+
+    
+
+    /*
+     * El pie no lleva la leyenda de atajos a la vista: era la línea más larga del editor y
+     * competía por el ancho con el estado, que es lo que hay que poder leer. La leyenda entera
+     * está en el `title` del propio pie, a un gesto de ratón.
+     */
+    #map-pie {
+        display: flex;
+        gap: 0;
+        padding: 0;
+        background: #08080c;
+        border-top: 1px solid #1a1a24;
+        font-size: 11px;
+        color: #6a6a80;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+    #map-pie > span {
+        padding: 3px 10px;
+        border-right: 1px solid #1a1a24;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #map-pie #map-status { flex: 1 1 40%; min-width: 0; }
+    #map-pie #mano-info { flex: 1 1 30%; min-width: 0; margin: 0; font-size: 11px; color: #9aa6b8; }
+    #map-pie #map-pos { flex: 0 0 auto; color: #a0a0b0; font-variant-numeric: tabular-nums; }
+    #map-pie #map-stats { flex: 0 1 auto; min-width: 0; }
+    /* La planta y el zoom, a la derecha de la barra de estado, como en RME. */
+    #map-vista { flex: 0 0 auto; padding: 0 6px; gap: 1px; }
+    #map-vista select { width: auto; padding: 0 4px; font-size: 11px; }
+    #map-vista button.icono-boton { width: 22px; height: 22px; }
+    #map-vista .icono { width: 15px; height: 15px; }
+    #map-vista #vista-escala { padding: 0 4px; min-width: 42px; text-align: center; color: #d8e4f0; }
+    #map-pie .error { color: #e08080; }
+
+    /* --- Editor de objetos --- */
+
+    #items-list-pane {
+        width: 320px;
+        flex: 0 0 320px;
+        display: flex;
+        flex-direction: column;
+        border-right: 1px solid #1e1e2a;
+        background: #0e0e14;
+    }
+
+    #item-filter { margin: 8px; width: auto; }
+
+    #item-list { flex: 1; overflow-y: auto; }
+
+    .item-row {
+        display: flex;
+        gap: 8px;
+        padding: 4px 10px;
+        border-bottom: 1px solid #14141c;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .item-row:hover { background: #14141e; }
+    .item-row.selected { background: #2a3a56; }
+    .item-id { color: #6a9ad0; min-width: 62px; }
+    .item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .item-attrs { color: #6a6a80; font-size: 10px; }
+
+    #item-form {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+        max-width: 640px;
+    }
+
+    .field { display: block; margin-bottom: 10px; }
+    .field span { display: block; margin-bottom: 3px; color: #8a8a9a; font-size: 11px; }
+
+    .attribute-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+        font-size: 12px;
+    }
+    .attribute-row input[type=checkbox] { width: auto; }
+    .attribute-row input[type=number], .attribute-row input[type=text] { width: 90px; flex: 0 0 90px; }
+    .attribute-row span { min-width: 150px; color: #b0b0c0; }
+    .attribute-row em { color: #66667a; font-style: normal; font-size: 11px; }
+    .attribute-row.readonly em { color: #8a8a6a; }
+
+    .actions { display: flex; gap: 8px; margin-top: 18px; }
+
+    #items-status { padding: 6px 12px; font-size: 11px; color: #6a7a6a; }
+    #items-status.error { color: #e08080; }
+
+    /* ================= Pestaña Sprites ================= */
+    #panel-sprites { gap: 0; }
+    #spr-lista { width: 250px; border-right: 1px solid #1a1a24; display: flex; flex-direction: column; min-height: 0; padding: 8px; gap: 6px; }
+    .section-title.con-ayuda { display: flex; align-items: center; gap: 5px; cursor: help; }
+    .section-title.con-ayuda .icono { width: 13px; height: 13px; opacity: 0.7; }
+    .spr-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 30px; }
+    #spr-vista .spr-cabecera, #spr-piezas .spr-cabecera { padding: 2px 8px; }
+    #spr-piezas .spr-cabecera { padding: 0 0 4px; }
+    .spr-cabecera select { width: auto; padding: 1px 4px; font-size: 11px; }
+    #spr-cats { display: flex; gap: 3px; }
+    #spr-cats button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+        padding: 3px 2px; font-size: 11px; font-variant-numeric: tabular-nums; }
+    #spr-cats button .icono { width: 16px; height: 16px; }
+    button.usar { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; font-size: 11px;
+        background: #1f4a36; border-color: #3fd6a0; color: #eafff6; }
+    button.usar:hover:not(:disabled) { background: #276047; }
+    button.usar .icono { width: 15px; height: 15px; }
+    #spr-cosas { flex: 1; overflow-y: auto; min-height: 0; }
+    .spr-fila { display: flex; align-items: center; gap: 6px; padding: 2px 4px; cursor: pointer; border: 1px solid transparent; border-radius: 3px; }
+    .spr-fila:hover { background: #14141e; }
+    .spr-fila.selected { background: #2a3a56; border-color: #3a5a86; }
+    .spr-fila em { margin-left: auto; color: #8a6a4a; font-style: normal; font-size: 10px; white-space: nowrap; }
+    .spr-mini { width: 32px; height: 32px; image-rendering: pixelated; background: #14141c; flex: 0 0 32px; }
+    .spr-fila-id { color: #6a9ad0; min-width: 40px; font-size: 11px; }
+    .spr-fila-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    #spr-centro { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    #spr-barra { display: flex; gap: 4px; align-items: center; padding: 3px 8px; border-bottom: 1px solid #1a1a24; background: #12121a; }
+    #spr-barra .sep, #spr-biblioteca-barra .sep { width: 1px; height: 20px; background: #2a2a3a; margin: 0 4px; }
+    #spr-estado { font-size: 11px; color: #7a9a7a; flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 6px; }
+    #spr-estado.error { color: #e08080; }
+    #spr-arriba { display: flex; flex: 1 1 55%; min-height: 0; border-bottom: 1px solid #1a1a24; }
+    #spr-vista { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #spr-vista-lienzo { flex: 1; min-height: 0;
+        background-color: #1c1c26;
+        background-image: linear-gradient(45deg, #23232f 25%, transparent 25%), linear-gradient(-45deg, #23232f 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #23232f 75%), linear-gradient(-45deg, transparent 75%, #23232f 75%);
+        background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+    #spr-preview { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+    #spr-controles { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; align-items: flex-end; }
+    .spr-ctl { display: flex; flex-direction: column; font-size: 10px; color: #8a8a9a; }
+    .spr-ctl select, .spr-ctl input { width: 92px; }
+    #spr-piezas { width: 360px; border-left: 1px solid #1a1a24; overflow: auto; padding: 8px; }
+    .spr-rejilla { display: grid; gap: 4px; }
+    .spr-pieza { width: 68px; height: 82px; border: 1px solid #2a2a3a; border-radius: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; background: #12121a; font-size: 10px; color: #7a7a90; }
+    .spr-pieza canvas { width: 64px; height: 64px; image-rendering: pixelated; }
+    .spr-pieza.ancla { border-style: dashed; border-color: #3a5a86; }
+    .spr-pieza.selected { border: 2px solid #3fd6a0; color: #eafff6; }
+    #spr-biblioteca { flex: 1 1 45%; display: flex; flex-direction: column; min-height: 0; }
+    #spr-biblioteca-barra { display: flex; gap: 4px; align-items: center; padding: 3px 8px; flex-wrap: wrap; }
+    #spr-biblioteca-barra .cabecera-titulo { margin-right: 6px; }
+    #spr-biblioteca-barra input[type=number] { width: 70px; padding: 2px 4px; }
+    #spr-pagina { font-size: 11px; color: #8a8a9a; padding: 0 4px; }
+    #spr-sprites { flex: 1; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 2px; padding: 4px 8px; align-content: flex-start; }
+    .spr-sprite { width: 44px; display: flex; flex-direction: column; align-items: center; cursor: pointer; border: 1px solid transparent; border-radius: 3px; font-size: 9px; color: #6a6a80; }
+    .spr-sprite canvas { width: 32px; height: 32px; image-rendering: pixelated; background: #14141c; }
+    .spr-sprite:hover { border-color: #3a3a4a; }
+    .spr-sprite.selected { border-color: #3fd6a0; background: #1e3328; color: #eafff6; }
+    .spr-sprite.libre span { color: #a08a4a; }
+    #spr-sprite-info { font-size: 11px; color: #8a8a9a; padding: 0 8px 6px; }
+    #spr-props { width: 330px; border-left: 1px solid #1a1a24; overflow-y: auto; padding: 8px 10px; }
+    .spr-dims { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+    .spr-dims .field { margin-bottom: 4px; }
+    .spr-flag { padding: 1px 0; }
+    .spr-flag span { min-width: 140px !important; font-size: 11px; }
+    .spr-flag input[type=number] { width: 58px !important; flex: 0 0 58px !important; }
+
+    /* ================= Compuestos ================= */
+    #paleta-modo[hidden] { display: none; }
+    #compuestos-paleta { display: flex; flex-direction: column; gap: 2px; }
+    #compuestos-paleta[hidden], #palette[hidden], #palette-filter[hidden], #compuesto-config[hidden],
+    #compuesto-elegido[hidden], #objeto-propiedades[hidden] { display: none; }
+    /* En una columna, el `flex: 0 0 100%` del título sería el 100 % del ALTO: aquí mide lo suyo. */
+    #compuestos-paleta .palette-title { flex: 0 0 auto; }
+    .cmp-boton { display: flex; align-items: center; gap: 6px; text-align: left; padding: 3px 6px; font-size: 11px; }
+    .cmp-boton canvas { width: 48px; height: 48px; image-rendering: pixelated; background: #14141c; flex: 0 0 48px; }
+    .cmp-boton em { margin-left: auto; color: #6a6a80; font-style: normal; font-size: 10px; }
+    #compuesto-config, #compuesto-elegido-form, #objeto-propiedades { margin-top: 6px; }
+    #compuesto-config .field, #compuesto-elegido-form .field, #objeto-propiedades .field { margin-bottom: 4px; }
+    #panel-compuestos { gap: 0; }
+    #cmp-izq { width: 260px; border-right: 1px solid #1a1a24; display: flex; flex-direction: column; padding: 8px; gap: 6px; min-height: 0; }
+    #cmp-lista { flex: 1; overflow-y: auto; }
+    #cmp-centro { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #cmp-guardar.icono-boton { color: #9fd6a8; }
+    #f-save.icono-boton { color: #9fd6a8; }
+    .actions .icono-boton { width: 34px; height: 34px; background: #1a1a24; border-color: #2a2a3a; }
+    #cmp-barra { display: flex; gap: 6px; padding: 3px 8px; border-bottom: 1px solid #1a1a24; align-items: center; flex-wrap: wrap; }
+    #cmp-estado { font-size: 11px; color: #7a9a7a; }
+    #cmp-estado.error { color: #e08080; }
+    #cmp-vista { flex: 1; min-height: 0; background: #12121a; }
+    #cmp-preview { width: 100%; height: 100%; display: block; }
+    #cmp-json { height: 180px; width: 100%; background: #0e0e14; color: #b0c0b0; border: 1px solid #2a2a3a; font: 11px monospace; }
+    #cmp-der { width: 470px; border-left: 1px solid #1a1a24; overflow-y: auto; padding: 8px 10px; }
+    .cmp-celda { margin-bottom: 3px; }
+    .cmp-celda input.corto { width: 48px; flex: 0 0 48px; }
+    .cmp-celda input[type=text] { flex: 1; }
+    .cmp-indice { color: #6a9ad0; font-size: 10px; min-width: 24px; }
+    .cmp-param { border: 1px solid #22222e; border-radius: 3px; padding: 4px; margin-bottom: 4px; display: flex; flex-direction: column; gap: 3px; }
+    .cmp-param input, .cmp-param select { flex: 1; min-width: 0; }
+
+    /* ================= Herramientas de RME en el mapa ================= */
+    /*
+     * LA BARRA DE ICONOS: botones cuadrados de 28 px con su explicación en el globo. Los grupos se
+     * separan con una raya, y la planta y el zoom van a la derecha, como en RME.
+     */
+    #map-barra { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; padding: 3px 6px;
+        border-bottom: 1px solid #1a1a24; background: #12121a; }
+    #map-barra .sep { width: 1px; height: 20px; background: #2a2a3a; margin: 0 4px; }
+    .grupo-barra { display: flex; gap: 2px; align-items: center; }
+    #map-barra select { width: auto; padding: 2px 4px; font-size: 12px; }
+    #map-select { max-width: 240px; }
+    .icono-boton {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        color: #b8c4d4;
+    }
+    .icono-boton:hover:not(:disabled) { background: #1f2a3a; border-color: #2e3e56; }
+    .icono-boton.active { background: #2a3f5c; border-color: #4a8ac0; color: #fff; }
+    .icono-boton.peligro { color: #e89090; }
+    .icono-boton.peligro:hover:not(:disabled) { background: #3a1e22; border-color: #6a3030; }
+    #spr-guardar.icono-boton { color: #9fd6a8; }
+    /* Una casilla que se ve como un icono que se enciende: la casilla de verdad va escondida. */
+    .icono-check { display: inline-flex; cursor: pointer; }
+    .icono-check input { position: absolute; opacity: 0; width: 0; height: 0; }
+    .icono-check input:checked + .icono-boton { background: #2a3f5c; border-color: #4a8ac0; color: #fff; }
+    .icono-check input:focus-visible + .icono-boton { outline: 1px solid #4a8ac0; }
+    button.icono-boton#btn-save { color: #9fd6a8; }
+    .icono { display: block; pointer-events: none; }
+    #map-lienzo { flex: 1; position: relative; min-height: 0; }
+    #map-canvas:focus { outline: none; }
+    #map-lienzo #map-canvas { position: absolute; inset: 0; }
+    #minimapa { position: absolute; right: 8px; bottom: 8px; border: 1px solid #3a3a4a; background: #0a0a0e; image-rendering: pixelated; cursor: pointer; }
+    #minimapa[hidden] { display: none; }
+    #map-dialogo { position: absolute; top: 8px; right: 8px; width: 330px; max-height: calc(100% - 16px); overflow-y: auto;
+        background: #12121a; border: 1px solid #3a3a4a; border-radius: 4px; padding: 8px 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.6); z-index: 5; }
+    #map-dialogo[hidden] { display: none; }
+    #map-dialogo .cerrar { float: right; padding: 0 6px; }
+    .resultado { display: flex; gap: 6px; padding: 2px 4px; cursor: pointer; font-size: 11px; border-radius: 3px; }
+    .resultado:hover { background: #1e2a3a; }
+    .resultado em { color: #6a6a80; font-style: normal; margin-left: auto; }
+    [data-modo-panel][hidden] { display: none; }
+    .pincel-boton { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 3px 6px; font-size: 11px; margin-bottom: 2px; }
+    .pincel-boton canvas { width: 32px; height: 32px; image-rendering: pixelated; background: #14141c; flex: 0 0 32px; }
+    .lista-fila { display: flex; gap: 6px; align-items: center; padding: 2px 4px; font-size: 11px; cursor: pointer; border: 1px solid transparent; border-radius: 3px; }
+    .lista-fila.selected { background: #2a3a56; border-color: #3a5a86; }
+    .lista-fila em { margin-left: auto; color: #6a6a80; font-style: normal; font-size: 10px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+    <header>
+        <h1>Jetyum · herramientas</h1>
+        <div class="tabs">
+            <button class="tab active" data-tab="map" title="El editor de mapas: casillas, objetos compuestos, respawns y NPC">Mapa</button>
+            <button class="tab" data-tab="compuestos" title="Las plantillas de objetos compuestos (data/editor/compuestos.json)">Compuestos</button>
+            <button class="tab" data-tab="sprites" title="Los sprites de 32x32 y las cosas del cliente (assets/things.json)">Sprites</button>
+            <button class="tab" data-tab="items" title="Las definiciones del servidor (data/items/items.xml)">Objetos (items.xml)</button>
+        </div>
+        <div id="global-status">cargando...</div>
+    </header>
+
+    <!-- ================= Editor de mapas ================= -->
+    <!--
+        EL PANEL DEL MAPA, COMO EN RME / NEXAMAP:
+
+          - ARRIBA, UNA BARRA DE ICONOS: el archivo, editar, las herramientas que no son pintar, los
+            menús Search/Map de RME, lo que se ve y, a la derecha, la planta y el zoom. Cada icono
+            explica lo que hace en su globo (`title`), con su atajo.
+          - A LA IZQUIERDA, LA PALETA: un desplegable elige cuál (Terreno, Objetos, Compuestos,
+            Casas, Ciudades, Waypoints, Criaturas), como el de RME, y abajo el tamaño y la forma del
+            pincel, que valen con cualquier paleta.
+          - EN MEDIO, EL MAPA, que se queda con todo el sitio que sobra.
+          - A LA DERECHA, LAS PROPIEDADES de lo que se ha elegido en el mapa (la pila de la casilla,
+            el compuesto o el marcador). Se abren solas al elegir algo y se cierran con la X.
+          - ABAJO, LA BARRA DE ESTADO: el último mensaje, lo que se lleva en la mano, la casilla
+            bajo el ratón y los recuentos del mapa.
+    -->
+    <div class="panel active" id="panel-map">
+
+        <div id="map-barra" role="toolbar" aria-label="Herramientas del mapa">
+            <div class="grupo-barra">
+                <select id="map-select" title="El archivo de data/world que se edita"></select>
+                <button type="button" id="btn-reload" class="plain" data-icono="recargar"
+                        title="Recargar: volver a leer el archivo del disco: se pierde lo que no se haya guardado">Recargar</button>
+                <button type="button" id="btn-save" data-icono="guardar"
+                        title="Guardar: escribir en el archivo los cambios hechos en el mapa">Guardar</button>
+            </div>
+            <span class="sep"></span>
+            <div class="grupo-barra">
+                <button type="button" id="rme-deshacer" class="plain" data-icono="deshacer" title="Deshacer (Ctrl+Z)">Deshacer</button>
+                <button type="button" id="rme-rehacer" class="plain" data-icono="rehacer" title="Rehacer (Ctrl+Y o Ctrl+Shift+Z)">Rehacer</button>
+            </div>
+            <span class="sep"></span>
+            <div class="grupo-barra">
+                <button type="button" id="rme-seleccionar" class="plain tool" data-icono="seleccionar" title="Seleccionar un rectángulo arrastrando (S)">Seleccionar</button>
+                <button type="button" id="rme-copiar" class="plain" data-icono="copiar" title="Copiar la selección (Ctrl+C)">Copiar</button>
+                <button type="button" id="rme-cortar" class="plain" data-icono="cortar" title="Cortar la selección (Ctrl+X)">Cortar</button>
+                <button type="button" id="rme-pegar" class="plain tool" data-icono="pegar" title="Pegar: el siguiente clic pega con la esquina de arriba a la izquierda en la casilla (Ctrl+V)">Pegar</button>
+                <button type="button" id="rme-borrar-sel" class="plain" data-icono="borrar-sel" title="Borrar todo lo que hay en la selección (Supr)">Borrar sel.</button>
+            </div>
+            <span class="sep"></span>
+            <!--
+                PINTAR NO TIENE BOTÓN: se pinta con lo que se elige en la paleta. Aquí están las
+                herramientas que hacen otra cosa con el clic.
+            -->
+            <div class="grupo-barra">
+                <button type="button" id="btn-pick" class="plain tool" data-icono="elegir"
+                        title="Elegir y ARRASTRAR un respawn (con sus monstruos dentro), un monstruo, un NPC, una zona protegida o lo que hay en una casilla">Elegir</button>
+                <button type="button" id="btn-soltar" class="plain" data-icono="soltar"
+                        title="Soltar lo elegido: sin nada en la mano, el izquierdo elige del mapa (Escape)">Soltar</button>
+                <button type="button" id="btn-erase" class="plain tool" data-icono="borrar"
+                        title="La goma: borra el bloque del pincel, y el ratón lo enseña en rojo antes de hacerlo">Borrar</button>
+                <button type="button" id="rme-rellenar" class="plain tool" data-icono="rellenar" title="Cubo: rellena con el suelo elegido las casillas conectadas con el mismo suelo (Ctrl+D)">Rellenar</button>
+                <button type="button" id="btn-capturar" class="plain tool" data-icono="capturar"
+                        title="Capturar: dos clics marcan un recuadro, y lo que hay dentro se guarda como objeto compuesto nuevo">Capturar</button>
+                <button type="button" id="btn-flag" class="plain tool" data-icono="bandera"
+                        title="Bandera: poner en el bloque del pincel la bandera elegida al lado; protectionZone forma la ZONA PROTEGIDA, que se ve en azul celeste y se elige y se arrastra con «Elegir»">Bandera</button>
+                <select id="flag-select" class="compacto"
+                        title="La bandera que pone «Bandera»:&#10;protectionZone — zona de protección&#10;noPvp — sin combate entre jugadores&#10;noLogout — no se puede salir aquí&#10;pvpZone — zona de combate&#10;house — casa">
+                    <option value="protectionZone" title="zona de protección">PZ</option>
+                    <option value="noPvp" title="sin combate entre jugadores">noPvp</option>
+                    <option value="noLogout" title="no se puede salir aquí">noLogout</option>
+                    <option value="pvpZone" title="zona de combate">pvpZone</option>
+                    <option value="house" title="casa">house</option>
+                </select>
+            </div>
+            <span class="sep"></span>
+            <div class="grupo-barra">
+                <button type="button" id="rme-borderizar" class="plain" data-icono="borderizar" title="Borderizar: rehacer bordes, muros, alfombras y mesas de la selección o de lo visible (Ctrl+B)">Borderizar</button>
+                <button type="button" id="rme-aleatorizar" class="plain" data-icono="aleatorizar" title="Aleatorizar: volver a tirar las variantes de suelo de la selección">Aleatorizar</button>
+                <button type="button" id="rme-limpiar" class="plain" data-icono="limpiar" title="Limpieza: casas inválidas y quitar objetos por id">Limpiar</button>
+            </div>
+            <span class="sep"></span>
+            <div class="grupo-barra">
+                <button type="button" id="rme-buscar" class="plain" data-icono="buscar" title="Buscar objetos, actionId, uniqueId o texto (Ctrl+F)">Buscar</button>
+                <button type="button" id="rme-reemplazar" class="plain" data-icono="reemplazar" title="Reemplazar un objeto por otro en la selección o en todo el mapa (Ctrl+Shift+F)">Reemplazar</button>
+                <button type="button" id="rme-ir" class="plain" data-icono="ir" title="Ir a una posición (Ctrl+G)">Ir a</button>
+                <button type="button" id="rme-estadisticas" class="plain" data-icono="estadisticas" title="Estadísticas del mapa (F8)">Estadísticas</button>
+            </div>
+            <span class="sep"></span>
+            <div class="grupo-barra">
+                <button type="button" id="rme-autoborde" class="plain active" data-icono="autoborde" title="Bordes automáticos al pintar y borrar (A)">Borde auto</button>
+                <button type="button" id="rme-rejilla" class="plain active" data-icono="rejilla" title="Ver la rejilla">Rejilla</button>
+                <button type="button" id="rme-ver-casas" class="plain active" data-icono="casas" title="Ver las casas y sus salidas">Casas</button>
+                <button type="button" id="rme-minimapa" class="plain active" data-icono="minimapa" title="Minimapa (M)">Minimapa</button>
+                <button type="button" id="btn-inspector" class="plain" data-icono="propiedades" title="Panel de propiedades: lo elegido en el mapa (se abre solo al elegir algo)">Propiedades</button>
+            </div>
+
+        </div>
+
+        <div id="map-cuerpo">
+
+            <!-- ============ La paleta (izquierda) ============ -->
+            <aside id="map-side">
+                <div id="map-side-cabecera">
+                    <div class="cabecera-titulo">Paleta</div>
+                    <select id="paleta-tipo"
+                            title="De dónde sale lo que se pinta: lo que se elige aquí es lo que el clic izquierdo pinta, y el ratón lo enseña como fantasma sobre el mapa. «Soltar» (o Escape) vuelve a no llevar nada">
+                        <option value="terreno">Terreno (T)</option>
+                        <option value="sueltos" selected>Objetos — RAW (I)</option>
+                        <option value="compuestos">Compuestos — doodads (D)</option>
+                        <option value="casas">Casas (H)</option>
+                        <option value="ciudades">Ciudades</option>
+                        <option value="waypoints">Waypoints (W)</option>
+                        <option value="criaturas">Criaturas y NPC</option>
+                    </select>
+                    <!-- Los botones de siempre, escondidos: el desplegable los pulsa. -->
+                    <div id="paleta-modo" hidden>
+                        <button type="button" class="plain" data-modo="terreno">Terreno</button>
+                        <button type="button" class="plain active" data-modo="sueltos">Objetos</button>
+                        <button type="button" class="plain" data-modo="compuestos">Compuestos</button>
+                        <button type="button" class="plain" data-modo="casas">Casas</button>
+                        <button type="button" class="plain" data-modo="ciudades">Ciudades</button>
+                        <button type="button" class="plain" data-modo="waypoints">Waypoints</button>
+                        <button type="button" class="plain" data-modo="criaturas">Criaturas</button>
+                    </div>
+                    <div id="palette-buscador">
+                        <input id="palette-filter" type="text"
+                               placeholder="buscar por nombre o id..." autocomplete="off"
+                               title="Busca a la vez por nombre y por identificador, sin distinguir mayúsculas">
+                        <select id="palette-grupo"
+                                title="La categoría de objetos a la vista (el «Tileset» de RME)">
+                            <option value="">Todas las categorías</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="map-side-scroll">
+                    <div id="paleta-terreno" data-modo-panel="terreno" hidden></div>
+                    <div id="paleta-casas" data-modo-panel="casas" hidden></div>
+                    <div id="paleta-ciudades" data-modo-panel="ciudades" hidden></div>
+                    <div id="paleta-waypoints" data-modo-panel="waypoints" hidden></div>
+                    <div id="compuestos-paleta" hidden></div>
+                    <div id="compuesto-config" hidden></div>
+                    <div id="palette"></div>
+
+                    <!--
+                        CRIATURAS Y NPC. Un respawn es un ÁREA: el fuego morado marca su centro y el
+                        recuadro discontinuo, hasta dónde llega. Dentro sólo se pueden poner
+                        monstruos, y eso es lo que hace la herramienta «Monstruo».
+                    -->
+                    <div id="paleta-criaturas" data-modo-panel="criaturas" hidden>
+                        <div class="sub-title"
+                             title="Un respawn es un ÁREA: el fuego morado marca su centro y el recuadro discontinuo hasta dónde llega. Dentro sólo se pueden poner monstruos; fuera de un respawn, la herramienta «Monstruo» no pone nada y lo dice">Respawns, monstruos y NPC</div>
+                        <div class="row criaturas-botones">
+                            <button type="button" id="btn-respawn" class="plain tool"
+                                    title="Crear un respawn (un area) con el monstruo elegido dentro">Respawn</button>
+                            <button type="button" id="btn-monster" class="plain tool"
+                                    title="Anadir el monstruo elegido dentro de un respawn que exista; si la casilla no esta dentro de ninguno, no pone nada y lo dice">Monstruo</button>
+                            <button type="button" id="btn-npc" class="plain tool"
+                                    title="Colocar el NPC elegido">NPC</button>
+                        </div>
+
+                        <label class="field">
+                            <span>Monstruo</span>
+                            <select id="monster-select"
+                                    title="El monstruo que ponen «Respawn» y «Monstruo»"></select>
+                        </label>
+                        <div id="monster-detalle" class="nota">—</div>
+
+                        <div class="row">
+                            <label class="field mitad">
+                                <span>Radio del respawn</span>
+                                <input id="respawn-radius" type="number" min="0" step="1" value="3"
+                                       title="Cuántas casillas alcanza el área del respawn desde su centro">
+                            </label>
+                            <label class="field mitad">
+                                <span>Cada (ms)</span>
+                                <input id="respawn-interval" type="number" min="1000" step="1000" value="60000"
+                                       title="Cada cuánto vuelve a aparecer el monstruo, en milisegundos">
+                            </label>
+                        </div>
+
+                        <label class="field">
+                            <span>NPC</span>
+                            <select id="npc-select" title="El tendero que coloca «NPC»"></select>
+                        </label>
+                        <label class="field">
+                            <span>Radio de paseo del NPC</span>
+                            <input id="npc-radius" type="number" min="0" step="1" placeholder="el de npcs.xml"
+                                   title="Cuántas casillas se aleja de su sitio; vacío = el radio que declara npcs.xml">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- El pincel: vale con cualquier paleta, así que va al pie y no se desplaza. -->
+                <div id="map-side-footer"
+                     title="Lo que vale con cualquier herramienta puesta: planta, pincel, vista y mano">
+                    <div class="cabecera-titulo">Tamaño del pincel</div>
+                    <div class="row pincel-fila">
+                        <button type="button" id="rme-forma" class="plain" data-icono="cuadrado" title="Forma del pincel: cuadrado o círculo">Forma</button>
+                        <button type="button" id="btn-pincel-menos" class="plain" data-icono="menos"
+                                title="Una casilla menos por lado (tecla [)">−</button>
+                        <span id="pincel-tamano"
+                              title="Cuántas casillas toca cada clic, pintando, borrando y arrastrando">1x1</span>
+                        <button type="button" id="btn-pincel-mas" class="plain" data-icono="mas"
+                                title="Una casilla mas por lado (tecla ])">+</button>
+                    </div>
+                    <div class="row" id="pincel-pasos"
+                         title="El tamaño del pincel: es el bloque de casillas que toca un clic al pintar, al borrar y al arrastrar">
+                        <button type="button" class="plain" data-tamano="1" title="1x1">1</button>
+                        <button type="button" class="plain" data-tamano="2" title="2x2">2</button>
+                        <button type="button" class="plain" data-tamano="3" title="3x3">3</button>
+                        <button type="button" class="plain" data-tamano="4" title="4x4">4</button>
+                        <button type="button" class="plain" data-tamano="5" title="5x5">5</button>
+                        <button type="button" class="plain" data-tamano="7" title="7x7">7</button>
+                        <button type="button" class="plain" data-tamano="9" title="9x9">9</button>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ============ El mapa ============ -->
+            <div id="map-main">
+                <div id="map-lienzo">
+                    <canvas id="map-canvas" tabindex="0"></canvas>
+                    <canvas id="minimapa" width="200" height="200" title="Minimapa de la planta: clic para ir"></canvas>
+                    <div id="map-dialogo" hidden></div>
+                </div>
+            </div>
+
+            <!-- ============ Propiedades de lo elegido (derecha) ============ -->
+            <aside id="map-inspector" hidden>
+                <div id="map-inspector-cabecera">
+                    <div class="cabecera-titulo">Propiedades</div>
+                    <button type="button" id="btn-inspector-cerrar" class="plain" data-icono="cerrar" title="Cerrar el panel de propiedades">Cerrar</button>
+                </div>
+                <div id="map-inspector-cuerpo">
+                    <!--
+                        EL OBJETO DE UNA CASILLA. Con nada en la mano, el clic izquierdo elige lo que
+                        hay en la casilla y el derecho enseña sus detalles. La pila se enseña de
+                        arriba abajo, que es el orden en el que se dibuja.
+                    -->
+                    <section class="insp-seccion">
+                        <div class="sub-title">El objeto de la casilla</div>
+                        <div id="objeto-info" class="nota">ninguno — con nada en la mano, pincha una
+                            casilla para elegir lo que hay en ella; el botón derecho enseña sus
+                            detalles.</div>
+                        <div id="objeto-pila" hidden></div>
+                        <div class="row" id="objeto-acciones" hidden>
+                            <button type="button" id="btn-objeto-subir" class="plain"
+                                    title="Se dibuja mas arriba en la pila de su casilla">▲ Subir</button>
+                            <button type="button" id="btn-objeto-bajar" class="plain"
+                                    title="Se dibuja mas abajo en la pila de su casilla">▼ Bajar</button>
+                            <button type="button" id="btn-objeto-borrar" class="danger"
+                                    title="Quitar este objeto de la casilla">Borrar</button>
+                        </div>
+                        <div id="objeto-detalle"></div>
+                        <!-- Las PROPIEDADES del objeto elegido: el diálogo «Propiedades» de RME. -->
+                        <div id="objeto-propiedades" hidden></div>
+                    </section>
+
+                    <!-- EL OBJETO COMPUESTO de la casilla: se configura, se mueve o se borra ENTERO. -->
+                    <section class="insp-seccion">
+                        <div class="sub-title"
+                             title="Un objeto entero colocado desde la paleta de compuestos: se elige pinchando cualquiera de sus casillas sin nada en la mano">El objeto compuesto</div>
+                        <div id="compuesto-info" class="nota">ninguno — con nada en la mano, pincha una casilla de un compuesto (contorno amarillo).</div>
+                        <div id="compuesto-elegido" hidden>
+                            <div id="compuesto-elegido-form"></div>
+                            <div class="row" style="flex-wrap:wrap">
+                                <button type="button" id="btn-compuesto-aplicar" title="Volver a colocar sus piezas con esta configuración">Aplicar</button>
+                                <button type="button" id="btn-compuesto-mover" class="plain" title="El siguiente clic en el mapa lo mueve entero, con su ancla en esa casilla">Mover</button>
+                                <button type="button" id="btn-compuesto-descomponer" class="plain" title="Olvidarlo como objeto entero: sus piezas se quedan como objetos sueltos">Descomponer</button>
+                                <button type="button" id="btn-compuesto-borrar" class="danger" title="Quitar todas sus piezas del mapa">Borrar entero</button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- EL MARCADOR ELEGIDO: un respawn, uno de sus monstruos, un NPC o una zona protegida. -->
+                    <section class="insp-seccion">
+                        <div class="sub-title"
+                             title="Un respawn, uno de sus monstruos, un NPC o una zona protegida: se elige y se arrastra con «Elegir»">El marcador</div>
+                        <div id="marcador-info" class="nota">ninguno — pulsa «Elegir» sobre un respawn,
+                            un monstruo, un NPC o una zona protegida.</div>
+                        <div id="marcador-monstruos" hidden></div>
+                        <div class="row" id="marcador-acciones" hidden>
+                            <button type="button" id="btn-marcador-aplicar" class="plain">Aplicar</button>
+                            <button type="button" id="btn-marcador-borrar" class="danger">Borrar</button>
+                        </div>
+                    </section>
+                </div>
+            </aside>
+        </div>
+
+        <!-- ============ La barra de estado ============ -->
+        <footer id="map-pie"
+            title="izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho enseña sus detalles · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo">
+            <span id="map-status">—</span>
+            <span id="mano-info" class="nota">nada elegido</span>
+            <span id="map-pos">—</span>
+            <span id="map-stats">—</span>
+            <div class="grupo-barra" id="map-vista">
+                <select id="floor-select" class="compacto"
+                        title="La planta del mapa en la que se trabaja (Ctrl+rueda o RePág/AvPág también la cambian)"></select>
+                <button type="button" id="btn-zoom-out" class="plain" data-icono="zoom-menos" title="Alejar (tecla -)">−</button>
+                <span id="vista-escala" title="La escala a la que se ve el mapa (la rueda la cambia)">100 %</span>
+                <button type="button" id="btn-zoom-in" class="plain" data-icono="zoom-mas" title="Acercar (tecla +)">+</button>
+                <button type="button" id="btn-fit" class="plain" data-icono="ver-todo" title="Ver todo: el mapa entero, ajustado a la ventana (tecla 0)">Ver todo</button>
+                <button type="button" id="btn-normal" class="plain" data-icono="vista-normal" title="Vista normal: volver al 100 % (tecla 1)">Vista normal</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- ================= Compuestos: plantillas de objetos enteros ================= -->
+    <div class="panel" id="panel-compuestos">
+        <aside id="cmp-izq">
+            <div class="spr-cabecera">
+                <span class="cabecera-titulo" title="Las plantillas de objetos compuestos: grupos de objetos que se ponen en el mapa de una vez (el doodads.xml de RME)">Plantillas</span>
+                <div class="grupo-barra">
+                    <button type="button" id="cmp-nueva" class="plain" data-icono="mas" title="Nueva plantilla vacía">Nueva</button>
+                    <button type="button" id="cmp-duplicar" class="plain" data-icono="copiar" title="Duplicar la plantilla elegida">Duplicar</button>
+                    <button type="button" id="cmp-borrar" class="plain peligro" data-icono="papelera" title="Borrar la plantilla elegida (lo ya colocado en los mapas no cambia)">Borrar</button>
+                </div>
+            </div>
+            <input id="cmp-filtro" type="text" placeholder="filtrar..." autocomplete="off" title="Filtrar por nombre o categoría">
+            <div id="cmp-lista"></div>
+        </aside>
+        <div id="cmp-centro">
+            <div id="cmp-barra">
+                <button type="button" id="cmp-guardar" data-icono="guardar" title="Guardar data/editor/compuestos.json">Guardar compuestos</button>
+                <span id="cmp-estado">—</span>
+            </div>
+            <div id="cmp-vista"><canvas id="cmp-preview"></canvas></div>
+            <div style="padding:6px 8px">
+                <div class="spr-cabecera">
+                    <span class="cabecera-titulo" title="La plantilla elegida en JSON, para cambios rápidos: edítala y pulsa «Aplicar JSON»">JSON de la plantilla</span>
+                    <button type="button" id="cmp-json-aplicar" class="plain" data-icono="comprobar" title="Aplicar JSON: valida el texto y lo pone en la plantilla elegida">Aplicar JSON</button>
+                </div>
+                <textarea id="cmp-json" spellcheck="false"></textarea>
+            </div>
+        </div>
+        <aside id="cmp-der"><div id="cmp-form"></div></aside>
+    </div>
+
+    <!-- ================= Sprites (el ObjectBuilder del proyecto) ================= -->
+    <!--
+        TRES ZONAS: la lista de cosas, el taller (vista, piezas y biblioteca de sprites) y las
+        propiedades. El formato y el orden de los sprites: docs/SPRITES.md.
+    -->
+    <div class="panel" id="panel-sprites">
+        <aside id="spr-lista">
+            <div class="spr-cabecera">
+                <span class="cabecera-titulo" title="Todo lo que se puede dibujar: objetos, aspectos (personajes y monstruos), efectos y proyectiles. Cada cosa se hace de uno o varios sprites de 32x32">Las cosas</span>
+                <div class="grupo-barra">
+                    <button type="button" id="spr-nuevo" class="plain" data-icono="mas" title="Nueva cosa, vacía, con el primer identificador libre">Nueva</button>
+                    <button type="button" id="spr-desde-imagen" class="plain" data-icono="desde-imagen" title="Nueva desde imagen: crea una cosa del tamaño de una imagen PNG y la corta dentro (una de 64x64 da una cosa de 2x2)">Nueva desde imagen</button>
+                    <button type="button" id="spr-duplicar" class="plain" data-icono="copiar" title="Duplicar la cosa elegida (comparte sus sprites, no copia nada de más)">Duplicar</button>
+                    <button type="button" id="spr-borrar" class="plain peligro" data-icono="papelera" title="Borrar la cosa elegida de things.json (sus sprites se quedan en la biblioteca)">Borrar</button>
+                </div>
+            </div>
+            <div id="spr-cats" role="tablist" aria-label="Categorías"></div>
+            <input id="spr-filtro" type="text" placeholder="filtrar por id o nombre..." autocomplete="off"
+                   title="Busca a la vez por identificador y por nombre">
+            <div id="spr-cosas"></div>
+            <div class="nota" id="spr-cuenta">—</div>
+        </aside>
+
+        <div id="spr-centro">
+            <div id="spr-barra">
+                <div class="grupo-barra">
+                    <button type="button" id="spr-guardar" data-icono="guardar" title="Guardar things.json (Ctrl+S). Hasta que no se guarda, nada es definitivo">Guardar things.json</button>
+                    <button type="button" id="spr-coherencia" class="plain" data-icono="comprobar" title="Comprobar coherencia: compara las banderas con las de items.xml y busca objetos sin dibujo o sin ficha en el servidor">Comprobar coherencia</button>
+                </div>
+                <span class="sep"></span>
+                <div class="grupo-barra">
+                    <button type="button" id="spr-importar-cosa" class="plain" data-icono="importar-hoja" title="Importar la hoja de la cosa: rellena TODOS sus patrones y fotogramas con una imagen (columnas = fotogramas, filas = capa y patrones)">Importar hoja de la cosa</button>
+                    <button type="button" id="spr-exportar-cosa" class="plain" data-icono="exportar-hoja" title="Exportar la hoja de la cosa: descarga un PNG con el mismo formato que se importa">Exportar hoja</button>
+                </div>
+                <div id="spr-estado">—</div>
+            </div>
+
+            <div id="spr-arriba">
+                <section id="spr-vista">
+                    <div class="spr-cabecera">
+                        <span class="cabecera-titulo" title="La cosa elegida tal como se verá, animada si tiene fotogramas. El ancla (la casilla donde se pone) va marcada en azul">Vista previa</span>
+                        <div class="grupo-barra">
+                            <button type="button" id="spr-play" class="plain active" data-icono="reproducir" title="Reproducir o parar la animación">Animar</button>
+                            <select id="spr-zoom" title="Zoom de la vista previa"><option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="4">4x</option><option value="6">6x</option></select>
+                        </div>
+                    </div>
+                    <div id="spr-vista-lienzo"><canvas id="spr-preview"></canvas></div>
+                    <div id="spr-controles"></div>
+                </section>
+                <section id="spr-piezas">
+                    <div class="spr-cabecera">
+                        <span class="cabecera-titulo" title="Los sprites de 32x32 que forman el patrón y el fotograma elegidos. El ancla (borde discontinuo) es la casilla donde se pone la cosa: lo que mide más crece hacia arriba y a la izquierda, como en Tibia.&#10;Clic: elegir la pieza · clic derecho: vaciarla · arrastra aquí un sprite de la biblioteca para ponerlo">Piezas de 32x32</span>
+                        <button type="button" id="spr-usar" class="usar" disabled
+                                title="Poner el sprite elegido en la biblioteca en la pieza elegida (también: doble clic en el sprite, o arrastrarlo a la pieza). Elegir un sprite ya NO cambia nada por sí solo">Usar sprite</button>
+                    </div>
+                    <div class="nota" id="spr-piezas-info">—</div>
+                    <div id="spr-piezas-rejilla"></div>
+                </section>
+            </div>
+
+            <section id="spr-biblioteca">
+                <div id="spr-biblioteca-barra">
+                    <span class="cabecera-titulo" title="Todos los sprites de 32x32 que existen, numerados. Clic: elegirlo (no cambia nada) · doble clic: usarlo en la pieza elegida · arrastrar: soltarlo en una pieza">Biblioteca</span>
+                    <div class="grupo-barra">
+                        <button type="button" id="spr-importar" class="plain" data-icono="importar" title="Importar PNG: corta una imagen de cualquier tamaño (múltiplo de 32) en sprites de 32x32 y los añade al final, de izquierda a derecha y de arriba abajo (los transparentes y los repetidos no se añaden)">Importar PNG</button>
+                        <label class="icono-check" title="Al importar, el fondo magenta (#FF00FF) se vuelve transparente, como en ObjectBuilder y en las hojas de sprites de Tibia"><input type="checkbox" id="spr-magenta" checked><span data-icono="magenta"></span></label>
+                        <button type="button" id="spr-reemplazar" class="plain" data-icono="reemplazar-sprite" title="Reemplazar: cambia los píxeles del sprite elegido por los de un PNG de 32x32 (cambia el dibujo de todas las cosas que lo usan)">Reemplazar</button>
+                        <button type="button" id="spr-exportar" class="plain" data-icono="exportar" title="Exportar: descarga el sprite elegido como PNG">Exportar</button>
+                        <button type="button" id="spr-vaciar" class="plain peligro" data-icono="vaciar" title="Vaciar: deja transparente el sprite elegido (su número no se reutiliza)">Vaciar</button>
+                    </div>
+                    <span class="sep"></span>
+                    <div class="grupo-barra">
+                        <label class="icono-check" title="Ver solo los sprites que no usa ninguna cosa"><input type="checkbox" id="spr-sin-usar"><span data-icono="sin-usar"></span></label>
+                        <input type="number" id="spr-ir" min="1" placeholder="ir a #" title="Ir al sprite con ese número">
+                        <button type="button" id="spr-pag-ant" class="plain" data-icono="anterior" title="Página anterior">◀</button>
+                        <span id="spr-pagina">—</span>
+                        <button type="button" id="spr-pag-sig" class="plain" data-icono="siguiente" title="Página siguiente">▶</button>
+                    </div>
+                </div>
+                <div id="spr-sprites"></div>
+                <div id="spr-sprite-info">ningún sprite elegido</div>
+            </section>
+        </div>
+
+        <aside id="spr-props">
+            <div id="spr-props-form"></div>
+        </aside>
+        <input type="file" id="spr-archivo" accept="image/png,image/gif,image/bmp,image/webp" hidden>
+    </div>
+
+    <!-- ================= Editor de objetos ================= -->
+    <div class="panel" id="panel-items">
+
+        <div id="items-list-pane">
+            <input id="item-filter" type="text" placeholder="filtrar por id o nombre..."
+                   title="Filtra la lista por identificador o por nombre, sin distinguir mayúsculas">
+            <div id="item-list"></div>
+            <div id="items-status">—</div>
+        </div>
+
+        <div id="item-form"></div>
+    </div>
+</div>
+
+<!--
+    Módulos ES, y con las rutas del MONTAJE del servidor de herramientas: `/jetyum/`
+    es el cliente del juego, del que el editor reutiliza la cámara y el orden de
+    dibujo. Por eso el editor no tiene su propio renderer y no puede discrepar del
+    juego.
+-->
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

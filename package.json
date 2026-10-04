@@ -1,0 +1,46 @@
+{
+    "name": "jetyum",
+    "version": "0.11.0-beta.1",
+    "private": true,
+    "description": "MMORPG 2D estilo Tibia con arquitectura de servidor de Tibia: motor, cliente, herramientas y datapack extensible por modulos JavaScript y definiciones XML.",
+    "license": "MPL-2.0",
+    "engines": {
+        "node": ">=20.19"
+    },
+    "scripts": {
+        "engine": "node engine/main.js",
+        "engine:reload": "node engine/main.js --reload",
+        "serve": "node engine/serve.js",
+        "editor": "node editor/server.js",
+        "test": "node tools/test-engine.js && node tools/test-world.js && node tools/test-simulation.js && node tools/test-combat.js && node tools/test-protocol.js && node tools/test-persistence.js && node tools/test-tools.js && node tools/test-render.mjs && node tools/test-client-e2e.mjs && node tools/test-assets.mjs && node tools/test-mapa.mjs && node tools/test-otsp.mjs && node tools/test-vocaciones.mjs && node tools/test-scripts.mjs && node tools/test-arte-hd.mjs",
+        "test:engine": "node tools/test-engine.js",
+        "test:vocaciones": "node tools/test-vocaciones.mjs",
+        "test:scripts": "node tools/test-scripts.mjs",
+        "test:world": "node tools/test-world.js",
+        "test:simulation": "node tools/test-simulation.js",
+        "test:combat": "node tools/test-combat.js",
+        "test:protocol": "node tools/test-protocol.js",
+        "test:persistence": "node tools/test-persistence.js",
+        "test:tools": "node tools/test-tools.js",
+        "test:render": "node tools/test-render.mjs",
+        "test:client": "node tools/test-client-e2e.mjs",
+        "test:assets": "node tools/test-assets.mjs",
+        "test:mapa": "node tools/test-mapa.mjs",
+        "start": "node engine/serve.js",
+        "check:jetyum": "node tools/check-jetyum-client.js && node tools/check-client-dom.js",
+        "pinceles:generar": "node tools/generar-pinceles.mjs",
+        "test:otsp": "node tools/test-otsp.mjs",
+        "test:arte": "node tools/test-arte-hd.mjs",
+        "assets:otsp": "node tools/importar-otsp.mjs --pack /tmp/otsp",
+        "arte:plantillas": "node tools/arte-hd.mjs plantillas",
+        "arte:importar": "node tools/arte-hd.mjs importar && node tools/generar-banderas.mjs",
+        "banderas:generar": "node tools/generar-banderas.mjs",
+        "mundo:otsp": "node tools/generar-mundo-otsp.mjs",
+        "mundo:aldea": "node tools/generar-aldea-hd.mjs",
+        "serve:aldea": "node engine/serve.js --map aldea"
+    },
+    "dependencies": {
+        "fast-xml-parser": "^5.11.2",
+        "ws": "^8.22.0"
+    }
+}

@@ -1,0 +1,1868 @@
+{
+  "_comment": [
+    "EL ARTE HD: qué hay en cada celda de cada hoja de data/arte-hd/ y a qué cosa del juego corresponde.",
+    "Ver docs/ARTE-HD.md. Las hojas provisionales las hace `npm run arte:plantillas` (el arte del pack ampliado x2,",
+    "según `plantilla`); `npm run arte:importar` las mete en el juego.",
+    "`id` + `nombre` + `flags` (cliente) + `xml` (items.xml): una cosa NUEVA. `sustituye`: una que ya existe y sólo",
+    "cambia de dibujo (su lógica es la de siempre). `celdas`: [fila, columna]; varias son variantes (el suelo",
+    "cambia según la casilla) o, con `como: fotogramas`, una animación."
+  ],
+  "hojas": [
+    {
+      "archivo": "suelos.png",
+      "tipo": "suelo",
+      "celda": [
+        64,
+        64
+      ],
+      "tamano": [
+        512,
+        256
+      ],
+      "piezas": [
+        {
+          "id": 20001,
+          "nombre": "grass",
+          "celdas": [
+            [
+              0,
+              0
+            ],
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              2
+            ],
+            [
+              0,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10101
+              ]
+            },
+            {
+              "items": [
+                10102
+              ]
+            },
+            {
+              "items": [
+                10102
+              ]
+            },
+            {
+              "items": [
+                10101
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 150
+            },
+            "fullGround": true,
+            "minimap": 18
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 150
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20002,
+          "nombre": "dirt",
+          "celdas": [
+            [
+              0,
+              4
+            ],
+            [
+              0,
+              5
+            ],
+            [
+              0,
+              6
+            ],
+            [
+              0,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10203
+              ]
+            },
+            {
+              "items": [
+                10204
+              ]
+            },
+            {
+              "items": [
+                10205
+              ]
+            },
+            {
+              "items": [
+                10206
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 150
+            },
+            "fullGround": true,
+            "minimap": 121
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 150
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20003,
+          "nombre": "cobblestone",
+          "celdas": [
+            [
+              1,
+              0
+            ],
+            [
+              1,
+              1
+            ],
+            [
+              1,
+              2
+            ],
+            [
+              1,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10152
+              ]
+            },
+            {
+              "items": [
+                10152
+              ]
+            },
+            {
+              "items": [
+                10152
+              ]
+            },
+            {
+              "items": [
+                10152
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 120
+            },
+            "fullGround": true,
+            "minimap": 129
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 120
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20004,
+          "nombre": "sand",
+          "celdas": [
+            [
+              1,
+              4
+            ],
+            [
+              1,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10128
+              ]
+            },
+            {
+              "items": [
+                10128
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 160
+            },
+            "fullGround": true,
+            "minimap": 171
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 160
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20005,
+          "nombre": "wooden floor",
+          "celdas": [
+            [
+              1,
+              6
+            ],
+            [
+              1,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10172
+              ]
+            },
+            {
+              "items": [
+                10173
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 130
+            },
+            "fullGround": true,
+            "minimap": 121
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 130
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20006,
+          "nombre": "stone floor",
+          "celdas": [
+            [
+              2,
+              0
+            ],
+            [
+              2,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10200
+              ]
+            },
+            {
+              "items": [
+                10201
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 130
+            },
+            "fullGround": true,
+            "minimap": 172
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 130
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20007,
+          "nombre": "red carpet",
+          "celdas": [
+            [
+              2,
+              2
+            ],
+            [
+              2,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10176
+              ]
+            },
+            {
+              "items": [
+                10176
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 130
+            },
+            "fullGround": true,
+            "minimap": 108
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 130
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20008,
+          "nombre": "water",
+          "celdas": [
+            [
+              2,
+              4
+            ],
+            [
+              2,
+              5
+            ],
+            [
+              2,
+              6
+            ],
+            [
+              2,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12260
+              ],
+              "frame": 0
+            },
+            {
+              "items": [
+                12260
+              ],
+              "frame": 1
+            },
+            {
+              "items": [
+                12260
+              ],
+              "frame": 2
+            },
+            {
+              "items": [
+                12260
+              ],
+              "frame": 1
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 500
+            },
+            "fullGround": true,
+            "minimap": 52,
+            "notWalkable": true,
+            "animateAlways": true
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 500,
+            "blocksSolid": 1
+          },
+          "como": "fotogramas",
+          "articulo": ""
+        },
+        {
+          "id": 20009,
+          "nombre": "tall grass",
+          "celdas": [
+            [
+              3,
+              0
+            ],
+            [
+              3,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10102
+              ],
+              "encima": [
+                11412
+              ]
+            },
+            {
+              "items": [
+                10103
+              ],
+              "encima": [
+                11413
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 170
+            },
+            "fullGround": true,
+            "minimap": 18
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 170
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20010,
+          "nombre": "flowery grass",
+          "celdas": [
+            [
+              3,
+              2
+            ],
+            [
+              3,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10101
+              ],
+              "encima": [
+                11339
+              ]
+            },
+            {
+              "items": [
+                10104
+              ],
+              "encima": [
+                11340
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 150
+            },
+            "fullGround": true,
+            "minimap": 18
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 150
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20011,
+          "nombre": "dirt path",
+          "celdas": [
+            [
+              3,
+              4
+            ],
+            [
+              3,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10207
+              ]
+            },
+            {
+              "items": [
+                10204
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 140
+            },
+            "fullGround": true,
+            "minimap": 121
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 140
+          },
+          "articulo": ""
+        },
+        {
+          "id": 20012,
+          "nombre": "mud",
+          "celdas": [
+            [
+              3,
+              6
+            ],
+            [
+              3,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10146
+              ]
+            },
+            {
+              "items": [
+                10146
+              ]
+            }
+          ],
+          "flags": {
+            "ground": {
+              "speed": 200
+            },
+            "fullGround": true,
+            "minimap": 85
+          },
+          "xml": {
+            "isGround": 1,
+            "groundSpeed": 200
+          },
+          "articulo": ""
+        }
+      ]
+    },
+    {
+      "archivo": "muros.png",
+      "tipo": "muro",
+      "celda": [
+        64,
+        128
+      ],
+      "tamano": [
+        512,
+        128
+      ],
+      "piezas": [
+        {
+          "id": 20101,
+          "nombre": "stone wall",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "muro-piedra"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true,
+            "blockProjectile": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20102,
+          "nombre": "stone wall",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "muro-piedra-ventana"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true,
+            "blockProjectile": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20103,
+          "nombre": "door",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "muro-piedra-puerta"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true,
+            "blockProjectile": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20104,
+          "nombre": "door",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "muro-piedra-abierta"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "onTop": true
+          },
+          "xml": {
+            "alwaysOnTop": 1
+          }
+        },
+        {
+          "id": 20105,
+          "nombre": "wooden wall",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              4
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "muro-madera"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true,
+            "blockProjectile": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20106,
+          "nombre": "wooden wall",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "muro-madera-ventana"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true,
+            "blockProjectile": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20107,
+          "nombre": "wooden fence",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              6
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "valla"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20108,
+          "nombre": "stone pillar",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "columna"
+            }
+          ],
+          "flags": {
+            "minimap": 86,
+            "notWalkable": true,
+            "blockProjectile": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        }
+      ]
+    },
+    {
+      "archivo": "objetos.png",
+      "tipo": "objeto",
+      "celda": [
+        128,
+        128
+      ],
+      "tamano": [
+        1024,
+        256
+      ],
+      "piezas": [
+        {
+          "id": 20201,
+          "nombre": "oak tree",
+          "articulo": "an",
+          "celdas": [
+            [
+              0,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11503
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "blockProjectile": true,
+            "minimap": 12
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20202,
+          "nombre": "pine tree",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11529
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "blockProjectile": true,
+            "minimap": 12
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20203,
+          "nombre": "bush",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11498
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "minimap": 12
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20204,
+          "nombre": "boulder",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11622
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "blockProjectile": true,
+            "minimap": 86
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "blocksProjectile": 1
+          }
+        },
+        {
+          "id": 20205,
+          "nombre": "barrel",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              4
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11110
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20206,
+          "nombre": "wooden crate",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11115
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20207,
+          "nombre": "table",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              6
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11197
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "elevation": 8
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20208,
+          "nombre": "chair",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11090
+              ]
+            }
+          ],
+          "flags": {},
+          "xml": {}
+        },
+        {
+          "id": 20209,
+          "nombre": "chest",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11113
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "container": true
+          },
+          "xml": {
+            "blocksSolid": 1,
+            "isContainer": 1,
+            "containerSize": 8
+          }
+        },
+        {
+          "id": 20210,
+          "nombre": "street lamp",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "farola"
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "light": {
+              "level": 5,
+              "color": 215
+            }
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20211,
+          "nombre": "signpost",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "cartel"
+            }
+          ],
+          "flags": {
+            "notWalkable": true
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20212,
+          "nombre": "well",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11151
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "minimap": 86
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20213,
+          "nombre": "tree stump",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              4
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11588
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20214,
+          "nombre": "flower bed",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                11339
+              ],
+              "encima": [
+                11340
+              ]
+            }
+          ],
+          "flags": {},
+          "xml": {}
+        },
+        {
+          "id": 20215,
+          "nombre": "stairs",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              6
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                10997
+              ]
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "minimap": 210
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        },
+        {
+          "id": 20216,
+          "nombre": "campfire",
+          "articulo": "a",
+          "celdas": [
+            [
+              1,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "procedural": "hoguera"
+            }
+          ],
+          "flags": {
+            "notWalkable": true,
+            "light": {
+              "level": 4,
+              "color": 208
+            }
+          },
+          "xml": {
+            "blocksSolid": 1
+          }
+        }
+      ]
+    },
+    {
+      "archivo": "inventario.png",
+      "tipo": "inventario",
+      "celda": [
+        64,
+        64
+      ],
+      "tamano": [
+        512,
+        192
+      ],
+      "piezas": [
+        {
+          "sustituye": 2400,
+          "celdas": [
+            [
+              0,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2400
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2401,
+          "celdas": [
+            [
+              0,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2401
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2402,
+          "celdas": [
+            [
+              0,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2402
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2403,
+          "celdas": [
+            [
+              0,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2403
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2404,
+          "celdas": [
+            [
+              0,
+              4
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2404
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2405,
+          "celdas": [
+            [
+              0,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2405
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2409,
+          "celdas": [
+            [
+              0,
+              6
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2409
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2410,
+          "celdas": [
+            [
+              0,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2410
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2406,
+          "celdas": [
+            [
+              1,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2406
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2407,
+          "celdas": [
+            [
+              1,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2407
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2408,
+          "celdas": [
+            [
+              1,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2408
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2411,
+          "celdas": [
+            [
+              1,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2411
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2376,
+          "celdas": [
+            [
+              1,
+              4
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2376
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2412,
+          "celdas": [
+            [
+              1,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2412
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2413,
+          "celdas": [
+            [
+              1,
+              6
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2413
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2414,
+          "celdas": [
+            [
+              1,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2414
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 3031,
+          "celdas": [
+            [
+              2,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                3031
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2152,
+          "celdas": [
+            [
+              2,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2152
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2160,
+          "celdas": [
+            [
+              2,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2160
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2415,
+          "celdas": [
+            [
+              2,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2415
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2416,
+          "celdas": [
+            [
+              2,
+              4
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2416
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 2417,
+          "celdas": [
+            [
+              2,
+              5
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                2417
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 12138,
+          "celdas": [
+            [
+              2,
+              6
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12138
+              ]
+            }
+          ]
+        },
+        {
+          "sustituye": 12137,
+          "celdas": [
+            [
+              2,
+              7
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12137
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "archivo": "cadaveres.png",
+      "tipo": "cadaver",
+      "celda": [
+        64,
+        64
+      ],
+      "tamano": [
+        256,
+        64
+      ],
+      "piezas": [
+        {
+          "id": 20301,
+          "nombre": "dead rat",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              0
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12228
+              ]
+            }
+          ],
+          "flags": {
+            "container": true,
+            "lyingObject": true
+          },
+          "xml": {
+            "isContainer": 1,
+            "containerSize": 10,
+            "decayTo": 0,
+            "duration": 240
+          }
+        },
+        {
+          "id": 20302,
+          "nombre": "dead wolf",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              1
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12228
+              ]
+            }
+          ],
+          "flags": {
+            "container": true,
+            "lyingObject": true
+          },
+          "xml": {
+            "isContainer": 1,
+            "containerSize": 10,
+            "decayTo": 0,
+            "duration": 240
+          }
+        },
+        {
+          "sustituye": 12234,
+          "celdas": [
+            [
+              0,
+              2
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12234
+              ]
+            }
+          ]
+        },
+        {
+          "id": 20304,
+          "nombre": "pile of bones",
+          "articulo": "a",
+          "celdas": [
+            [
+              0,
+              3
+            ]
+          ],
+          "plantilla": [
+            {
+              "items": [
+                12236
+              ]
+            }
+          ],
+          "flags": {
+            "container": true,
+            "lyingObject": true
+          },
+          "xml": {
+            "isContainer": 1,
+            "containerSize": 10,
+            "decayTo": 0,
+            "duration": 240
+          }
+        }
+      ]
+    },
+    {
+      "archivo": "efectos.png",
+      "tipo": "efecto",
+      "celda": [
+        64,
+        64
+      ],
+      "tamano": [
+        320,
+        512
+      ],
+      "piezas": [
+        {
+          "sustituye": 101,
+          "fila": 0,
+          "plantilla": {
+            "effects": 101
+          }
+        },
+        {
+          "sustituye": 104,
+          "fila": 1,
+          "plantilla": {
+            "effects": 104
+          }
+        },
+        {
+          "sustituye": 102,
+          "fila": 2,
+          "plantilla": {
+            "effects": 102
+          }
+        },
+        {
+          "sustituye": 103,
+          "fila": 3,
+          "plantilla": {
+            "effects": 103
+          }
+        },
+        {
+          "sustituye": 111,
+          "fila": 4,
+          "plantilla": {
+            "effects": 111
+          }
+        },
+        {
+          "sustituye": 107,
+          "fila": 5,
+          "plantilla": {
+            "effects": 107
+          }
+        },
+        {
+          "sustituye": 115,
+          "fila": 6,
+          "plantilla": {
+            "effects": 115
+          }
+        },
+        {
+          "sustituye": 110,
+          "fila": 7,
+          "plantilla": {
+            "effects": 110
+          }
+        }
+      ]
+    }
+  ],
+  "personajes": [
+    {
+      "archivo": "personajes/caballero.png",
+      "aspecto": 131,
+      "plantilla": {
+        "outfits": 131
+      }
+    },
+    {
+      "archivo": "personajes/paladin.png",
+      "aspecto": 129,
+      "plantilla": {
+        "outfits": 129
+      }
+    },
+    {
+      "archivo": "personajes/hechicero.png",
+      "aspecto": 130,
+      "plantilla": {
+        "outfits": 130
+      }
+    },
+    {
+      "archivo": "personajes/druida.png",
+      "aspecto": 136,
+      "plantilla": {
+        "outfits": 136
+      }
+    },
+    {
+      "archivo": "personajes/aldeano.png",
+      "aspecto": 316,
+      "plantilla": {
+        "outfits": 316,
+        "colores": [
+          78,
+          100,
+          116,
+          114
+        ]
+      }
+    },
+    {
+      "archivo": "personajes/comerciante.png",
+      "aspecto": 320,
+      "plantilla": {
+        "outfits": 320,
+        "colores": [
+          78,
+          116,
+          100,
+          115
+        ]
+      }
+    },
+    {
+      "archivo": "personajes/sacerdote.png",
+      "aspecto": 315,
+      "plantilla": {
+        "outfits": 315
+      }
+    },
+    {
+      "archivo": "personajes/rata.png",
+      "aspecto": 21,
+      "plantilla": {
+        "outfits": 21
+      }
+    },
+    {
+      "archivo": "personajes/lobo.png",
+      "aspecto": 27,
+      "plantilla": {
+        "outfits": 301
+      }
+    },
+    {
+      "archivo": "personajes/goblin.png",
+      "aspecto": 307,
+      "plantilla": {
+        "outfits": 307
+      }
+    },
+    {
+      "archivo": "personajes/esqueleto.png",
+      "aspecto": 33,
+      "plantilla": {
+        "outfits": 33
+      }
+    }
+  ]
+}

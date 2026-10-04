@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jetyum — cliente</title>
+<style>
+    /*
+     * El cliente NO tiene estilos del juego mezclados con la lógica: esto es sólo
+     * el marco de la página. Todo lo que se ve dentro del lienzo lo dibuja el
+     * renderer, porque es el motor quien dice qué hay que ver.
+     */
+    * { box-sizing: border-box; }
+
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0a0a0e;
+        color: #d8d8e0;
+        font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace;
+        overflow: hidden;
+    }
+
+    #login {
+        background: #16161d;
+        border: 1px solid #2c2c3a;
+        border-radius: 6px;
+        padding: 24px 28px;
+        width: min(400px, calc(100vw - 32px));
+    }
+
+    #login h1 {
+        margin: 0 0 4px;
+        font-size: 19px;
+        letter-spacing: 0.5px;
+        color: #e8e8f0;
+    }
+
+    #login p {
+        margin: 0 0 18px;
+        color: #8a8a9a;
+        font-size: 12px;
+    }
+
+    #login label {
+        display: block;
+        margin-bottom: 6px;
+        color: #a8a8b8;
+        font-size: 12px;
+    }
+
+    #login input {
+        width: 100%;
+        padding: 8px 10px;
+        margin-bottom: 14px;
+        background: #0d0d12;
+        border: 1px solid #2c2c3a;
+        border-radius: 4px;
+        color: #e8e8f0;
+        font: inherit;
+    }
+
+    #login input:focus {
+        outline: none;
+        border-color: #4a90d9;
+    }
+
+    #login button {
+        width: 100%;
+        padding: 9px;
+        background: #4a90d9;
+        border: 0;
+        border-radius: 4px;
+        color: #08101c;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    #login button:hover { background: #5aa0e9; }
+
+    #login .hint {
+        margin: 16px 0 0;
+        font-size: 11px;
+        color: #6a6a7a;
+        line-height: 1.6;
+    }
+
+    /*
+     * LA DISPOSICIÓN DE TIBIA: el mapa en el centro, la barra lateral a la derecha (minimapa,
+     * vida y maná, equipo, botones y ventanas) y la consola abajo. Es una rejilla: el lienzo se
+     * queda con lo que sobra y el renderer lo mide igual que antes.
+     */
+    #layout {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) 196px;
+        grid-template-rows: minmax(0, 1fr) 5px var(--alto-consola, 168px);
+        grid-template-areas: "izq stage lateral" "izq separador lateral" "izq consola lateral";
+        height: 100%;
+        overflow: hidden;
+    }
+    /* La columna izquierda: siempre a la vista, para que el mapa no cambie de tamaño de golpe. */
+    #lateral-izq {
+        grid-area: izq;
+        width: 196px;
+        padding: 4px;
+        background: #15151c;
+        border-right: 1px solid #262632;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    #lateral-izq.vacia { display: none; }
+    /* La barra para cambiar el alto de la consola. */
+    #separador {
+        grid-area: separador;
+        background: #1e1e28;
+        border-top: 1px solid #2c2c3a;
+        cursor: ns-resize;
+    }
+    #separador:hover, body.redimensionando #separador { background: #3a5a80; }
+    body.redimensionando { cursor: ns-resize; user-select: none; }
+
+    /* Las columnas de ventanas: se reparten el alto, sin barra de desplazamiento en la página. */
+    .columna-ventanas {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        overflow: hidden;
+    }
+
+    #stage { grid-area: stage; position: relative; min-height: 0; min-width: 0; background: #000; }
+    #game {
+        display: block;
+        width: 100%;
+        height: 100%;
+        /* Pixel art: interpolarlo lo convierte en manchas. */
+        image-rendering: pixelated;
+        cursor: crosshair;
+    }
+
+    /* El login tapa la página entera: sin personaje, la barra lateral no tiene nada que enseñar. */
+    #overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(8, 8, 12, 0.94);
+        z-index: 60;
+    }
+
+    /* ===== La barra lateral ===== */
+    #lateral {
+        grid-area: lateral;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 4px;
+        background: #15151c;
+        border-left: 1px solid #262632;
+        overflow: hidden;
+        font-size: 11px;
+    }
+    #lateral > .caja, #lateral > #status { flex: 0 0 auto; }
+    #lateral-izq { font-size: 11px; }
+    .caja {
+        background: #1b1b24;
+        border: 1px solid #2c2c3a;
+        border-radius: 3px;
+        padding: 4px;
+    }
+    .boton-icono {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 22px;
+        padding: 0;
+        background: #262634;
+        border: 1px solid #383850;
+        border-radius: 3px;
+        color: #c8c8d8;
+        cursor: pointer;
+    }
+    .boton-icono:hover { background: #30304a; color: #fff; }
+    .boton-icono.activo { background: #2a3f5c; border-color: #4a8ac0; color: #cfe6ff; }
+
+    /* El minimapa y sus botones al lado, como en Tibia. */
+    #caja-minimapa { display: flex; gap: 4px; align-items: flex-start; justify-content: center; }
+    /* Minimapa, vida y equipo: ventanas que no se encogen (su cuerpo mide lo que mide). */
+    .ventana.fija .ventana-cuerpo { overflow: visible; }
+    #minimapa {
+        width: 132px;
+        height: 132px;
+        cursor: crosshair;
+        background: #000;
+        border: 1px solid #000;
+        image-rendering: pixelated;
+        cursor: crosshair;
+    }
+    .minimapa-botones { display: grid; grid-template-columns: 24px 24px; gap: 3px; }
+    #minimapa-planta { grid-column: span 2; text-align: center; color: #8a8a9a; }
+
+    /* Vida y maná: una barra cada uno, con el número encima. */
+    .barra-fila { position: relative; display: flex; align-items: center; gap: 4px; margin: 2px 0; }
+    .barra-fila .ico { width: 14px; display: inline-flex; }
+    .barra-fila .ico.vida { color: #d04848; }
+    .barra-fila .ico.mana { color: #4870d8; }
+    .barra-fila progress {
+        -webkit-appearance: none;
+        appearance: none;
+        flex: 1;
+        height: 13px;
+        border: 1px solid #000;
+        border-radius: 0;
+        background: #2a2a2a;
+    }
+    .barra-fila progress::-webkit-progress-bar { background: #2a2a2a; }
+    #health-bar::-webkit-progress-value { background: #c02828; }
+    #health-bar::-moz-progress-bar { background: #c02828; }
+    #mana-bar::-webkit-progress-value { background: #2850c8; }
+    #mana-bar::-moz-progress-bar { background: #2850c8; }
+    .barra-fila .value {
+        position: absolute;
+        left: 18px;
+        right: 0;
+        text-align: center;
+        color: #fff;
+        font-size: 10px;
+        text-shadow: 1px 1px 0 #000;
+        pointer-events: none;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /*
+     * EL EQUIPO: las diez ranuras de Tibia en su sitio (collar, cabeza y mochila; arma, cuerpo y
+     * escudo; anillo, piernas y munición; pies) y las cajas de almas y capacidad abajo. Una
+     * ranura vacía mide lo mismo que una llena: así se ve de un vistazo qué falta.
+     */
+    #equipment-slots {
+        display: grid;
+        grid-template-columns: repeat(3, 36px) 22px;
+        grid-template-rows: repeat(4, 36px);
+        grid-template-areas:
+            "necklace head backpack ."
+            "hand body shield ."
+            "ring legs ammo ."
+            "soul feet cap hk";
+        gap: 3px;
+        justify-content: center;
+    }
+    #equipment-slots .slot {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0e0e14;
+        border: 1px solid #000;
+        box-shadow: inset 1px 1px 0 #2a2a36;
+        cursor: default;
+        overflow: hidden;
+    }
+    #equipment-slots .slot .nombre { display: none; }
+    #equipment-slots .slot .vacia {
+        display: block;
+        color: #3e3e52;
+        font-size: 8px;
+        text-align: center;
+        line-height: 1;
+    }
+    #equipment-slots .slot.ocupada { background: #1a1a24; }
+    #equipment-slots .slot canvas, #equipment-slots .slot img { display: block; image-rendering: pixelated; }
+    #equipment-slots .slot .icono { display: flex; align-items: center; justify-content: center; }
+    #equipment-slots .slot .sin-dibujo { color: #8a8a9a; font-size: 8px; text-align: center; }
+    #equipment-slots .slot .cuantas,
+    #backpack-items .objeto .cuantas {
+        position: absolute;
+        right: 1px;
+        bottom: 0;
+        color: #f0f0f0;
+        font-size: 9px;
+        text-shadow: 1px 1px 0 #000;
+    }
+    .caja-valor {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #0e0e14;
+        border: 1px solid #000;
+        color: #c8c8d8;
+        font-size: 10px;
+        line-height: 1.1;
+    }
+    .caja-valor span { color: #7a7a8a; font-size: 8px; text-transform: uppercase; }
+
+    /* Los ocho botones: Stop, Quests, Options, Help / Skills, Battle, VIP, Logout. */
+    #botonera { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+    #botonera .boton-icono { width: 100%; height: 24px; }
+
+    /* ===== Las ventanas de la barra lateral (skills, batalla, VIP, mochila...) ===== */
+    .ventana { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
+        background: #1b1b24; border: 1px solid #2c2c3a; border-radius: 3px; }
+    .ventana[hidden] { display: none; }
+    .ventana-cabecera {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        padding: 2px 3px 2px 6px;
+        background: #23232f;
+        border-bottom: 1px solid #2c2c3a;
+        color: #b8b8c8;
+        user-select: none;
+    }
+    .ventana-cabecera .titulo { flex: 1; font-weight: bold; }
+    .ventana-cabecera .boton-icono { width: 16px; height: 16px; }
+    .ventana-cabecera .boton-icono svg { width: 11px; height: 11px; }
+    .ventana-cuerpo { padding: 4px 5px; overflow-y: auto; min-height: 0; }
+    /* Se arrastran por la cabecera: a una columna, o flotando donde se suelten. */
+    .ventana-cabecera { cursor: default; }
+    body.moviendo-ventana, body.moviendo-ventana * { cursor: grabbing !important; user-select: none; }
+    /* La manita SÓLO mientras se arrastra un objeto de verdad (no al pasar por encima ni al deslizar). */
+    body.arrastrando-objeto, body.arrastrando-objeto * { cursor: grabbing !important; user-select: none; }
+    #ventanas-flotantes { position: fixed; inset: 0; pointer-events: none; z-index: 40; font-size: 11px; }
+    #ventanas-flotantes > .ventana {
+        position: absolute; pointer-events: auto; width: 188px;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55); border-color: #3a3a4c;
+    }
+    #ventanas-flotantes > .ventana.arrastrando { opacity: 0.85; }
+    .ventana-hueco { flex: 0 0 3px; height: 3px; background: #4a90d9; border-radius: 2px; }
+    .ventana.minimizada .ventana-cuerpo { display: none; }
+
+    /* Skills: «Nivel ........ 8» con su barra de progreso debajo, como en Tibia. */
+    .skill { display: flex; justify-content: space-between; gap: 6px; color: #b0b0c0; }
+    .skill b { color: #e8e8f0; font-weight: normal; font-variant-numeric: tabular-nums; }
+    .skill-barra { height: 3px; margin: 1px 0 3px; background: #3a1a1a; }
+    .skill-barra div { height: 100%; background: #c84040; }
+    .skill-barra.nivel div { background: #3fbf5a; }
+    .skill-separador { border-top: 1px solid #2c2c3a; margin: 4px 0; }
+    #vocation-value { color: #cfe6ff; }
+
+    /* La lista de batalla: lo que hay a la vista, con su vida; clic para atacar. */
+    .batalla-fila {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 3px;
+        border: 1px solid transparent;
+        cursor: pointer;
+    }
+    .batalla-fila:hover { background: #262634; }
+    .batalla-fila.objetivo { border-color: #c03030; }
+    .batalla-fila canvas { flex: 0 0 auto; image-rendering: pixelated; background: #0e0e14; }
+    .batalla-datos { flex: 1; min-width: 0; }
+    .batalla-nombre { color: #d8d8e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .batalla-vida { height: 4px; background: #000; border: 1px solid #000; }
+    .batalla-vida div { height: 100%; }
+    .vacio { color: #5a5a6a; font-style: italic; }
+
+    /* La mochila: una rejilla de huecos de 32, como un contenedor de Tibia. */
+    #backpack-items {
+        display: grid;
+        grid-template-columns: repeat(4, 36px);
+        gap: 2px;
+        justify-content: center;
+    }
+    #backpack-items .vacia { grid-column: 1 / -1; color: #5a5a6a; font-style: italic; }
+    #backpack-items .objeto {
+        position: relative;
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0e0e14;
+        border: 1px solid #000;
+        box-shadow: inset 1px 1px 0 #2a2a36;
+    }
+    #backpack-items .objeto .nombre { display: none; }
+    #backpack-items .objeto .icono { display: flex; }
+    #backpack-items .objeto canvas, #backpack-items .objeto img { display: block; image-rendering: pixelated; }
+    #backpack-items .objeto .sin-dibujo { color: #8a8a9a; font-size: 7px; text-align: center; }
+    #weight { margin-top: 4px; color: #7a7a8a; font-variant-numeric: tabular-nums; text-align: right; }
+    #weight.tight { color: #c0a040; }
+    #weight.full { color: #d05050; font-weight: bold; }
+
+    /* El cuerpo o la caja abiertos: sus huecos, como la mochila. */
+    .rejilla-contenedor { display: grid; grid-template-columns: repeat(4, 36px); gap: 2px; justify-content: center; }
+    .rejilla-contenedor .objeto {
+        position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+        background: #0e0e14; border: 1px solid #000; box-shadow: inset 1px 1px 0 #2a2a36; cursor: default;
+    }
+    .rejilla-contenedor .objeto:not(.hueco-vacio):hover { outline: 1px solid #c0a040; }
+    .rejilla-contenedor .objeto img { display: block; image-rendering: pixelated; }
+    .rejilla-contenedor .objeto .icono { display: flex; }
+    .rejilla-contenedor .objeto .cuantas { position: absolute; right: 1px; bottom: 0; color: #f0f0f0; font-size: 9px; text-shadow: 1px 1px 0 #000; }
+    .ventana-contenedor .ventana-cabecera { background: #2f2a1c; }
+
+    .vip-fila { display: flex; align-items: center; gap: 5px; }
+    .vip-fila .punto { width: 7px; height: 7px; border-radius: 50%; background: #803030; }
+    .vip-fila .punto.visto { background: #30c050; }
+    .vip-fila span.nombre { flex: 1; }
+    #vip-anadir { display: flex; gap: 3px; margin-top: 4px; }
+    #vip-anadir input, #lateral input[type="text"], #ventanas-flotantes input[type="text"] {
+        flex: 1;
+        min-width: 0;
+        padding: 2px 4px;
+        background: #0d0d12;
+        border: 1px solid #2c2c3a;
+        color: #e8e8f0;
+        font: inherit;
+    }
+    .opcion { display: flex; align-items: center; gap: 5px; color: #b8b8c8; }
+    .opcion select { flex: 1; min-width: 0; background: #1c1c24; color: #d8d8e0; border: 1px solid #3a3a48; font: inherit; }
+    .ayuda-tabla { width: 100%; border-collapse: collapse; }
+    .ayuda-tabla td { padding: 1px 0; vertical-align: top; color: #b0b0c0; }
+    .ayuda-tabla td:first-child { color: #e8e8f0; white-space: nowrap; padding-right: 6px; }
+
+    #status, #diagnostics {
+        padding: 2px 4px;
+        color: #6a6a7a;
+        font-size: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #diagnostics { position: absolute; left: 4px; bottom: 4px; max-width: calc(100% - 8px);
+        background: rgba(0,0,0,0.6); color: #5a9a5a; }
+    #diagnostics[hidden] { display: none; }
+
+    /* ===== La pantalla de carga ===== */
+    #cargando {
+        position: absolute;
+        inset: 0;
+        z-index: 8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0a0a0e;
+        transition: opacity 0.25s ease;
+    }
+    #cargando[hidden] { display: none; }
+    #cargando.saliendo { opacity: 0; pointer-events: none; }
+    .cargando-caja { display: flex; flex-direction: column; align-items: center; gap: 12px; color: #a8a8b8; }
+    .cargando-rueda {
+        width: 38px;
+        height: 38px;
+        border: 3px solid #26263a;
+        border-top-color: #4a90d9;
+        border-radius: 50%;
+        animation: girar 0.8s linear infinite;
+    }
+    @keyframes girar { to { transform: rotate(360deg); } }
+    .cargando-barra { width: 220px; height: 4px; background: #1e1e28; border-radius: 2px; overflow: hidden; }
+    #cargando-progreso { height: 100%; width: 0; background: #4a90d9; transition: width 0.2s ease; }
+
+    /* ===== La consola: pestañas, mensajes con su hora y la línea para escribir ===== */
+    #consola {
+        grid-area: consola;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        background: #101016;
+        border-top: 1px solid #262632;
+    }
+    .consola-pestanas { display: flex; gap: 2px; padding: 3px 4px 0; background: #15151c; border-bottom: 1px solid #262632; }
+    .consola-pestanas button {
+        padding: 2px 10px;
+        background: #1e1e28;
+        border: 1px solid #2c2c3a;
+        border-bottom: 0;
+        border-radius: 3px 3px 0 0;
+        color: #8a8a9a;
+        font: inherit;
+        font-size: 11px;
+        cursor: pointer;
+    }
+    .consola-pestanas button.activa { background: #101016; color: #e8e8f0; }
+    .consola-pestanas button.nuevo { color: #ffd060; }
+    #consola-lineas {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 3px 8px;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+    .linea { white-space: pre-wrap; word-break: break-word; }
+    .linea .hora { color: #6a6a7a; }
+    .linea.hablar { color: #ffe060; }
+    .linea.servidor { color: #e8e8f0; }
+    .linea.aviso { color: #ff8080; }
+    .linea.privado { color: #8cc8ff; }
+    .linea.grupo { color: #7fe07f; }
+    .consola-pestanas .cerrar-canal { margin-left: 2px; color: #8a8aa0; padding: 0 2px; }
+    .consola-pestanas .cerrar-canal:hover { color: #ff8080; }
+
+    /* La ventana de comercio de los NPC. */
+    .ventana-comercio .ventana-cabecera { background: #1f3326; }
+    .comercio { display: flex; flex-direction: column; gap: 4px; }
+    .comercio-pestanas { display: flex; gap: 2px; }
+    .comercio-pestanas button { flex: 1; background: #22222e; border: 1px solid #2c2c3a; color: #a8a8b8;
+        font: inherit; padding: 2px; cursor: pointer; border-radius: 2px; }
+    .comercio-pestanas button.activa { background: #2f4460; color: #e8e8f0; }
+    .comercio-lista { display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; }
+    .comercio-fila { display: flex; align-items: center; gap: 4px; padding: 1px 2px; cursor: pointer; border-radius: 2px; }
+    .comercio-fila:hover { background: #22222e; }
+    .comercio-fila.elegida { background: #24365a; }
+    .comercio-fila .icono, .comercio-fila img, .comercio-fila canvas { width: 32px; height: 32px; image-rendering: pixelated; flex: 0 0 32px; }
+    .comercio-fila .nombre { flex: 1; color: #d8d8e8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .comercio-fila .nombre small { color: #8a8aa0; }
+    .comercio-fila .precio { color: #f0c040; font-variant-numeric: tabular-nums; }
+    .comercio-pie { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid #2c2c3a; padding-top: 4px; }
+    .comercio-pie .cantidad { display: flex; gap: 2px; }
+    .comercio-pie .cantidad button { width: 22px; background: #22222e; border: 1px solid #2c2c3a; color: #e8e8f0; cursor: pointer; }
+    .comercio-pie .cantidad input { flex: 1; min-width: 0; background: #0d0d12; border: 1px solid #2c2c3a; color: #e8e8f0;
+        text-align: center; font: inherit; }
+    .comercio-pie .total { color: #b0b0c0; text-align: right; }
+    .comercio-pie .hacer { background: #2f6a3a; border: 1px solid #3f8a4a; color: #fff; font: inherit; padding: 3px; cursor: pointer; border-radius: 2px; }
+    .comercio-pie .hacer:disabled { opacity: 0.4; cursor: default; }
+
+    /* El diálogo de información (popupFYI): en medio de la pantalla, por encima de todo. */
+    .dialogo-fondo { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
+        justify-content: center; background: rgba(0, 0, 0, 0.35); }
+    .dialogo { display: flex; flex-direction: column; min-width: 260px; max-width: min(520px, calc(100vw - 32px));
+        max-height: calc(100vh - 64px); background: #1b1b24; border: 1px solid #3a3a4c; border-radius: 3px;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); }
+    .dialogo-texto { padding: 8px 10px; white-space: pre-wrap; overflow-y: auto; color: #d8d8e8; line-height: 1.4; }
+    .dialogo-pie { display: flex; justify-content: flex-end; padding: 4px 8px 8px; }
+    .dialogo-pie button { background: #2f4460; border: 1px solid #3f5a80; color: #fff; font: inherit;
+        padding: 3px 16px; cursor: pointer; border-radius: 2px; }
+    .dialogo-pie button:hover { background: #3a5578; }
+
+    /* El botón de las hotkeys, junto a la capacidad. */
+    #equipment-slots .boton-hotkeys { width: 22px; height: 36px; }
+
+    /* LAS HOTKEYS (Ctrl+K): la lista de teclas a la izquierda y lo que hace la elegida a la derecha. */
+    .hotkeys { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 900;
+        width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column;
+        background: #1b1b24; border: 1px solid #3a3a4c; border-radius: 3px; box-shadow: 0 6px 24px rgba(0,0,0,0.6); font-size: 12px; }
+    .hotkeys[hidden] { display: none; }
+    .hotkeys-cuerpo { display: flex; gap: 8px; padding: 6px; min-height: 0; flex: 1; }
+    .hotkeys-lista { flex: 0 0 240px; overflow-y: auto; max-height: 420px; border: 1px solid #2c2c3a; }
+    .hotkey-fila { display: flex; align-items: center; gap: 6px; padding: 2px 4px; cursor: pointer; min-height: 20px; }
+    .hotkey-fila:hover { background: #22222e; }
+    .hotkey-fila.elegida { background: #24365a; }
+    .hotkey-fila b { flex: 0 0 64px; color: #cfe6ff; font-weight: normal; }
+    .hotkey-fila .que { display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; color: #d8d8e8; }
+    .hotkey-fila .que .libre { color: #555566; }
+    .hotkey-fila .que .magia { color: #f0d070; }
+    .hotkey-fila .que small { color: #8a8a9a; }
+    .hotkey-fila .que canvas, .hotkey-fila .que img { width: 16px; height: 16px; image-rendering: pixelated; }
+    .hotkeys-editor { flex: 1; display: flex; flex-direction: column; gap: 6px; color: #c8c8d8; }
+    .hotkeys-titulo { font-weight: bold; color: #cfe6ff; }
+    .hk-bloque { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; border-top: 1px solid #2c2c3a; }
+    .hk-bloque input[type="text"] { background: #0e0e14; border: 1px solid #383850; color: #fff; padding: 3px 5px; font: inherit; }
+    .hk-objetos { display: flex; flex-wrap: wrap; gap: 3px; }
+    .hk-objeto { width: 38px; height: 38px; padding: 2px; background: #0e0e14; border: 1px solid #2c2c3a; cursor: pointer; }
+    .hk-objeto.elegido { border-color: #4a8ac0; background: #24365a; }
+    .hk-objeto canvas, .hk-objeto img { image-rendering: pixelated; }
+    .hotkeys-pie { padding: 4px 8px 6px; color: #7a7a8a; font-size: 11px; }
+
+    /* El diario de misiones. */
+    .mision summary { cursor: pointer; color: #e8e8f0; font-weight: bold; margin: 2px 0; }
+    .mision.terminada summary { color: #7fe07f; }
+    .mision .paso { margin: 2px 0 4px 10px; color: #b0b0c0; }
+    .mision .paso b { color: #d8d8e8; font-weight: normal; }
+    .mision .paso.hecho b { color: #7fe07f; text-decoration: line-through; }
+    .linea.avance { color: #80e080; }
+    #chat-bar { display: flex; gap: 6px; padding: 3px 6px; border-top: 1px solid #262632; }
+    #chat {
+        flex: 1;
+        padding: 3px 6px;
+        background: #08080c;
+        border: 1px solid #22222e;
+        border-radius: 2px;
+        color: #e8e8f0;
+        font: inherit;
+    }
+    #chat:focus { outline: none; border-color: #4a90d9; }
+
+    /* El destino de un arrastre: verde si encaja, rojo si no (lo decide igual el motor). */
+    .encaja { outline: 2px solid #4a9a5a; outline-offset: -2px; }
+    .no-encaja { outline: 2px solid #8a3a3a; outline-offset: -2px; }
+
+    /* El fantasma que sigue al ratón: sin `pointer-events`, para que se vea lo que hay debajo. */
+    .fantasma {
+        position: fixed;
+        z-index: 50;
+        pointer-events: none;
+        transform: translate(-50%, -50%);
+        opacity: 0.85;
+        filter: drop-shadow(0 0 3px #000);
+    }
+    .fantasma canvas { display: block; image-rendering: pixelated; }
+
+    #login select {
+        width: 100%;
+        padding: 7px 8px;
+        margin-bottom: 14px;
+        background: #0d0d12;
+        border: 1px solid #2c2c3a;
+        border-radius: 4px;
+        color: #e8e8f0;
+        font: inherit;
+    }
+    #login .nuevo-pj { display: flex; gap: 10px; }
+    #login .nuevo-pj > div { flex: 1; }
+    #login small { display: block; margin: -6px 0 12px; color: #6a6a7a; font-size: 11px; }
+    .login-pestanas { display: flex; gap: 4px; margin: 6px 0 16px; border-bottom: 1px solid #2c2c3a; }
+    #login .login-pestanas button {
+        width: auto; padding: 6px 14px; background: transparent; color: #8a8a9a;
+        border: 0; border-bottom: 2px solid transparent; border-radius: 0; font-weight: normal;
+    }
+    #login .login-pestanas button.activa { color: #e8e8f0; border-bottom-color: #4a90d9; }
+    #login .login-pestanas button:hover { background: transparent; color: #e8e8f0; }
+    .login-modo[hidden] { display: none; }
+    /* La contraseña con su ojo para verla. */
+    .clave { position: relative; margin-bottom: 14px; }
+    #login .clave input { padding-right: 36px; margin-bottom: 0; }
+    #login .clave .ver-clave {
+        position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+        width: 28px; height: 28px; padding: 0; margin: 0; display: flex; align-items: center;
+        justify-content: center; background: transparent; color: #8a8aa0; border: none;
+    }
+    #login .clave .ver-clave:hover { color: #e8e8f0; background: transparent; }
+    /* La lista de personajes de la cuenta. */
+    #paso-personajes[hidden], #paso-cuenta[hidden] { display: none; }
+    .lpj-cabecera { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; color: #b0b0c0; }
+    .lpj-cabecera b { color: #e8e8f0; }
+    #login .lpj-cabecera .boton-icono {
+        width: 26px; height: 26px; padding: 0; margin: 0; display: flex; align-items: center;
+        justify-content: center; background: #22222e; color: #b0b0c0; border: 1px solid #2c2c3a;
+    }
+    #lista-personajes {
+        max-height: 240px; overflow-y: auto; border: 1px solid #2c2c3a; border-radius: 4px;
+        margin-bottom: 14px; outline: none; background: #0f0f15;
+    }
+    #lista-personajes:focus-visible { border-color: #4a90d9; }
+    .lpj-fila {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #1c1c26; user-select: none;
+    }
+    .lpj-fila:last-child { border-bottom: none; }
+    .lpj-fila:hover { background: #1c1c28; }
+    .lpj-fila.elegido { background: #24365a; }
+    .lpj-fila .lpj-nombre { color: #e8e8f0; font-weight: bold; }
+    .lpj-fila .lpj-datos { color: #8a8aa0; font-size: 12px; text-align: right; }
+    .lpj-fila .en-linea { color: #50c050; }
+    #lista-personajes .vacio { display: block; padding: 12px; color: #8a8aa0; font-size: 12px; }
+    #login .recordar { display: flex; align-items: center; gap: 6px; margin: -4px 0 14px; color: #a8a8b8; }
+    #login .recordar input { width: auto; margin: 0; }
+
+    /* ===== La ventana del personaje (clic derecho sobre uno mismo) ===== */
+    .pj-ventana { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 50;
+        width: min(560px, calc(100vw - 32px)); background: #14141c; border: 1px solid #3a3a52; border-radius: 6px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.7); color: #d8d8e4; font: 12px/1.4 ui-monospace, Consolas, monospace; }
+    .pj-cabecera { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px;
+        background: #1c1c28; border-bottom: 1px solid #2a2a3a; border-radius: 6px 6px 0 0; }
+    .pj-titulo { font-weight: bold; color: #cfe6ff; }
+    .pj-cuerpo { display: flex; gap: 14px; padding: 10px; flex-wrap: wrap; }
+    .pj-aspecto { flex: 1 1 280px; display: flex; flex-direction: column; gap: 6px; }
+    .pj-marco { align-self: center; background: repeating-conic-gradient(#20202c 0% 25%, #262634 0% 50%) 0 0 / 16px 16px;
+        border: 1px solid #2a2a3a; border-radius: 4px; }
+    .pj-marco canvas { display: block; image-rendering: pixelated; }
+    .pj-fila { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+    .pj-nota { color: #8a8a9a; min-width: 90px; text-align: center; }
+    .pj-nombre-aspecto { min-width: 120px; text-align: center; font-weight: bold; }
+    .pj-ventana button { background: #26364a; border: 1px solid #34506e; color: #d8e4f0; border-radius: 3px;
+        padding: 3px 8px; font: inherit; cursor: pointer; }
+    .pj-ventana button:hover { background: #2f4460; }
+    .pj-icono { width: 28px; padding: 3px 0 !important; }
+    .pj-parte { display: inline-flex; align-items: center; gap: 4px; background: #1a1a24 !important; border-color: #2a2a3a !important; }
+    .pj-parte.activa { background: #2a3f5c !important; border-color: #4a8ac0 !important; }
+    .pj-muestra { width: 12px; height: 12px; border: 1px solid #000; display: inline-block; }
+    .pj-paleta { display: grid; grid-template-columns: repeat(19, 1fr); gap: 1px; }
+    .pj-color { padding: 0 !important; height: 13px; border: 1px solid rgba(0,0,0,0.5) !important; border-radius: 0 !important; }
+    .pj-color.elegido { outline: 2px solid #fff; outline-offset: -1px; z-index: 1; }
+    .pj-anadido { color: #b0b0c0; }
+    .pj-anadido.desactivado { color: #4a4a5a; }
+    .pj-anadidos { min-height: 22px; }
+    .pj-nombre-aspecto { display: inline-block; width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pj-ficha { min-width: 200px; }
+    .pj-ficha { flex: 0 1 200px; display: flex; flex-direction: column; gap: 6px; }
+    .pj-dato { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #22222e; padding-bottom: 3px; }
+    .pj-dato span { color: #8a8a9a; }
+    .pj-barra { height: 6px; background: #2a1a1a; border-radius: 3px; overflow: hidden; }
+    .pj-barra div { height: 100%; background: #c04a4a; }
+    .pj-pie { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 10px; border-top: 1px solid #2a2a3a; }
+    .pj-guardar { background: #1f4a36 !important; border-color: #3fd6a0 !important; }
+</style>
+</head>
+<body>
+<div id="layout">
+
+    <!-- La columna izquierda: siempre a la vista; las ventanas que llevas tú. -->
+    <aside id="lateral-izq"><div class="columna-ventanas" id="columna-izq"></div></aside>
+
+    <div id="stage">
+        <canvas id="game"></canvas>
+        <div id="diagnostics" hidden>esperando</div>
+
+        <!-- La pantalla de carga: tapa el mapa hasta que el escenario está dibujado entero. -->
+        <div id="cargando" hidden>
+            <div class="cargando-caja">
+                <div class="cargando-rueda" aria-hidden="true"></div>
+                <div id="cargando-texto">Conectando…</div>
+                <div class="cargando-barra"><div id="cargando-progreso"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!--
+        LA BARRA LATERAL, como la de Tibia: minimapa, vida y maná, el equipo con las almas y la
+        capacidad, los botones y debajo las ventanas (skills, batalla, VIP, mochila...). Los
+        botones son iconos con su explicación en el globo del ratón.
+    -->
+    <aside id="lateral">
+        <!-- Las ventanas: se abren ordenadas y se reparten el alto (un contenedor que no cabe cierra el último). -->
+        <div class="columna-ventanas" id="columna-der">
+        <!-- El minimapa, la vida y el equipo: ventanas como las demás (se arrastran y se minimizan). -->
+        <section class="ventana fija" id="ventana-minimapa" data-ventana-id="minimapa" data-fija="1">
+            <div class="ventana-cabecera"><span class="titulo">Minimapa</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button></div>
+            <div class="ventana-cuerpo" id="caja-minimapa">
+            <canvas id="minimapa" width="132" height="132" title="Minimapa: lo que has visto (la cruz blanca eres tú). Clic: ir andando hasta ahí"></canvas>
+            <div class="minimapa-botones">
+                <button type="button" class="boton-icono" data-accion="zoom-mas" data-icono="zoom-mas" title="Acercar el minimapa"></button>
+                <button type="button" class="boton-icono" data-accion="zoom-menos" data-icono="zoom-menos" title="Alejar el minimapa"></button>
+                <button type="button" class="boton-icono" data-accion="planta-arriba" data-icono="arriba" title="Ver la planta de arriba en el minimapa"></button>
+                <button type="button" class="boton-icono" data-accion="planta-abajo" data-icono="abajo" title="Ver la planta de abajo en el minimapa"></button>
+                <button type="button" class="boton-icono" data-accion="centrar" data-icono="centrar" title="Volver a centrar el minimapa en ti"></button>
+                <span id="minimapa-planta" title="Planta que enseña el minimapa">z 7</span>
+            </div>
+            </div>
+        </section>
+
+        <section class="ventana fija" id="ventana-vida" data-ventana-id="vida" data-fija="1">
+            <div class="ventana-cabecera"><span class="titulo">Vida y maná</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button></div>
+            <div class="ventana-cuerpo" id="caja-barras">
+            <div class="barra-fila" title="Puntos de vida">
+                <span class="ico vida" data-icono="vida"></span>
+                <progress id="health-bar" value="0" max="1"></progress>
+                <span class="value" id="health-value">— / —</span>
+            </div>
+            <div class="barra-fila" title="Puntos de maná">
+                <span class="ico mana" data-icono="mana"></span>
+                <progress id="mana-bar" value="0" max="1"></progress>
+                <span class="value" id="mana-value">— / —</span>
+            </div>
+            </div>
+        </section>
+
+        <!-- El equipo: las ranuras las pinta panels.js, con las cajas de almas, capacidad y hotkeys. -->
+        <section class="ventana fija" id="ventana-equipo" data-ventana-id="equipo" data-fija="1">
+            <div class="ventana-cabecera"><span class="titulo">Equipo</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button></div>
+            <div class="ventana-cuerpo" id="equipment">
+                <div id="equipment-slots"></div>
+            </div>
+        </section>
+
+        <section class="ventana" id="ventana-skills" data-ventana-id="skills">
+            <div class="ventana-cabecera"><span class="titulo">Skills</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo">
+                <div class="skill"><span>Experiencia</span><b id="experience-value">—</b></div>
+                <div class="skill"><span>Nivel</span><b id="level-value">—</b></div>
+                <progress id="experience-bar" value="0" max="100" hidden></progress>
+                <div class="skill-barra nivel" title="Progreso hasta el siguiente nivel"><div id="nivel-barra" style="width:0%"></div></div>
+                <div class="skill"><span>Vocación</span><b id="vocation-value">—</b></div>
+                <div class="skill-separador"></div>
+                <div class="skill"><span>Vida</span><b id="skill-vida">—</b></div>
+                <div class="skill"><span>Maná</span><b id="skill-mana">—</b></div>
+                <div class="skill"><span>Almas</span><b id="skill-almas">—</b></div>
+                <div class="skill"><span>Capacidad</span><b id="skill-cap">—</b></div>
+                <div class="skill"><span>Velocidad</span><b id="skill-velocidad">—</b></div>
+                <div class="skill"><span>Stamina</span><b id="skill-stamina">—</b></div>
+                <div class="skill-separador"></div>
+                <div id="lista-skills"></div>
+            </div>
+        </section>
+
+        <section class="ventana" id="ventana-batalla" data-ventana-id="batalla">
+            <div class="ventana-cabecera"><span class="titulo">Batalla</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo" id="lista-batalla"><span class="vacio">nadie a la vista</span></div>
+        </section>
+
+        <section class="ventana" id="ventana-vip" data-ventana-id="vip" hidden>
+            <div class="ventana-cabecera"><span class="titulo">VIP</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo">
+                <div id="lista-vip"></div>
+                <form id="vip-anadir"><input type="text" id="vip-nombre" placeholder="nombre" maxlength="20">
+                    <button type="submit" class="boton-icono" data-icono="vip" title="Añadir a la lista VIP"></button></form>
+            </div>
+        </section>
+
+        <section class="ventana" id="ventana-misiones" data-ventana-id="misiones" hidden>
+            <div class="ventana-cabecera"><span class="titulo">Misiones</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo"><span class="vacio">Todavía no hay misiones en este mundo. Las crean los scripts del servidor (data/scripts) con los storages del jugador.</span></div>
+        </section>
+
+        <section class="ventana" id="ventana-opciones" data-ventana-id="opciones" hidden>
+            <div class="ventana-cabecera"><span class="titulo">Opciones</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo">
+                <label class="opcion"><input type="checkbox" id="op-nombres" checked> Nombres sobre las criaturas</label>
+                <label class="opcion"><input type="checkbox" id="op-vida" checked> Barras de vida</label>
+                <label class="opcion"><input type="checkbox" id="op-hora" checked> Hora en la consola</label>
+                <label class="opcion"><input type="checkbox" id="op-diagnostico"> Diagnóstico (fps, red)</label>
+                <label class="opcion" title="Cómo se amplían los píxeles del dibujo">Suavizado
+                    <select id="op-suavizado">
+                        <option value="pixel">Píxel suave (Scale2x)</option>
+                        <option value="suave">Suave (bilineal)</option>
+                        <option value="nitido">Nítido (sin suavizar)</option>
+                    </select></label>
+            </div>
+        </section>
+
+        <section class="ventana" id="ventana-ayuda" data-ventana-id="ayuda" hidden>
+            <div class="ventana-cabecera"><span class="titulo">Ayuda</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo">
+                <table class="ayuda-tabla">
+                    <tr><td>Flechas</td><td>andar (dos a la vez, en diagonal); con <b>/wasd</b>, también W A S D</td></tr>
+                    <tr><td>Clic</td><td>ir andando hasta ahí</td></tr>
+                    <tr><td>Los dos botones</td><td>mirar</td></tr>
+                    <tr><td>Clic derecho</td><td>sobre un monstruo, atacarlo (otra vez, dejarlo); sobre algo, usarlo (también en la mochila y en los cuerpos); sobre un contenedor, abrirlo o cerrarlo; sobre ti, tu ficha</td></tr>
+                    <tr><td>Arrastrar</td><td>coger y mover cosas: al suelo, a tu equipo, a tu mochila o a un contenedor abierto</td></tr>
+                    <tr><td>E</td><td>usar lo que tienes delante (en modo /wasd)</td></tr>
+                    <tr><td>Escape</td><td>dejar de atacar</td></tr>
+                    <tr><td>F1–F12, Shift+F1–F12</td><td>tus <b>hotkeys</b>: magias y objetos (configúralas con <b>Ctrl+K</b> o el botón del teclado junto a la capacidad)</td></tr>
+                    <tr><td>Escribir</td><td>va directo al chat; Intro lo manda (con /wasd, Intro para empezar a escribir)</td></tr>
+                    <tr><td>exura</td><td>curarte (gasta maná)</td></tr>
+                    <tr><td>utani hur</td><td>correr más (nivel 14)</td></tr>
+                    <tr><td>/ir</td><td>viajar a un sitio del mapa</td></tr>
+                    <tr><td>/ayuda</td><td>más comandos</td></tr>
+                </table>
+            </div>
+        </section>
+
+        <!-- La mochila: lo que llevas dentro, en huecos como un contenedor de Tibia. -->
+        <section class="ventana" id="ventana-mochila" data-ventana-id="mochila" hidden>
+            <div class="ventana-cabecera"><span class="titulo">Mochila</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button></div>
+            <div class="ventana-cuerpo mochila" data-destino="mochila">
+                <div id="backpack-items"></div>
+                <div id="weight" title="peso / capacidad">— / — oz</div>
+            </div>
+        </section>
+
+        </div>
+
+        <!-- Los botones, fijos abajo. -->
+        <div class="caja" id="botonera">
+            <button type="button" class="boton-icono" data-accion="stop" data-icono="stop" title="Stop: dejar de atacar y de andar (Escape)"></button>
+            <button type="button" class="boton-icono" data-ventana="misiones" data-icono="misiones" title="Quests: registro de misiones"></button>
+            <button type="button" class="boton-icono" data-ventana="opciones" data-icono="opciones" title="Options: opciones del cliente"></button>
+            <button type="button" class="boton-icono" data-ventana="ayuda" data-icono="ayuda" title="Help: controles y comandos"></button>
+            <button type="button" class="boton-icono activo" data-ventana="skills" data-icono="skills" title="Skills: nivel, experiencia y habilidades"></button>
+            <button type="button" class="boton-icono activo" data-ventana="batalla" data-icono="batalla" title="Battle: criaturas a la vista (clic para atacar)"></button>
+            <button type="button" class="boton-icono" data-ventana="vip" data-icono="vip" title="VIP: tu lista de amigos"></button>
+            <button type="button" class="boton-icono" data-accion="salir" data-icono="salir" title="Logout: salir del juego"></button>
+        </div>
+
+        <div id="status">sin conectar</div>
+    </aside>
+
+    <div id="separador" title="Arrastra para cambiar el alto de la consola"></div>
+
+    <!-- LA CONSOLA: pestañas, los mensajes con su hora y la línea para hablar. -->
+    <section id="consola">
+        <div class="consola-pestanas" role="tablist">
+            <button type="button" class="activa" data-canal="default" title="Lo que se dice a tu alrededor y los avisos">Default</button>
+            <button type="button" data-canal="server" title="Sólo los mensajes del servidor">Server Log</button>
+        </div>
+        <div id="consola-lineas" role="log" aria-live="polite"></div>
+        <form id="chat-bar">
+            <input id="chat" placeholder="Intro para escribir: habla, lanza un hechizo (exura) o un comando (/ayuda)" autocomplete="off">
+        </form>
+    </section>
+</div>
+
+<div id="overlay">
+    <form id="login" autocomplete="on">
+        <h1>Jetyum</h1>
+        <div class="login-pestanas" role="tablist">
+            <button type="button" class="activa" data-modo="entrar">Entrar</button>
+            <button type="button" data-modo="crear">Crear cuenta</button>
+        </div>
+
+        <!--
+            ENTRAR, como en Tibia: primero la cuenta y la contraseña; luego, la lista de sus
+            personajes para elegir con cuál jugar.
+        -->
+        <div class="login-modo" data-modo="entrar">
+            <div id="paso-cuenta">
+                <label for="account">Cuenta</label>
+                <input id="account" autocomplete="username" spellcheck="false">
+
+                <label for="password">Contraseña</label>
+                <div class="clave">
+                    <input id="password" type="password" autocomplete="current-password">
+                    <button type="button" class="ver-clave" data-icono="ojo" title="Mostrar la contraseña"></button>
+                </div>
+
+                <label class="recordar"><input type="checkbox" id="recordar"> Recordar cuenta en este navegador</label>
+            </div>
+
+            <div id="paso-personajes" hidden>
+                <div class="lpj-cabecera">
+                    <button type="button" id="cambiar-cuenta" class="boton-icono" data-icono="volver"
+                            title="Cambiar de cuenta"></button>
+                    <span>Personajes de <b id="pj-cuenta"></b></span>
+                </div>
+                <div id="lista-personajes" role="listbox" tabindex="0" aria-label="Personajes"></div>
+            </div>
+        </div>
+
+        <!--
+            CREAR CUENTA: la cuenta (o, si ya existe y la contraseña es la suya, un personaje nuevo
+            en ella) con su personaje. La vocación y el sexo SÓLO se eligen aquí.
+        -->
+        <div class="login-modo" data-modo="crear" hidden>
+            <label for="nueva-cuenta">Cuenta</label>
+            <input id="nueva-cuenta" autocomplete="username" spellcheck="false" maxlength="20"
+                   placeholder="de 3 a 20 letras o números">
+
+            <label for="nueva-clave">Contraseña</label>
+            <div class="clave">
+                <input id="nueva-clave" type="password" autocomplete="new-password" placeholder="al menos 4 caracteres">
+                <button type="button" class="ver-clave" data-icono="ojo" title="Mostrar la contraseña"></button>
+            </div>
+
+            <label for="nueva-clave2">Repite la contraseña</label>
+            <div class="clave">
+                <input id="nueva-clave2" type="password" autocomplete="new-password">
+                <button type="button" class="ver-clave" data-icono="ojo" title="Mostrar la contraseña"></button>
+            </div>
+
+            <label for="nuevo-personaje">Nombre del personaje</label>
+            <input id="nuevo-personaje" maxlength="20" autocomplete="off" spellcheck="false">
+
+            <div class="nuevo-pj">
+                <div>
+                    <label for="vocation">Vocación</label>
+                    <select id="vocation"><option value="">Sin vocación</option></select>
+                </div>
+                <div>
+                    <label for="sex">Sexo</label>
+                    <select id="sex"><option value="male">Hombre</option><option value="female">Mujer</option></select>
+                </div>
+            </div>
+            <small>Si la cuenta ya existe (con esa contraseña), se le añade este personaje.</small>
+        </div>
+
+        <p id="login-error" style="display:none; color:#e08080; margin:0 0 12px; font-size:12px"></p>
+
+        <button type="submit" id="login-boton">Entrar al mundo</button>
+    </form>
+</div>
+
+<!--
+    Se carga como módulo ES. Las rutas de los imports son las del MONTAJE del servidor estático:
+    este cliente vive en `/jetyum/` y el protocolo compartido en `/shared/`.
+-->
+<script type="module" src="/jetyum/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+    "format": "jetyum-sprites",
+    "version": 1,
+    "size": 32,
+    "columns": 32,
+    "rows": 32,
+    "count": 9077,
+    "sheets": [
+        "sprites-0000.png",
+        "sprites-0001.png",
+        "sprites-0002.png",
+        "sprites-0003.png",
+        "sprites-0004.png",
+        "sprites-0005.png",
+        "sprites-0006.png",
+        "sprites-0007.png",
+        "sprites-0008.png"
+    ]
+}

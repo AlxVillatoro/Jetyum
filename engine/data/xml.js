@@ -1,0 +1,270 @@
+'use strict';
+
+/**
+ * Lectura de las definiciones XML del motor.
+ *
+ * `data/XML/` es, en The Forgotten Server, la carpeta de definiciones estáticas
+ * del motor (vocaciones, outfits, grupos, mounts, imbuements, quests). No es
+ * contenido de mundo y no lo tocan los scripts: se parsea al arrancar y rellena
+ * objetos en memoria.
+ *
+ * Nota de diseño sobre el formato: el XML se usa para lo que es declarativo y
+ * estable (una vocación, un grupo de permisos), y NO para el contenido que la
+ * comunidad va a querer programar. Por eso en TFS los monstruos y los hechizos
+ * son Lua y no XML: un monstruo con IA, ataques condicionales y loot acaba
+ * necesitando código, y forzarlo a XML produce dialectos imposibles.
+ */
+
+const fs = require('fs');
+const { XMLParser } = require('fast-xml-parser');
+
+/**
+ * Parser configurado para el dialecto de estos archivos: los atributos se leen
+ * sin prefijo y las listas de `<item>` y `<attribute>` siempre son arrays,
+ * aunque tengan un solo elemento. Sin eso, un archivo con un único item
+ * devolvería un objeto suelto y todo el código de consumo tendría que
+ * defenderse caso por caso.
+ */
+function createParser() {
+    return new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: '',
+        parseAttributeValue: true,
+        trimValues: true,
+        isArray: (name) => name === 'item' || name === 'attribute' ||
+            name === 'vocation' || name === 'skill' || name === 'formula' ||
+            name === 'outfit' || name === 'addon' || name === 'npc'
+    });
+}
+
+function parseFile(filepath, parser) {
+    const source = fs.readFileSync(filepath, 'utf8');
+    return (parser || createParser()).parse(source);
+}
+
+/**
+ * Convierte la lista de `<attribute key= value=>` de un item en un objeto
+ * plano. Los atributos anidados (por ejemplo el `<attribute key="field">` de un
+ * campo de magia) se conservan como objeto.
+ */
+function attributesToObject(attributes) {
+    const result = {};
+    (attributes || []).forEach((attribute) => {
+        const key = attribute.key;
+        if (key === undefined) {
+            return;
+        }
+        if (attribute.attribute) {
+            result[key] = attributesToObject(attribute.attribute);
+        } else {
+            result[key] = attribute.value !== undefined ? attribute.value : true;
+        }
+    });
+    return result;
+}
+
+/**
+ * Carga `items.xml`.
+ *
+ * Devuelve un Map de id de item a definición. Soporta los rangos
+ * `fromid`/`toid`, que en items.xml se usan para dar el mismo nombre a una
+ * familia de sprites.
+ *
+ * Ojo: en The Forgotten Server el binario `items.otb` es el que CREA los ids y
+ * este XML sólo los completa. Aquí todavía no hay `items.otb`, así que por ahora
+ * el XML es la única fuente y el importador de OTB llegará después (ver
+ * ARQUITECTURA.md). Cuando llegue, este módulo pasará a tener el mismo papel que
+ * en TFS: completar, no crear.
+ */
+function loadItems(filepath) {
+    const parsed = parseFile(filepath);
+    const items = new Map();
+
+    const list = (parsed.items && parsed.items.item) || [];
+    list.forEach((entry) => {
+        const definition = {
+            name: entry.name !== undefined ? String(entry.name) : null,
+            article: entry.article !== undefined ? String(entry.article) : null,
+            plural: entry.plural !== undefined ? String(entry.plural) : null,
+            attributes: attributesToObject(entry.attribute)
+        };
+
+        if (entry.id !== undefined) {
+            items.set(Number(entry.id), { ...definition, id: Number(entry.id) });
+            return;
+        }
+
+        if (entry.fromid !== undefined && entry.toid !== undefined) {
+            const from = Number(entry.fromid);
+            const to = Number(entry.toid);
+            for (let id = from; id <= to; id += 1) {
+                items.set(id, { ...definition, id: id });
+            }
+        }
+    });
+
+    return items;
+}
+
+/**
+ * Carga `vocations.xml`.
+ *
+ * Es el ejemplo canónico de definición declarativa: fórmulas de progresión y
+ * multiplicadores por skill, sin nada de lógica.
+ */
+function loadVocations(filepath) {
+    const parsed = parseFile(filepath);
+    const vocations = new Map();
+
+    const list = (parsed.vocations && parsed.vocations.vocation) || [];
+    list.forEach((entry) => {
+        const id = Number(entry.id);
+        const vocation = {
+            id: id,
+            name: entry.name !== undefined ? String(entry.name) : 'None',
+            fromVocation: entry.fromvoc !== undefined ? Number(entry.fromvoc) : 0,
+            gainCap: entry.gaincap !== undefined ? Number(entry.gaincap) : 0,
+            gainHp: entry.gainhp !== undefined ? Number(entry.gainhp) : 0,
+            gainMana: entry.gainmana !== undefined ? Number(entry.gainmana) : 0,
+            gainHpTicks: entry.gainhpticks !== undefined ? Number(entry.gainhpticks) : 0,
+            gainManaTicks: entry.gainmanaticks !== undefined ? Number(entry.gainmanaticks) : 0,
+            attackSpeed: entry.attackspeed !== undefined ? Number(entry.attackspeed) : 0,
+            baseSpeed: entry.basespeed !== undefined ? Number(entry.basespeed) : 0,
+            soul: entry.soul !== undefined ? Number(entry.soul) : 0,
+            skills: {}
+        };
+
+        // Los multiplicadores de skill van en elementos <skill id= multiplier=>,
+        // uno por skill, indexados por id.
+        (entry.skill || []).forEach((skill) => {
+            vocation.skills[Number(skill.id)] = Number(skill.multiplier);
+        });
+
+        // El resto de multiplicadores van como atributos sueltos del elemento
+        // <vocation> (magLevel, magFist...). Se recogen por prefijo para no
+        // tener que tocar el motor cada vez que se añade una skill. Se excluyen
+        // los valores que son objetos, que son los elementos anidados.
+        Object.keys(entry).forEach((key) => {
+            const isMultiplier = key.indexOf('mag') === 0 || key.indexOf('skill') === 0;
+            if (isMultiplier && typeof entry[key] !== 'object') {
+                vocation.skills[key] = Number(entry[key]);
+            }
+        });
+
+        vocations.set(id, vocation);
+    });
+
+    return vocations;
+}
+
+/**
+ * Carga los aspectos de `data/XML/outfits.xml`.
+ *
+ * @param {string} filepath
+ * @returns {Map<number, Object>} id -> definición
+ *
+ * Un aspecto es lo que el motor necesita saber para poder decir "esta criatura se ve
+ * así": un identificador y una lista de añadidos. NO incluye los colores, porque los
+ * colores son del JUGADOR y no del aspecto: dos jugadores con el aspecto 136 pueden
+ * llevarlo de colores distintos, y eso es exactamente lo que hace que un puñado de
+ * aspectos dé miles de apariencias.
+ *
+ * Los añadidos son piezas que se pueden poner o quitar por separado, y cada uno tiene
+ * su propio nombre porque en Tibia se desbloquean de uno en uno.
+ */
+function loadOutfits(filepath) {
+    const data = parseFile(filepath, createParser());
+    const list = (data.outfits && data.outfits.outfit) || [];
+    const outfits = new Map();
+
+    list.forEach((entry) => {
+        const id = Number(entry.id);
+
+        const outfit = {
+            id: id,
+            name: entry.name !== undefined ? String(entry.name) : 'Outfit ' + id,
+            // `premium` y `unlocked` son de Tibia y se copian tal cual: el primero
+            // limita el aspecto a las cuentas premium y el segundo distingue los
+            // disponibles desde el principio de los que hay que desbloquear.
+            premium: entry.premium !== undefined && Number(entry.premium) === 1,
+            unlocked: entry.unlocked === undefined || Number(entry.unlocked) === 1,
+            addons: new Map()
+        };
+
+        (entry.addon || []).forEach((addon) => {
+            const addonId = Number(addon.id);
+            outfit.addons.set(addonId, {
+                id: addonId,
+                name: addon.name !== undefined ? String(addon.name) : 'Añadido ' + addonId
+            });
+        });
+
+        outfits.set(id, outfit);
+    });
+
+    return outfits;
+}
+
+/**
+ * Carga las definiciones de NPC de `data/npc/npcs.xml`.
+ *
+ * @param {string} filepath
+ * @returns {Map<string, Object>} nombre -> definición
+ *
+ * El XML sólo trae lo estático. El DIÁLOGO se carga aparte, como un módulo de contenido
+ * más, y su resultado se guarda en `definition.dialogue`. Se separan a propósito: el XML
+ * se lee al arrancar y no cambia; el módulo de diálogo es contenido y se recarga en
+ * caliente como cualquier otro.
+ */
+function loadNpcs(filepath) {
+    const data = parseFile(filepath, createParser());
+    const list = (data.npcs && data.npcs.npc) || [];
+    const npcs = new Map();
+
+    list.forEach((entry) => {
+        const name = entry.name !== undefined ? String(entry.name) : null;
+        if (!name) {
+            return;
+        }
+
+        const health = entry.health || {};
+        const look = entry.look || {};
+
+        npcs.set(name, {
+            name: name,
+            /** El módulo de diálogo, relativo a `data/npc/`. */
+            module: entry.module !== undefined ? String(entry.module) : null,
+            maxHealth: health.max === undefined ? 100 : Number(health.max),
+            health: health.now === undefined ? Number(health.max || 100) : Number(health.now),
+            speed: entry.speed === undefined ? 100 : Number(entry.speed),
+            /**
+             * Cada cuánto intenta dar un paso, y cuántas casillas se aleja de su sitio.
+             *
+             * El radio es lo que impide que un NPC acabe dentro de una casa o al otro lado
+             * del mapa. Sin él, un NPC que pasea es un NPC que se pierde.
+             */
+            walkInterval: entry.walkinterval === undefined ? 0 : Number(entry.walkinterval),
+            walkRadius: entry.walkradius === undefined ? 0 : Number(entry.walkradius),
+            outfit: {
+                lookType: look.type === undefined ? 128 : Number(look.type),
+                head: look.head === undefined ? 78 : Number(look.head),
+                body: look.body === undefined ? 69 : Number(look.body),
+                legs: look.legs === undefined ? 58 : Number(look.legs),
+                feet: look.feet === undefined ? 115 : Number(look.feet),
+                addons: look.addons === undefined ? 0 : Number(look.addons)
+            }
+        });
+    });
+
+    return npcs;
+}
+
+module.exports = {
+    createParser,
+    parseFile,
+    attributesToObject,
+    loadItems,
+    loadVocations,
+    loadOutfits,
+    loadNpcs
+};

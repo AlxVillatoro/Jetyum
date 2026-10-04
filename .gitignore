@@ -1,0 +1,16 @@
+node_modules
+config_local*
+
+.DS_Store
+*.swp
+
+# Cachés de npm dentro del proyecto
+.npmcache
+.npm-cache*
+
+# La base de datos de personajes. Es estado de EJECUCION, no contenido: el datapack
+# se versiona, lo que los jugadores van haciendo no. Las dos extensiones de al lado
+# son el registro de escritura anticipada de SQLite.
+*.db
+*.db-wal
+*.db-shm

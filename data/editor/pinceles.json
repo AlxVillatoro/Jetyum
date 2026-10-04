@@ -1,0 +1,617 @@
+{
+  "format": "jetyum-pinceles",
+  "version": 1,
+  "_comment": [
+    "PINCELES DEL EDITOR DE MAPAS (los grounds.xml, borders.xml y walls.xml de RME). Formato en docs/MAPAS.md.",
+    "z: el suelo de z mayor pone su borde sobre los vecinos de z menor. Generado por tools/generar-pinceles.mjs; se puede editar a mano."
+  ],
+  "suelos": [
+    {
+      "id": "hierba",
+      "nombre": "Hierba",
+      "z": 30,
+      "items": [
+        {
+          "id": 102,
+          "chance": 1
+        }
+      ],
+      "borde": "borde-hierba"
+    },
+    {
+      "id": "tierra",
+      "nombre": "Tierra",
+      "z": 20,
+      "items": [
+        {
+          "id": 103,
+          "chance": 1
+        }
+      ],
+      "borde": "borde-tierra"
+    },
+    {
+      "id": "piedra",
+      "nombre": "Suelo de piedra",
+      "z": 10,
+      "items": [
+        {
+          "id": 104,
+          "chance": 1
+        }
+      ]
+    },
+    {
+      "id": "agua",
+      "nombre": "Agua",
+      "z": 1,
+      "items": [
+        {
+          "id": 105,
+          "chance": 1
+        }
+      ]
+    },
+    {
+      "id": "otsp-hierba",
+      "nombre": "Hierba (OTSP)",
+      "z": 35,
+      "items": [
+        {
+          "id": 10101,
+          "chance": 50
+        },
+        {
+          "id": 10102,
+          "chance": 10
+        },
+        {
+          "id": 10103,
+          "chance": 10
+        },
+        {
+          "id": 10104,
+          "chance": 10
+        },
+        {
+          "id": 10105,
+          "chance": 10
+        }
+      ],
+      "borde": "otsp-borde-hierba"
+    },
+    {
+      "id": "otsp-tierra",
+      "nombre": "Tierra (OTSP)",
+      "z": 12,
+      "items": [
+        {
+          "id": 10203,
+          "chance": 50
+        },
+        {
+          "id": 10204,
+          "chance": 10
+        },
+        {
+          "id": 10205,
+          "chance": 10
+        },
+        {
+          "id": 10206,
+          "chance": 10
+        },
+        {
+          "id": 10207,
+          "chance": 10
+        }
+      ]
+    },
+    {
+      "id": "otsp-arena",
+      "nombre": "Arena (OTSP)",
+      "z": 11,
+      "items": [
+        {
+          "id": 10128,
+          "chance": 50
+        }
+      ]
+    },
+    {
+      "id": "otsp-grava",
+      "nombre": "Grava (OTSP)",
+      "z": 13,
+      "items": [
+        {
+          "id": 10146,
+          "chance": 50
+        }
+      ]
+    },
+    {
+      "id": "otsp-adoquin",
+      "nombre": "Adoquín (OTSP)",
+      "z": 14,
+      "items": [
+        {
+          "id": 10152,
+          "chance": 50
+        }
+      ]
+    },
+    {
+      "id": "otsp-losa",
+      "nombre": "Losa gris (OTSP)",
+      "z": 15,
+      "items": [
+        {
+          "id": 10155,
+          "chance": 50
+        }
+      ]
+    },
+    {
+      "id": "otsp-madera",
+      "nombre": "Tarima (OTSP)",
+      "z": 16,
+      "items": [
+        {
+          "id": 10172,
+          "chance": 50
+        }
+      ]
+    },
+    {
+      "id": "otsp-marmol",
+      "nombre": "Mármol (OTSP)",
+      "z": 17,
+      "items": [
+        {
+          "id": 10200,
+          "chance": 50
+        },
+        {
+          "id": 10201,
+          "chance": 10
+        },
+        {
+          "id": 10202,
+          "chance": 10
+        }
+      ]
+    },
+    {
+      "id": "otsp-agua",
+      "nombre": "Agua (OTSP)",
+      "z": 5,
+      "items": [
+        {
+          "id": 12260,
+          "chance": 50
+        },
+        {
+          "id": 12261,
+          "chance": 10
+        }
+      ]
+    }
+  ],
+  "bordes": [
+    {
+      "id": "borde-hierba",
+      "piezas": {
+        "n": 4500,
+        "e": 4501,
+        "s": 4502,
+        "w": 4503,
+        "cnw": 4504,
+        "cne": 4505,
+        "csw": 4506,
+        "cse": 4507,
+        "dnw": 4508,
+        "dne": 4509,
+        "dsw": 4510,
+        "dse": 4511
+      }
+    },
+    {
+      "id": "borde-tierra",
+      "piezas": {
+        "n": 4520,
+        "e": 4521,
+        "s": 4522,
+        "w": 4523,
+        "cnw": 4524,
+        "cne": 4525,
+        "csw": 4526,
+        "cse": 4527,
+        "dnw": 4528,
+        "dne": 4529,
+        "dsw": 4530,
+        "dse": 4531
+      }
+    },
+    {
+      "id": "otsp-borde-hierba",
+      "piezas": {
+        "n": 10215,
+        "e": 10216,
+        "s": 10217,
+        "w": 10218,
+        "cnw": 10219,
+        "cne": 10220,
+        "csw": 10221,
+        "cse": 10222,
+        "dnw": 10223,
+        "dne": 10224,
+        "dsw": 10225,
+        "dse": 10226
+      }
+    }
+  ],
+  "muros": [
+    {
+      "id": "muro-piedra",
+      "nombre": "Muro de piedra",
+      "piezas": {
+        "poste": 4600,
+        "horizontal": 4601,
+        "vertical": 4602,
+        "esquina": 4603
+      },
+      "puertas": {
+        "horizontal": 4604,
+        "vertical": 4605
+      },
+      "ventanas": {
+        "horizontal": 4606,
+        "vertical": 4607
+      }
+    },
+    {
+      "id": "otsp-piedra-gris",
+      "nombre": "Piedra gris (OTSP)",
+      "piezas": {
+        "vertical": 10534,
+        "horizontal": 10535,
+        "poste": 10536,
+        "esquina": 10537
+      },
+      "puertas": {
+        "vertical": 12386,
+        "horizontal": 12389
+      },
+      "ventanas": {
+        "vertical": 10539,
+        "horizontal": 10541
+      }
+    },
+    {
+      "id": "otsp-piedra-redonda",
+      "nombre": "Piedra redondeada (OTSP)",
+      "piezas": {
+        "vertical": 10542,
+        "horizontal": 10543,
+        "poste": 10544,
+        "esquina": 10545
+      },
+      "puertas": {
+        "vertical": 12392,
+        "horizontal": 12395
+      },
+      "ventanas": {
+        "vertical": 10550,
+        "horizontal": 10551
+      }
+    },
+    {
+      "id": "otsp-arenisca",
+      "nombre": "Arenisca (OTSP)",
+      "piezas": {
+        "vertical": 10552,
+        "horizontal": 10553,
+        "poste": 10554,
+        "esquina": 10555
+      },
+      "puertas": {
+        "vertical": 12398,
+        "horizontal": 12401
+      }
+    },
+    {
+      "id": "otsp-piedra-plata",
+      "nombre": "Piedra plateada (OTSP)",
+      "piezas": {
+        "vertical": 10558,
+        "horizontal": 10559,
+        "poste": 10560,
+        "esquina": 10561
+      },
+      "puertas": {
+        "vertical": 12404,
+        "horizontal": 12407
+      }
+    },
+    {
+      "id": "otsp-piedra-oscura",
+      "nombre": "Piedra oscura (OTSP)",
+      "piezas": {
+        "vertical": 10569,
+        "horizontal": 10570,
+        "poste": 10571,
+        "esquina": 10572
+      },
+      "puertas": {
+        "vertical": 12410,
+        "horizontal": 12413
+      }
+    },
+    {
+      "id": "otsp-piedra-negra",
+      "nombre": "Piedra negra (OTSP)",
+      "piezas": {
+        "vertical": 10576,
+        "horizontal": 10577,
+        "poste": 10578,
+        "esquina": 10579
+      },
+      "puertas": {
+        "vertical": 12416,
+        "horizontal": 12419
+      }
+    },
+    {
+      "id": "otsp-beige",
+      "nombre": "Estuco beige (OTSP)",
+      "piezas": {
+        "vertical": 10603,
+        "horizontal": 10604,
+        "poste": 10605,
+        "esquina": 10606
+      },
+      "puertas": {
+        "vertical": 12434,
+        "horizontal": 12437
+      }
+    },
+    {
+      "id": "otsp-crema",
+      "nombre": "Estuco crema (OTSP)",
+      "piezas": {
+        "vertical": 10617,
+        "horizontal": 10618,
+        "poste": 10619,
+        "esquina": 10620
+      },
+      "puertas": {
+        "vertical": 12440,
+        "horizontal": 12443
+      },
+      "ventanas": {
+        "vertical": 10621,
+        "horizontal": 10622
+      }
+    },
+    {
+      "id": "otsp-madera",
+      "nombre": "Madera (OTSP)",
+      "piezas": {
+        "vertical": 10680,
+        "horizontal": 10681,
+        "poste": 10682,
+        "esquina": 10683
+      },
+      "puertas": {
+        "vertical": 12470,
+        "horizontal": 12473
+      }
+    },
+    {
+      "id": "otsp-marmol",
+      "nombre": "Mármol blanco (OTSP)",
+      "piezas": {
+        "vertical": 10733,
+        "horizontal": 10734,
+        "poste": 10735,
+        "esquina": 10736
+      },
+      "puertas": {
+        "vertical": 12500,
+        "horizontal": 12503
+      }
+    },
+    {
+      "id": "otsp-amarillo",
+      "nombre": "Estuco amarillo (OTSP)",
+      "piezas": {
+        "vertical": 10778,
+        "horizontal": 10779,
+        "poste": 10780,
+        "esquina": 10781
+      },
+      "puertas": {
+        "vertical": 12518,
+        "horizontal": 12521
+      },
+      "ventanas": {
+        "vertical": 10782,
+        "horizontal": 10784
+      }
+    },
+    {
+      "id": "otsp-rosa",
+      "nombre": "Estuco rosa (OTSP)",
+      "piezas": {
+        "vertical": 10794,
+        "horizontal": 10795,
+        "poste": 10796,
+        "esquina": 10797
+      },
+      "puertas": {
+        "vertical": 12530,
+        "horizontal": 12533
+      }
+    },
+    {
+      "id": "otsp-blanco",
+      "nombre": "Estuco blanco (OTSP)",
+      "piezas": {
+        "vertical": 10806,
+        "horizontal": 10807,
+        "poste": 10808,
+        "esquina": 10809
+      },
+      "puertas": {
+        "vertical": 12536,
+        "horizontal": 12539
+      },
+      "ventanas": {
+        "vertical": 10810,
+        "horizontal": 10811
+      }
+    },
+    {
+      "id": "otsp-naranja",
+      "nombre": "Estuco naranja (OTSP)",
+      "piezas": {
+        "vertical": 10812,
+        "horizontal": 10813,
+        "poste": 10814,
+        "esquina": 10815
+      },
+      "puertas": {
+        "vertical": 12542,
+        "horizontal": 12545
+      }
+    },
+    {
+      "id": "otsp-madera-oscura",
+      "nombre": "Madera oscura (OTSP)",
+      "piezas": {
+        "vertical": 10816,
+        "horizontal": 10817,
+        "poste": 10818,
+        "esquina": 10819
+      },
+      "puertas": {
+        "vertical": 12548,
+        "horizontal": 12551
+      },
+      "ventanas": {
+        "vertical": 10820,
+        "horizontal": 10821
+      }
+    },
+    {
+      "id": "otsp-piedra-tallada",
+      "nombre": "Piedra tallada (OTSP)",
+      "piezas": {
+        "vertical": 10830,
+        "horizontal": 10831,
+        "poste": 10832,
+        "esquina": 10833
+      },
+      "puertas": {
+        "vertical": 12554,
+        "horizontal": 12557
+      },
+      "ventanas": {
+        "vertical": 10836,
+        "horizontal": 10837
+      }
+    },
+    {
+      "id": "otsp-tablones",
+      "nombre": "Tablones (OTSP)",
+      "piezas": {
+        "vertical": 10852,
+        "horizontal": 10853,
+        "poste": 10854,
+        "esquina": 10855
+      },
+      "puertas": {
+        "vertical": 12560,
+        "horizontal": 12563
+      }
+    },
+    {
+      "id": "otsp-oro",
+      "nombre": "Oro (OTSP)",
+      "piezas": {
+        "vertical": 10882,
+        "horizontal": 10883,
+        "poste": 10884,
+        "esquina": 10885
+      },
+      "puertas": {
+        "vertical": 12566,
+        "horizontal": 12569
+      }
+    },
+    {
+      "id": "otsp-roca",
+      "nombre": "Roca (OTSP)",
+      "piezas": {
+        "vertical": 10891,
+        "horizontal": 10892,
+        "poste": 10893,
+        "esquina": 10894
+      },
+      "puertas": {
+        "vertical": 12572,
+        "horizontal": 12575
+      }
+    },
+    {
+      "id": "otsp-hielo",
+      "nombre": "Hielo (OTSP)",
+      "piezas": {
+        "vertical": 10897,
+        "horizontal": 10898,
+        "poste": 10899,
+        "esquina": 10900
+      },
+      "puertas": {
+        "vertical": 12578,
+        "horizontal": 12581
+      }
+    }
+  ],
+  "alfombras": [
+    {
+      "id": "alfombra-roja",
+      "nombre": "Alfombra roja",
+      "piezas": {
+        "centro": 4640,
+        "n": 4641,
+        "e": 4642,
+        "s": 4643,
+        "w": 4644,
+        "cnw": 4645,
+        "cne": 4646,
+        "csw": 4647,
+        "cse": 4648,
+        "dnw": 4649,
+        "dne": 4650,
+        "dsw": 4651,
+        "dse": 4652
+      }
+    }
+  ],
+  "mesas": [
+    {
+      "id": "mesa-madera",
+      "nombre": "Mesa de madera",
+      "piezas": {
+        "sola": 4660,
+        "horizontal": 4661,
+        "vertical": 4662,
+        "fin_norte": 4663,
+        "fin_sur": 4664,
+        "fin_este": 4665,
+        "fin_oeste": 4666
+      }
+    }
+  ]
+}

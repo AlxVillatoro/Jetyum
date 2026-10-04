@@ -1,0 +1,770 @@
+# Arquitectura de Jetyum
+
+Documento de decisiones. Cada decisión relevante lleva **la evidencia que la
+respalda** (una medición propia, una fuente primaria, o ambas), porque las
+decisiones sin evidencia son las que hay que volver a tomar dentro de seis meses.
+
+Referencias estudiadas:
+
+- [Mateuzkl/forgottenserver-downgrade-1.8-8.60](https://github.com/Mateuzkl/forgottenserver-downgrade-1.8-8.60) — TFS 1.8 (C++23, Lua 5.5, MariaDB) con el protocolo rebajado a 8.60. Es el modelo a seguir.
+- [Mateuzkl/NexaMap-Editor](https://github.com/Mateuzkl/NexaMap-Editor) — editor de mapas (familia RME): brushes, doodads y propiedades de objeto. Modelo de la herramienta de mapas.
+- [ottools/ObjectBuilder](https://github.com/ottools/ObjectBuilder) — editor de `.dat`/`.spr`. Modelo de la pestaña Sprites.
+- [AlxVillatoro/OTC-Fonticak](https://github.com/AlxVillatoro/OTC-Fonticak) — OTClient (Redemption) para TFS 1.8 downgrade, protocolo 8.60. Modelo del cliente.
+
+**Documentos de detalle** (en `docs/`): [SPRITES.md](docs/SPRITES.md) (formato y orden de los
+sprites), [MAPAS.md](docs/MAPAS.md) (mapa, atributos de objeto y compuestos),
+[HERRAMIENTAS.md](docs/HERRAMIENTAS.md) (arquitectura del editor y su API) y
+[CLIENTE.md](docs/CLIENTE.md) (arquitectura del cliente, tomando OTClient como guía).
+
+---
+
+## 1. Separación de responsabilidades
+
+El modelo es el de cualquier servidor de Tibia: **tres mundos separados unidos por
+un contrato de datos**.
+
+```
+   HERRAMIENTAS                 MOTOR (autoritativo)              CLIENTE
+┌──────────────────┐        ┌─────────────────────────┐     ┌──────────────────┐
+│ editor de items  │──.otb─▶│  items.xml + items.otb  │     │  Tibia.dat       │
+│ editor de mapas  │──.otbm▶│  data/XML/*.xml         │     │  Tibia.spr       │
+│ (MIT, web)       │        │  data/scripts/*.lua     │     │  (assets propios)│
+└──────────────────┘        │  data/monsters/*.lua    │     └──────────────────┘
+                            │  data/world/*.otbm      │             ▲
+                            │  estado del mundo (RAM) │             │
+                            │  persistencia           │             │
+                            └───────────┬─────────────┘             │
+                                        │  PROTOCOLO                  │
+                                        └─────────────────────────────┘
+```
+
+**El motor es el árbitro.** Mantiene el mundo, simula el tiempo y valida cada
+acción.
+
+**El cliente es un terminal de dibujo con assets locales.** No lee `items.xml`,
+no conoce fórmulas de daño, no sabe del mapa más de lo que el servidor le manda
+tile a tile. Su mundo es literalmente la unión de los paquetes que ha recibido.
+Lo único que comparte con el motor es el **ClientID**: el índice con el que
+resuelve el sprite en su propio `.dat`/`.spr`. Cuando esa correspondencia se
+desalinea, el síntoma clásico es ver columnas o cadáveres donde debería haber un
+árbol.
+
+**Las herramientas sólo producen archivos.** No hablan con el motor.
+
+### La frontera, en una frase
+
+> El `.otb` es el contrato de identificadores; el XML es la capa semántica
+> exclusiva del motor; el mapa es el mundo; y el protocolo es el único canal por
+> el que el cliente se entera de que el mundo existe.
+
+---
+
+## 2. Estructura de directorios
+
+```
+config.js             configuración del motor (un módulo que exporta un objeto)
+engine/               MOTOR (autoritativo) — el «TFS» del proyecto
+  core/                 arranque, orden de carga, logger, planificador
+  scripting/            registro de contenido (ids / aids / uids), cargador, envoltorios, API Game
+  data/                 lectura de items.xml y data/XML/*.xml
+  persistence/          SQLite: cuentas, personajes, objetos, storages
+  net/                  protocolo, vista por jugador y sesiones
+  world/                mundo, mapa por chunks, tiles, combate, IA, caminos, cargador y escritor
+data/                 DATAPACK — lo que toca un administrador de servidor
+  items/items.xml       definiciones de servidor de cada objeto (el items.xml de TFS)
+  XML/                  vocaciones y aspectos de jugador
+  scripts/              acciones, movimientos, comandos y eventos (módulos JS)
+  monsters/ npc/        monstruos y NPC
+  world/                mapas (*.map.json): casillas, respawns, NPC y compuestos colocados
+  editor/compuestos.json  plantillas de OBJETOS COMPUESTOS (los doodads del editor)
+  editor/pinceles.json    PINCELES de suelo con borde, muros, alfombras y mesas (grounds/borders/walls de RME)
+client/jetyum/    CLIENTE — terminal de dibujo con assets propios
+  assets/things.json    las COSAS del cliente (el Tibia.dat): objetos, aspectos, efectos, proyectiles
+  assets/sprites/       los SPRITES de 32x32 en hojas PNG (el Tibia.spr) + index.json
+  js/                   red, mundo espejo, cámara, orden de dibujo, renderer, proveedores de sprites, paneles
+shared/js/            CONTRATOS compartidos por motor, cliente y editor
+  protocol.mjs          el protocolo
+  assets.mjs            el formato de sprites y cosas (orden de Tibia)
+  compuestos.mjs        el formato de los objetos compuestos y su expansión
+editor/               HERRAMIENTAS — servidor local + interfaz web (Mapa, Compuestos, Sprites, Objetos)
+docs/                 documentación de detalle
+tools/                pruebas, generadores e importadores
+```
+
+`data/` se corresponde con el `data/` de TFS y es lo que un administrador de
+servidor toca. `engine/` es el motor y no se toca para añadir contenido: si hace
+falta tocar el motor para añadir un hechizo, la arquitectura está mal.
+
+### Estado actual
+
+| Pieza | Estado |
+|---|---|
+| `config.js` + carga | hecho y probado |
+| `items.xml` + `data/XML/*.xml` | hecho y probado |
+| Registro y despacho de eventos | hecho y probado |
+| Envoltorios de entidad y API `Game` | hecho y probado |
+| Monstruos como módulos | hecho y probado |
+| Recarga en caliente | hecho y probado |
+| Mapa por chunks, con plantas | hecho y probado |
+| Tiles y apilado (*stackpos*) | hecho y probado |
+| Coste de paso (fórmula real de Tibia) | hecho y probado |
+| Reglas de paso y esquinas | hecho y probado |
+| Visibilidad entre plantas | hecho y probado |
+| Validación de mapas | hecho y probado |
+| Criaturas (jugadores y monstruos) | hecho y probado |
+| Movimiento por tiles, con cooldown | hecho y probado |
+| Planificador de eventos temporizados | hecho y probado |
+| Spawns y reaparición | hecho y probado |
+| Limpieza de tiles materializados | hecho y probado |
+| Combate (daño, armadura, elementos) | hecho, con la fórmula de daño pendiente de verificar |
+| Experiencia y subida de nivel | hecho y probado |
+| Botín y eventos de criatura | hecho y probado |
+| Búsqueda de caminos | hecho y probado |
+| IA de monstruos: ver, perseguir, atacar | hecho y probado |
+| Protocolo y vista (qué ve el cliente) | hecho y probado |
+| Sesiones y autoridad del servidor | hecho y probado |
+| Servidor WebSocket, con agrupado por tick | hecho y probado por red |
+| Cliente: cámara, orden de dibujo (2.5D) | hecho y probado |
+| Cliente: conexión, mundo espejo, interpolación | hecho y probado |
+| Cliente: proveedor de sprites de procedimiento | hecho (respaldo) |
+| Cliente: assets propios de 32x32 (`things.json` + hojas) | hecho y probado (beta) |
+| Editor de sprites y cosas (pestaña Sprites) | hecho y probado (beta) |
+| Objetos compuestos y propiedades de objeto en el mapa | hecho y probado (beta) |
+| Editor de mapas al estilo RME (pinceles con borde, muros, casas, portapapeles, deshacer) | hecho y probado (beta) |
+| Ciudades, casas y `houseId` en el formato de mapa | hecho y probado |
+| Acciones y movimientos por actionId / uniqueId | hecho y probado |
+| Cliente: lectura de `.dat`/`.spr` de Tibia | pendiente (importador) |
+| Predicción en el cliente | pendiente |
+| Persistencia: cuentas, personajes, items, storages | hecho y probado |
+| Guardado periódico y al apagar | hecho y probado |
+| Herramientas de mapas e items | hecho y probado |
+| Escritor de mapas, con ida y vuelta | hecho y probado |
+| Aspectos (outfits), con añadidos | hecho y probado |
+| Migración de esquema con datos dentro | hecho y probado |
+| Recoger, soltar e inventario | hecho y probado |
+| Contenedores, ranuras y arrastrar | hecho y probado |
+| Muerte del jugador y reaparición | hecho y probado |
+| NPCs: definiciones, diálogo y paseo | hecho y probado |
+| Importadores OTBM/OTB/DAT/SPR | pendiente |
+| Comercio con NPC (comprar y vender) | hecho y probado |
+| Peso y capacidad | hecho y probado |
+
+---
+
+## 3. Decisiones de diseño
+
+### 3.1 La expansión es JavaScript
+
+**Decisión del responsable del proyecto**, y la razón práctica que la respalda es
+fuerte: elimina una dependencia, elimina un lenguaje del proyecto y **elimina la
+frontera que dominaba el coste**.
+
+En la etapa anterior el motor ejecutaba Lua (fengari) y cada evento cruzaba
+JS↔Lua. Esa frontera era el cuello de botella real, no la velocidad del
+intérprete, y obligaba a diseñar la API con identificadores en vez de objetos para
+no pagar entre 2x y 18,8x por llamada. Con el contenido en JavaScript **no hay
+frontera**: un handler es una función y una entidad es un objeto.
+
+**Lo que se conservó de aquella investigación**, porque sigue siendo cierto y
+ahorra tener que repetirla:
+
+- Los dos runtimes de Lua viables en Node eran `wasmoon` (Lua 5.4 en WASM) y
+  `fengari` (Lua 5.3 en JavaScript), ninguno con compilación nativa. Se midió que
+  **fengari despacha 1,5x más eventos por segundo que wasmoon**, porque el coste
+  está en cruzar la frontera y wasmoon cruza JS↔WASM. "WASM será más rápido" sólo
+  se cumple con Lua puro y CPU-intensivo, no con eventos cortos.
+- Los bindings nativos de Lua para Node están muertos: `node-lua` sin tocar desde
+  2017 sobre `node-gyp`, `luajit` despublicado de npm en 2017, y LuaJIT en WASM
+  no existe (necesita `mmap` con `PROT_EXEC`; WASM es AOT sin W^X). Si algún día
+  se quisiera volver a Lua, el camino es `wasmoon`, no un binding nativo.
+- **Ninguna de las dos librerías ofrece sandbox real**: un `while true do end`
+  bloquea el bucle de eventos y nada limita la memoria. Eso también es cierto del
+  JavaScript, así que no se pierde nada por este lado (ver §6).
+
+**Lo que se gana además**: un módulo de contenido es un módulo de Node, así que
+tiene a mano todo el ecosistema (`npm`), las herramientas de depuración del
+lenguaje, los tipos y las pruebas. Con Lua, cada utilidad había que escribirla
+otra vez.
+
+### 3.2 La configuración es un módulo, no un formato
+
+`config.js` exporta un objeto, y ese objeto **es** la configuración: no hay
+formato que parsear ni lista de claves que mantener sincronizada.
+
+Frente a JSON, y con el mismo argumento que usaba TFS para su `config.lua`, admite
+lo que un formato de datos no puede:
+
+```js
+const ENTORNO = process.env.NODE_ENV || 'development';
+
+module.exports = {
+    maxPlayers: ENTORNO === 'production' ? 500 : 50,
+    experienceStages: [
+        { minlevel: 1,   maxlevel: 50,  multiplier: 100 },
+        { minlevel: 151, maxlevel: 0,   multiplier: 10 }   // 0 = sin tope
+    ]
+};
+```
+
+Cálculos, condicionales por entorno y estructuras con campos con nombre. La
+última etapa de experiencia no tiene tope, y un JSON obligaría a inventar un
+número centinela y documentarlo.
+
+**Dos reglas que sí conviene respetar**, tomadas del análisis de TFS:
+
+- **Nada de efectos secundarios al cargarse.** Abrir puertos o conectar a la base
+  de datos en el archivo de configuración convierte la configuración en un
+  programa, y entonces no se puede cargar para inspeccionarla.
+- **Configuración estática y dinámica son distintas.** Puertos, nombre del mapa y
+  credenciales se leen una vez y **no se recargan**; rates, límites y etapas sí.
+  Confundirlas lleva a esperar que un `/reload` cambie el puerto, que no lo hará.
+
+TFS además aplica `getEnv("MYSQL_HOST", valorDelArchivo)`: el archivo da el valor
+por defecto y el entorno puede sobrescribirlo, que es el patrón cómodo para
+contenedores. Merece la pena copiarlo cuando haya base de datos.
+
+### 3.3 XML para lo declarativo, código para lo que lleva lógica
+
+| Va en XML | Va en código |
+|---|---|
+| Vocaciones, outfits, grupos, mounts, quests | Monstruos, hechizos, acciones, movimientos, comandos |
+| Tablas de multiplicadores y fórmulas | Cualquier cosa con condicionales, estado o azar |
+
+Un monstruo acaba necesitando ataques condicionales, invocaciones, gritos con
+probabilidad y loot con rangos. Forzar eso a XML produce dialectos imposibles de
+mantener. **En TFS moderno los monstruos son código, no XML**, y aquí se copia esa
+decisión a propósito.
+
+Dos detalles prácticos del formato, verificados en el ecosistema:
+
+- **`items.xml` de TFS está en `iso-8859-1`, no en UTF-8.** Leerlo como UTF-8
+  destroza los nombres con acentos. Hay que declarar la codificación al leer.
+- **Validar con XSD no merece la pena aquí.** El esquema real de TFS no es
+  expresable de forma útil (el `<attribute key="X" value="Y"/>` es genérico y
+  anidable), y XSD daría "documento válido", no "el juego funcionará". Los fallos
+  reales son semánticos: loot que apunta a un item inexistente, `fromid > toid`,
+  un `script` que no existe, un itemid duplicado. Lo que hace falta es un
+  **validador de dominio propio** que informe de todos los errores con archivo y
+  línea.
+
+### 3.4 Las firmas de los handlers son las de TFS
+
+Se copian literalmente, y están verificadas en el código de The Forgotten Server,
+no deducidas:
+
+```
+onUse(player, item, fromPosition, target, toPosition, isHotkey)      6 args
+onSay(player, words, param, type)                                    4 args
+onStepIn / onStepOut(creature, item, position, fromPosition)         4 args
+onEquip / onDeEquip(player, item, slot, isCheck)                     4 args
+onAddItem / onRemoveItem(moveitem, tileitem, position)               3 args
+```
+
+**La firma cambia según el tipo de evento, y eso es una trampa real**: pasar los
+argumentos de `stepin` a un handler de `equip` produce un handler que recibe
+basura sin dar ningún error. Por eso el despacho construye los argumentos según el
+tipo, en vez de tener una sola lista.
+
+Se copian por una razón práctica: quien ya sabe escribir un datapack reconoce el
+patrón, y una firma inventada obliga a aprender de cero. Además, `onSay` conserva
+el cuarto argumento `type` (el canal de chat) en vez de recortarlo.
+
+Un aviso para cuando se traigan datapacks antiguos: `doCreatureSay`,
+`doTeleportThing` y compañía son la API de **TFS 0.3/0.4**, no la de las versiones
+modernas, donde la API es orientada a objetos (`player:getPosition()`). Traducir un
+datapack antiguo es traducir esas llamadas, no sólo el lenguaje.
+
+### 3.5 Los envoltorios aíslan el estado del mundo
+
+Los handlers **no reciben los objetos del mundo**, sino envoltorios alrededor de un
+identificador: `Player`, `Item`, `Position`. No es cosmético. Si un script
+recibiera el objeto real, podría mutarlo sin pasar por ninguna regla —ponerse
+999999 de vida, teletransportarse fuera del mapa, vaciar el inventario de otro—.
+
+Con un envoltorio, todo lo que hace un script pasa por la API y ahí se puede
+validar. Y `getPosition()` devuelve una **copia**: mutarla no mueve a nadie hasta
+llamar a `teleportTo`. Sin eso, un script que consulta una posición para calcular
+algo movería al jugador sin querer.
+
+En Lua esto costaba entre 2x y 4x. En JavaScript es una clase normal y no cuesta
+nada extra. Ésa es la ganancia concreta, medida, de haber dejado Lua.
+
+**La única global del proyecto** es `Game`, la superficie de scripting, y es
+deliberada: es lo que hace TFS, permite que un módulo de contenido no importe
+nada, y el motor guarda y restaura el valor anterior al cerrarse. Todo lo demás
+evita globales a propósito: con globales, el orden de `require` importa, y eso es un
+fallo esperando a pasar.
+
+### 3.6 El orden de carga está fijado
+
+```
+1. config.js         el resto de rutas y opciones sale de aquí
+2. Definiciones XML  items.xml y data/XML/*.xml rellenan los tipos
+3. Mundo             el estado, que es de quien son los tipos cargados
+4. Registro          acciones, movimientos, comandos y monstruos
+5. Game              se instala ANTES de cargar contenido, porque un módulo
+                     puede usarlo ya al cargarse
+6. Contenido         data/scripts/ y data/monsters/, que ya pueden usar todo
+```
+
+Invertir 3 y 6, o 5 y 6, produce errores que parecen del script y son del orden de
+arranque. Es el fallo clásico al montar un datapack, así que el orden está fijado
+en el código y no se deja al azar. Nótese que **el mapa se carga después del
+contenido**, y es el mismo orden que sigue TFS: validar los spawns exige tener ya
+los tipos de monstruo registrados.
+
+### 3.7 El mundo: almacenamiento disperso, apilado y coste de paso
+
+**Almacenamiento.** El mapa se guarda por chunks de 32×32 por planta, y **sólo se
+almacenan los tiles que el mapa menciona**. El resto se resuelve contra el suelo
+por defecto de su planta.
+
+La razón es de escala: un mapa de 2048×2048 con 16 plantas son 67 millones de
+celdas. Materializarlas cuesta gigabytes para representar un desierto de suelo
+repetido. En el mapa de ejemplo la diferencia es medible: **28 tiles explícitos
+frente a 65.536 celdas posibles, un 0,04%**. Y la consulta sigue siendo O(1)
+porque va a un array indexado dentro del chunk.
+
+Es también la razón concreta por la que OTBM no se usa en tiempo de ejecución: su
+`TILE_AREA` de 256×256 obliga a recorrer para llegar a un tile.
+
+**Apilado.** El orden es el del servidor de Tibia: suelo → items de abajo →
+criaturas → items de arriba. El cliente dibuja en ese orden y resuelve el
+solapamiento **sin ningún z-buffer**, que es el truco central del 2.5D de Tibia.
+
+Dos detalles que se copian a propósito:
+
+- El suelo es un item **aparte**, no "el primero de la pila": hay exactamente uno,
+  siempre abajo del todo, y las reglas de paso dependen de él de forma distinta.
+- Hay un tope de **10 posiciones** direccionables, y no es una limitación del motor
+  sino del protocolo: el índice viaja en un byte, así que lo que quede por encima
+  es inalcanzable para el jugador.
+
+También se evita heredar una trampa documentada: en Tibia la bandera
+`FLAG_ALWAYSONTOP` significa en realidad "siempre en la banda de abajo" —el código
+de Remere's Map Editor lo comenta rindiéndose—, así que aquí se usan dos nombres
+distintos y explícitos.
+
+**Coste de paso.** Se implementa la fórmula real, no una aproximación:
+
+```
+calculatedStepSpeed = floor(857.36 * ln(speed / 2 + 261.29) - 4795.01 + 0.5)
+duration            = floor(1000 * groundSpeed / calculatedStepSpeed)
+stepDuration        = ceil(duration / 50) * 50
+```
+
+Verificado: con `speed = 220` da **550 ms**, que es el valor de la implementación
+de referencia. La cuantización final a 50 ms es lo que produce los **umbrales de
+velocidad** que nota cualquier jugador: medido, **todas las velocidades de 216 a
+236 dan exactamente los mismos 550 ms**, y con 215 se salta a 600. Ignorar esa
+cuantización haría que el movimiento se sintiera continuo y ajeno al original.
+
+**La regla de las esquinas.** En diagonal, si los dos tiles ortogonales que forman
+el vértice están bloqueados, el paso no es válido. Sin esta regla se atraviesan
+las paredes en diagonal, que es el fallo de movimiento más visible que existe. Hay
+que distinguirla del caso de moverse *hacia* un muro, que falla por otro motivo (el
+destino), y confundir los dos hace que la prueba mida lo que no cree medir.
+
+**Una lección de nombres.** La clase del mapa se llama `GameMap` y no `Map`. El
+nombre natural era `Map` —es el que usa TFS en C++— pero en JavaScript
+**ensombrece el `Map` nativo**, y como la clase necesita `Map` para sus propias
+colecciones, `new Map()` dentro de ella se llamaba a sí misma hasta desbordar la
+pila con un `RangeError` que no dice nada del problema real. Queda escrito porque
+es un error que se vuelve a cometer: el nombre natural de esa clase es justo el de
+una global que necesita.
+
+### 3.6 Los formatos: interoperabilidad sí, runtime no
+
+**Decisión: adoptar OTBM/OTB/DAT/SPR como frontera de importación y exportación,
+y usar un formato interno propio en tiempo de ejecución.**
+
+A favor de los formatos de Tibia: dan gratis todo el contenido de la comunidad y
+editores ya mantenidos.
+
+En contra para el runtime, y son razones técnicas concretas:
+
+- El árbol de nodos `0xFE`/`0xFF` es lento de recorrer.
+- No admite escritura incremental.
+- `TILE_AREA` agrupa bloques de 256×256, lo que impide consultar un tile en O(1).
+- La semántica cambia entre las cuatro versiones de OTBM.
+- Interpretar un mapa exige además el `.otb` (el OTBM no guarda el `count` de los
+  items apilables) y, para las herramientas, el `.dat`/`.spr`.
+
+**El `.otb` no es opcional.** Está documentado por el propio autor del parser de
+OTBM: sin él no se puede leer correctamente un mapa.
+
+### 3.7 Las licencias son una trampa, y ya está resuelta
+
+| Proyecto | Licencia | ¿Se puede reutilizar? |
+|---|---|---|
+| Remere's Map Editor (original, Canary, OTAcademy) | **GPL-3.0** | El código no |
+| DewralMapEditor | **AGPL-3.0** | No (viral incluso en SaaS) |
+| [knobik/yatme](https://github.com/knobik/yatme) — editor de mapas OTBM completo en navegador | **MIT** | **Sí** |
+| [@gesior/open-tibia-library](https://github.com/gesior/open-tibia-library) — DAT + SPR + OTB, lectura y escritura | **MIT** | **Sí** |
+| [@v0rt4c/otbm](https://github.com/V0RT4C/ot-otbm) — OTBM, lectura y escritura | **MIT** | **Sí** |
+| [punkice3407/ObjectBuilder](https://github.com/punkice3407/ObjectBuilder) | **MIT** | Sí |
+
+Los **formatos** no son objeto de copyright; las **implementaciones** sí. Por eso
+la regla es: se lee el código de RME para entender el formato, y se implementa
+desde las librerías MIT. Ninguna de las dos librerías clave tiene dependencias
+nativas, y ambas funcionan en Node y en el navegador (verificado en npm:
+`@gesior/open-tibia-library` 0.2.1 MIT, `@v0rt4c/otbm` 0.2.0 MIT).
+
+Consecuencia práctica: **hay que escribir mucho menos de lo que parecía.** El
+editor de mapas y el de items no se escriben desde cero hasta haber agotado las
+herramientas MIT existentes.
+
+### 3.8 Advertencia sobre `.dat`/`.spr`
+
+Desde Tibia 12 el cliente oficial abandonó `.dat`/`.spr` en favor de protobuf
+(`appearances-*.dat`) y atlas de sprites comprimidos con LZMA. Ese pipeline sólo
+cubre hasta ~10.98, que es donde está la inmensa mayoría de los assets de la
+comunidad. Es una decisión de alcance, no un detalle: si algún día se quiere
+contenido moderno, esta parte hay que sustituirla.
+
+---
+
+## 4. El modelo de extensibilidad
+
+Un módulo de contenido es un archivo `.js` que exporta una definición. **No hay
+función de registro que llamar**, así que no hay forma de olvidarla — que era un
+fallo silencioso en la etapa con Lua: el script se cargaba sin error y no hacía
+nada.
+
+```js
+// data/scripts/actions/others/lever.js
+
+module.exports = {
+    type: 'action',
+    ids: [1948],
+
+    // Firma de TFS, verificada en su código:
+    // (player, item, fromPosition, target, toPosition, isHotkey)
+    onUse(player, item, fromPosition, target, toPosition, isHotkey) {
+        const destination = player.getPosition();   // devuelve una COPIA
+        destination.moveUpstairs();
+
+        if (!player.teleportTo(destination)) {
+            player.sendTextMessage('No puedes subir aqui.');
+            return true;
+        }
+
+        player.sendTextMessage('Subes a ' + destination + '.');
+        return true;
+    }
+};
+```
+
+Tres formas de exportar, por orden de frecuencia:
+
+| Forma | Cuándo usarla |
+|---|---|
+| Un objeto con `type` | Lo normal |
+| Un array de objetos | Varios registros en el mismo archivo |
+| Una función que recibe `{ action, movement, talkAction, monster }` | Generar definiciones en bucle o derivarlas de datos |
+
+Tipos disponibles: `action` (`onUse`), `movement` (`event` más el handler
+correspondiente), `talkaction` (`words` y `onSay`) y `monster`.
+
+Para **desactivar** un módulo basta con renombrarlo: sólo se carga lo que termina
+en `.js`, así que `lever.js.off` queda ignorado sin borrar nada.
+
+La **recarga en caliente** (`engine.reloadContent()` o `Game.reload()`) funciona de
+verdad porque el cargador descarta la caché de `require` antes de cada módulo. Sin
+eso devolvería el módulo antiguo y la recarga sería una mentira. El vaciado previo
+del registro es igual de importante: sin él, cada recarga duplicaría todos los
+eventos, que es el fallo que el propio TFS documenta en su script de recarga.
+
+Y una salvaguarda que evita un fallo difícil de ver: **el tick del mundo es
+síncrono**, así que un handler `async` devolvería una promesa que nadie espera y su
+efecto llegaría tarde o nunca. El motor lo detecta y lo avisa en voz alta en vez de
+aceptarlo en silencio.
+
+---
+
+## 5. Plan por fases
+
+**Fase 1 — Base técnica.** *Hecho.* Servidor heredado modernizado, cliente
+servido, pruebas end-to-end y de diagnóstico en verde.
+
+**Fase 2 — Capa de datos y scripting.** *Hecho.* `config.js`, definiciones XML,
+contenido en módulos JavaScript, registro, despacho y recarga en caliente. Las cinco
+definiciones que TFS reparte por XML —items, monstruos, vocaciones, grupos, outfits—
+están cubiertas: los objetos y los monstruos en sus formatos, las vocaciones en
+`data/XML/vocations.js` y los aspectos en `data/XML/outfits.js` (los XML de TFS pasados a
+JavaScript; ver [docs/VOCACIONES.md](docs/VOCACIONES.md)). Verificado por `tools/test-engine.js`
+y `tools/test-vocaciones.mjs`.
+
+**Fase 3 — Mundo.** *Hecha.* Formato interno de mapa por chunks con plantas y
+almacenamiento disperso, tiles con apilado (*stackpos*), coste de paso con la
+fórmula real de Tibia, reglas de paso incluidas las esquinas, visibilidad entre
+plantas, validador de mapas, criaturas, movimiento con cooldown, planificador de
+eventos, spawns con reaparición y limpieza de los tiles que el tránsito materializa.
+El importador de OTBM sigue pendiente.
+
+**Fase 4 — Combate e IA.** *Hecha, con una salvedad.* Daño con armadura y
+resistencias elementales, muerte, botín, experiencia con la fórmula cúbica
+verificada, subida de nivel, eventos de criatura (`onKill`, `onDeath`,
+`onAdvance`), búsqueda de caminos y monstruos que ven, persiguen, atacan y vuelven
+a casa.
+
+Añadido después: **la muerte del jugador**. Antes, un jugador a cero de vida se
+quedaba en el mundo con la barra vacía y sin que pasara nada — el combate no tenía
+conclusión para él. Ahora pierde un porcentaje de experiencia, suelta el inventario
+**donde cayó** (no donde reaparece, que es lo que hace que ir a recuperarlo sea una
+decisión) y vuelve al templo con la vida llena. Las dos cosas se configuran, porque
+para un servidor de pruebas el castigo es molesto.
+
+Y **recoger y soltar**, que es lo que hace que el inventario exista de verdad. La
+regla que importa: **sólo se puede coger el objeto de más arriba de la pila**, y si no
+se puede coger, no se coge nada. Tiene una consecuencia que sorprende hasta que se
+entiende: una moneda debajo de una mesa no se puede recoger. Permitir coger de en
+medio sería más cómodo y rompería la única razón por la que el apilado importa para
+algo que no sea dibujar.
+
+**Los contenedores, y la regla que ordena todo el inventario.** El inventario no está
+terminado hasta que existe la mochila, porque es ella la que decide qué se puede llevar:
+**sin un contenedor equipado no se recoge nada del suelo, no se compra y no se recibe
+nada**. Las cosas sólo caben en un contenedor. Equiparse no lo necesita —ponerse una
+espada no pasa por la mochila—, y eso separa las dos ideas que el panel tenía mezcladas.
+
+Esa regla tiene un problema que hay que resolver o el juego no arranca: **el huevo y la
+gallina**. Sin mochila no puedes coger una mochila del suelo, así que un personaje nuevo
+empieza con una puesta (`newPlayerContainerId` en `config.js`), que es lo que hace Tibia.
+El contenedor se da en el único sitio que crea jugadores, para que el camino con base de
+datos y el camino sin ella no puedan acabar distintos.
+
+Y hubo que **cambiar un nombre que mentía**. `backpack` era, en este motor, la marca de
+"guardado, no puesto": la mochila y todo lo que llevabas dentro compartían el mismo valor
+de ranura, así que era imposible saber cuál era el contenedor y qué había dentro —el propio
+`items.xml` lo avisaba como una trampa—. Ahora `backpack` es la ranura de EQUIPO del
+contenedor, como `hand` o `head`, y lo que va dentro es `SLOT_INSIDE` (`inside`). El nombre
+vive en el archivo compartido porque son dos los que tienen que estar de acuerdo: el motor
+al mandar el inventario y el cliente al pintarlo. Los datos de antes se traducen al cargar
+el personaje y no en una migración de la base, por el mismo motivo por el que el aspecto por
+defecto se pone ahí: **qué significa una ranura es una decisión del juego, y la base sólo
+guarda datos**.
+
+No hay contenedores anidados, y es una decisión con su precio, dicho en voz alta: el
+contenido es una lista plana con la ranura `inside`, no viaja dentro del objeto. Por eso
+**una mochila con cosas dentro no se puede soltar, ni quitar, ni meter en otra**: lo de
+dentro se quedaría dentro de nada. Se rechaza con ese motivo en vez de dejar un inventario
+roto, y el día que haya anidamiento será contar entradas dentro de entradas, no rehacer esto.
+
+**Las banderas llegan al cliente, y como datos.** Hasta ahora el cliente recibía de cada
+objeto del suelo `[id, cantidad, instancia]` y una tabla de dibujos: no podía saber que un
+muro no se coge. Ahora `tools/generar-banderas.mjs` copia a `assets/objetos.json` las banderas de
+`data/items/items.xml` —el mismo archivo del que las aprende el motor— y
+`client/jetyum/js/itemtypes.js` contesta `esMovible`, `esEquipable`, `ranuraDe`,
+`esContenedor`... Es exactamente el papel de `Tibia.dat` en el cliente de Tibia, y no hay
+dos listas: hay una, copiada. Y **no decide nada**: sirve para dejar arrastrar lo que se
+puede y para resaltar dónde encaja, mientras que el movimiento lo valida el motor, que
+contesta con el motivo cuando dice que no.
+
+El mensaje de mover objeto lleva **origen y destino** —de los dos sitios de los que puede
+salir y a los tres a los que puede ir—, y con esas dos piezas salen las cuatro direcciones
+del arrastrar sin un mensaje por cada una. Cada destino acaba llamando a la operación que
+ya existía para ese camino —recoger, soltar, equipar—, así que la regla vive en un sitio.
+
+La salvedad, dicha en voz alta: **la fórmula de daño no está verificada** contra el
+código de The Forgotten Server. El SISTEMA sí es fiel —intervalos, probabilidades,
+alcances, resistencias e inmunidades se leen de las definiciones reales de los
+monstruos—, pero la fórmula está aislada en `DEFAULT_FORMULAS` y el motor la acepta
+inyectada, así que sustituirla es cambiar un objeto. Se prefirió dejarla señalada
+antes que inventar números y presentarlos como los de Tibia.
+
+Lo que falta de esta fase: hechizos de área, invocación, huida con poca salud y las
+frases de los monstruos. Los datos ya se cargan; falta la capa que los usa.
+
+**Los aspectos (outfits).** Los *outfits* cierran la última definición que el objetivo
+nombraba. No son una fase aparte, son el final del punto de extensibilidad, pero
+merecen su sitio aquí porque el reparto que usan aclara el de todo lo demás.
+
+Que los colores sean índices y no colores es lo que hace que un puñado de aspectos dé
+miles de apariencias: los sprites se reutilizan y lo único que cambia son cuatro
+números. Y por eso el motor los ACOTA: llegan del cliente, y un índice 300 en una
+paleta de 133 dejaría a cada cliente defendiéndose por su cuenta, que es justo lo
+contrario del reparto.
+
+Dos cosas que aparecieron al hacerlo y que merecen quedar escritas:
+
+- **El cambio de esquema necesitó una migración de verdad.** El esquema base es la
+  versión 1 y no se toca; añadir los campos del aspecto es una migración que lleva de
+  la 1 a la 2. Si en vez de eso se cambiara el `CREATE TABLE`, las bases que ya tienen
+  personajes se quedarían con el esquema viejo y las consultas fallarían en producción
+  y no en las pruebas, porque las pruebas crean bases nuevas. La prueba construye una
+  base CON LA FORMA DE LA VERSIÓN 1 y con un personaje dentro, y comprueba que el
+  personaje sigue ahí después de migrar: comprobar que aparecen las columnas es fácil,
+  y lo que hay que comprobar es que no se pierden los datos.
+- **Un personaje sin aspecto guardado es de antes de que existieran.** `lookType` a 0
+  no significa "sin apariencia", significa "no se guardó", y el repositorio le pone el
+  de por defecto. La decisión vive ahí y no en la base, porque cuál es el aspecto por
+  defecto es cosa del juego. Sin esa comprobación, todos los personajes anteriores
+  saldrían con el aspecto 0 y el cliente dibujaría un muñeco en blanco.
+
+**Los NPC.** Son la otra pata del contenido, junto a los monstruos, y el tercer tipo de
+módulo de JavaScript: un monstruo existe para que le pegues y un NPC para que le hables.
+
+El reparto es el de TFS: **el XML lleva lo estático** —aspecto, salud, velocidad, cada
+cuánto pasea— y **el diálogo vive en un módulo**, porque un diálogo acaba necesitando
+condiciones y estados, y forzarlo a XML produce un dialecto distinto por cada servidor.
+Las dos mitades se juntan al arrancar, y si falta una se avisa en vez de dejar un NPC mudo
+sin que nadie sepa por qué.
+
+Dos conceptos hacen todo el trabajo:
+
+- **El foco.** Un NPC no responde a todo el que habla: en cuanto alguien le saluda se
+  centra en esa persona y sólo le atiende a ella hasta que se despide o pasa un minuto sin
+  decir nada. Sin foco, un NPC en una plaza con cinco jugadores contestaría a los cinco a
+  la vez y la conversación no sería de nadie.
+- **El orden de las palabras clave.** Se recorren de arriba abajo y gana **la primera que
+  casa**, así que una palabra general puesta antes que una concreta se come a la concreta.
+  El orden de la lista es significativo, y por eso está escrito en el contenido con esa
+  advertencia al lado.
+
+Y **no pasea mientras habla**, que es lo mismo que hace una persona y además evita tener
+que perseguir al NPC para terminar una frase.
+
+Dos cosas que sólo aparecieron al probarlo por la red, y las dos del mismo tipo —el orden
+de los pasos, no su contenido—:
+
+- La carga de los NPC estaba junto a los demás XML, **antes** del contenido, y el diálogo
+  de un NPC *es* contenido: salieron dos NPC mudos y un aviso diciendo exactamente eso. El
+  sitio de un paso no es "donde queda ordenado" sino "después de lo que necesita".
+- La escucha de los NPC estaba en un manejador registrado antes que el que difunde el
+  habla, así que el NPC respondía **antes** de que se difundiera el mensaje del jugador y
+  en el chat salía primero la respuesta y después la pregunta. Desde dentro del motor los
+  dos caminos funcionaban por separado.
+
+Y un tercero que no era de orden sino de haber sustituido en vez de añadido: el escritor de
+mapas perdió los spawns porque la sección nueva ocupó el sitio de la vieja. Lo cogió la
+prueba de ida y vuelta del mapa, que existe precisamente para esto.
+
+**Fase 5 — Protocolo.** *Hecha la parte que decide, pendiente el transporte.* El
+protocolo, el gestor de vista y las sesiones están hechos y probados. Lo que hace
+real la separación de responsabilidades es que **el cliente no calcula qué ve**: el
+motor decide el área visible, las plantas que se envían y qué cambia en cada tick,
+y el cliente sólo dibuja lo que llega. Un cliente modificado no puede ver más,
+porque lo que no llega no existe para él.
+
+Tres decisiones que costaron un error cada una:
+
+- **Visibilidad de juego y de dibujo no son lo mismo.** La regla de Tibia («la
+  superficie ve toda la superficie y nada del subsuelo; el subsuelo ve dos plantas
+  arriba y dos abajo») decide a quién puedes ver. Enviar ocho plantas de superficie
+  porque la regla las permite sería ocho veces el tráfico para dibujar una. Hay dos
+  rangos, y los tiles usan la intersección para que un jugador en la calle no
+  reciba el plano de la mazmorra.
+- **La duración del paso viaja en el mensaje de movimiento.** El cliente interpola
+  durante exactamente el tiempo que el motor calculó con la fórmula real. Si la
+  eligiera el cliente, el muñeco iría a un ritmo distinto del que el motor
+  considera real y el desfase se vería en cada paso.
+- **El transporte está inyectado**, así que todo el protocolo se prueba sin abrir
+  un socket. El servidor WebSocket es un adaptador encima, y esa es la siguiente
+  pieza.
+
+**Fase 6 — Cliente.** *Hecha, salvo los assets reales.* Cámara con desplazamiento
+por planta, orden de dibujo por diagonales, mundo espejo que sólo contiene lo que el
+motor ha mandado, interpolación de movimientos, conexión con reconexión, y un
+proveedor de sprites de procedimiento para poder jugar sin assets de Tibia.
+
+El 2.5D NO es una proyección: los tiles son cuadrados en una rejilla, y la
+sensación de profundidad sale de dos cosas, las dos verificables sin navegador.
+
+- **El desplazamiento por planta.** Cada planta se corre en diagonal respecto a la
+  de la cámara, una casilla por planta de diferencia, y hacia abajo-derecha las de
+  arriba. El signo tiene una razón que se ve al dibujar: una plataforma elevada
+  tiene que tapar el suelo que tiene delante, y ese suelo está abajo y a la derecha
+  en la pantalla. El criterio es el de OTClient, que en `MapView` ajusta cada planta
+  con `coveredUp(cameraZ - iz)`; no se copia su código, sino el hecho geométrico.
+- **El orden de pintado.** De la planta más profunda a la más alta, y dentro de cada
+  una por diagonales de arriba-izquierda a abajo-derecha. Suena arbitrario y no lo
+  es: un muñeco se dibuja desde su casilla hacia arriba, así que lo que está más
+  abajo en pantalla tiene que pintarse después para taparlo.
+
+Dónde vive cada cosa también es una decisión: **el motor no envía los
+desplazamientos**, porque son presentación. El motor decide qué plantas se ven y
+manda sus tiles; cómo se colocan en la pantalla es del cliente. Al principio había
+un `getFloorOffset` en el motor devolviendo ceros «a la espera de verificar la tabla
+de TFS», y estaba en el sitio equivocado.
+
+Lo que falta: la lectura de `.dat`/`.spr` (la interfaz del proveedor ya está
+preparada, enchufarlo es cambiar una línea), la predicción para que el teclado
+responda sin esperar a la ida y vuelta, y la animación de verdad de los muñecos.
+
+**Fase 7 — Persistencia.** *Hecha.* Cuentas, personajes, inventario y *storages* en
+SQLite, con guardado periódico, al desconectar y al apagar.
+
+**SQLite y no MySQL**, que es lo que usa TFS. Su motivo es atender a miles de
+jugadores desde varios procesos; aquí hay uno y la escala es otra, y SQLite viene
+**dentro de Node** desde la versión 22: cero dependencias, cero servidor que
+instalar, cero compilación nativa. Es la elección correcta para este proyecto y
+sería la incorrecta para el que tiene TFS.
+
+Tres cosas que hay que configurar siempre y que se olvidan, y que están en el
+código con su comentario: `PRAGMA foreign_keys = ON` (SQLite las trae **apagadas**
+por compatibilidad, así que borrar una cuenta deja sus personajes huérfanos sin que
+nada avise), `journal_mode = WAL` (sin él, guardar a uno bloquea la lectura de los
+demás) y `synchronous = NORMAL` (con WAL, sobrevive a que se caiga el proceso).
+
+Y tres decisiones que no son obvias:
+
+- **La contraseña se deriva con scrypt, no con SHA1.** TFS usa SHA1 sin sal, que hoy
+  no protege nada: cualquiera con la base saca las contraseñas de sus jugadores. Es
+  una divergencia deliberada de la referencia.
+- **Guardar es completo, no incremental.** Se reescribe el personaje entero. Un
+  inventario son decenas de filas, así que comparar para ahorrar escrituras cuesta
+  más de lo que ahorra, y sobre todo puede desincronizarse.
+- **Los *storages* son la tabla que hace posible el contenido.** Un módulo necesita
+  recordar que un jugador ya mató a un dragón o en qué paso va de una misión, y sin
+  esto no tendría dónde. En TFS son claves numéricas; aquí la clave es texto, para
+  poder escribir `mision.dragon` en vez de `4021`.
+
+Lo que falta: la web de creación de cuentas (hoy se crean solas, que es cómodo en
+desarrollo e inseguro en producción), las casas y los gremios, y el registro de
+muertes.
+
+**Fase 8 — Herramientas.** *Hecha la parte propia.* Editor de mapas y de objetos, con
+escritor de mapas y edición quirúrgica de `items.xml`.
+
+**Primero hizo falta el ESCRITOR**, y es la pieza que no se ve: sin él, un editor podría
+leer un mapa y pintarlo pero no guardarlo, y el formato sería de un solo sentido. El
+escritor es más difícil que el lector por una razón concreta: al leer, lo que falta se
+supone; al escribir, hay que decidir qué se OMITE. La regla es que sólo se escribe lo
+que difiere del valor por defecto, y por eso la prueba es de ida y vuelta: cargar,
+escribir, volver a cargar y comprobar que son idénticos. Es la única forma de saber que
+lo que se omite es exactamente lo que el lector sabe reconstruir.
+
+Y si el escritor volcara todos los tiles, el archivo pasaría de 2 KB a 67 millones de
+celdas en la primera edición: el almacenamiento disperso del motor se perdería justo al
+guardar.
+
+**`items.xml` se edita quirúrgicamente**, sobre el texto, no reescribiéndolo desde el
+modelo. Reanalizarlo y volcarlo borraría los comentarios, reordenaría los bloques y
+cambiaría el formato de cada línea, así que guardar un objeto haría un diff de todo el
+archivo. Un formato cuyo diff da miedo es un formato que nadie mantiene.
+
+**El editor no tiene renderer propio**: importa la cámara y el orden de dibujo del
+cliente. Si tuviera los suyos, acabarían discrepando, y un mapa que se ve bien en el
+editor y mal en el juego cuesta horas porque cada mitad parece correcta.
+
+Lo que falta: el importador y exportador de OTBM (para hablar con Remere's y con los
+mapas de Tibia), `otb2json` y el atlas de `.spr`. Sólo lo que no cubran las herramientas
+MIT.
+
+**Fase 9 — Render 2.5D.** Hecho lo estructural (desplazamiento y orden). Falta la
+altura de sprite por item, las sombras proyectadas de verdad y el atlas.
+
+---
+
+## 6. Riesgos conocidos
+
+| Riesgo | Estado |
+|---|---|
+| El servidor heredado (`server/`) y el motor nuevo conviven | **Abierto.** El cliente sigue conectado al heredado; hay que migrarlo y retirar `server/` |
+| El cliente heredado es autoritativo en el movimiento | **Abierto.** Es lo contrario de la arquitectura objetivo |
+| Sin persistencia: todo se pierde al reiniciar | **Abierto** |
+| `.dat`/`.spr` sólo cubre hasta ~10.98 | Aceptado como alcance |
+| **Sin sandbox: el contenido es código de Node** | **Abierto y es el precio de la decisión.** Un módulo de `data/` puede leer archivos, abrir sockets o matar el proceso. Con Lua el riesgo era comparable pero el alcance menor. Es aceptable mientras el contenido sea del propio servidor; deja de serlo si algún día se aceptan datapacks de terceros, y entonces la respuesta son `worker_threads` con `resourceLimits`, no un sandbox dentro del mismo proceso |
+| El tick del mundo es síncrono; un handler puede bloquearlo | **Abierto.** Ni Lua ni JS permiten interrumpir código en ejecución de forma limpia. La mitigación realista es medir el tiempo por handler y poner en cuarentena el que se pase |
+
