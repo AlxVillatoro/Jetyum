@@ -460,7 +460,11 @@ export class AssetsProvider {
             return this.respaldo && this.respaldo.getCreature ? this.respaldo.getCreature(op, ahora) : null;
         }
         const d = dimensionsOf(cosa);
-        const px = (Number(op.direction) || 0) % d.patternX;
+        // Un aspecto de 8 direcciones usa la de 8 puntos (las diagonales se ven en el paso);
+        // uno de 4, la del motor.
+        const px = d.patternX === 8
+            ? (typeof op.direction8 === 'number' ? op.direction8 : (Number(op.direction) || 0) * 2) % 8
+            : (Number(op.direction) || 0) % d.patternX;
         let fotograma = 0;
         if (op.moving && d.frames > 1 && ahora !== undefined) {
             const pasos = d.frames - 1;

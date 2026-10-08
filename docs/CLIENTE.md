@@ -88,6 +88,25 @@ con el resto de dibujos del proveedor y se rehacen al cambiar de modo.
 
 ---
 
+### 2.5 La vista isométrica (prototipo)
+
+`index.html?iso=1` dibuja el mismo mundo en una rejilla de rombos 2:1 como Habbo (`js/iso.js`).
+Es un prototipo para VER cómo quedaría antes de decidir si el proyecto cambia de proyección:
+
+- `IsoCamera` sustituye a `Camera`: `pantallaX = (x - y) * 32`, `pantallaY = (x + y) * 16`, y
+  las plantas de abajo bajan 40 px. La lista de dibujo ya va por diagonales `x + y`, que es el
+  orden de profundidad del isométrico, así que no cambia.
+- `IsoRenderer` sustituye a `Renderer`: el suelo se deforma al rombo (la textura real); lo que
+  está de pie se pinta como un cartel vertical centrado en su casilla, con una sombra elíptica
+  debajo. Etiquetas, efectos, noche y textos son los de siempre.
+- `direction8` (world.js): la dirección de 8 puntos del último paso, para los aspectos con patrón
+  X de 8 (el explorador, aspecto 350). Un aspecto de 4 sigue usando la dirección del motor.
+- El motor no cambia. Lo que no encaja: el arte está dibujado para verse de frente (los muros
+  salen planos), las flechas siguen siendo norte/sur/este/oeste del mundo (el norte va arriba a
+  la derecha), y el editor sigue en la vista de Tibia.
+
+---
+
 ## 3. Diferencias deliberadas con OTClient
 
 | OTClient | Aquí | Por qué |
@@ -144,6 +163,7 @@ client/jetyum/
     renderer.js     pinta la lista: anclas, elevación, criaturas y barras
     assets.js       AssetsProvider: las cosas de 32x32
     suavizado.js    Scale2x y bilineal: el suavizado de los píxeles (Opciones)
+    iso.js          la vista isométrica (prototipo, ?iso=1): cámara y pintado en rombos
     sprites.js      proveedor de procedimiento, paleta de colores y createProvider()
     panels.js       equipo, mochila y peso
     arrastrar.js    arrastrar y soltar

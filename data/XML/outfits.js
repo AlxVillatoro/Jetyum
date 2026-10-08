@@ -36,6 +36,8 @@ const dosAnadidos = (nombre) => [nombre + ', primer añadido', nombre + ', segun
 
 module.exports = [
     // --- Los aspectos clásicos (sin máscara de color; 129-131 y 136 tienen versión HD, docs/ARTE-HD.md) ---
+    // El explorador de 8 direcciones (tools/generar-personaje-8d.mjs), para la vista isométrica.
+    aspecto(350, 'Explorador', 'any'),
     aspecto(128, 'Citizen', 'any', { addons: dosAnadidos('Citizen') }),
     aspecto(129, 'Hunter', 'any', { addons: dosAnadidos('Hunter') }),
     aspecto(130, 'Mage', 'any', { addons: dosAnadidos('Mage') }),

@@ -108,6 +108,14 @@ de grandes y en el mismo sitio** de su casilla. Los mismos colores y la misma ro
 
 Las plantillas provisionales son el dibujo del pack al doble (Scale2x), sin encoger ni centrar.
 
+**8 direcciones (para la vista isométrica).** Una hoja puede tener **8 filas** en vez de 4, en el
+sentido del reloj desde el norte: N, NE, E, SE, S, SO, O, NO (384×1024). El importador la mete como
+un aspecto con patrón X de 8, y el cliente elige la fila con la dirección de 8 puntos del último
+paso (`direction8`; las diagonales se ven en el propio movimiento, aunque el motor sólo mande 4).
+`personajes/explorador.png` (aspecto 350) es un ejemplo: lo genera `tools/generar-personaje-8d.mjs`
+a partir de un modelo de vóxeles proyectado con la cámara isométrica y una luz fija, así que las 8
+vistas son coherentes entre sí. `npm run arte:personaje8` lo regenera y `/outfit 350` lo pone.
+
 Personajes: `caballero`, `paladin`, `hechicero`, `druida` (jugadores, uno por vocación),
 `aldeano`, `comerciante`, `sacerdote` (NPC) y `rata`, `lobo`, `goblin`, `esqueleto` (monstruos).
 

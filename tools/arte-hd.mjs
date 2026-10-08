@@ -443,7 +443,8 @@ export function plantillas(opciones) {
 
     // Los personajes: 4 direcciones (filas) x 3 fotogramas (quieto, paso, paso).
     man.personajes.forEach((p) => {
-        const cosa = categorias.outfits.get(Number(p.plantilla.outfits));
+        // Sin plantilla: la hoja se hace aparte (p. ej. tools/generar-personaje-8d.mjs).
+        const cosa = p.plantilla ? categorias.outfits.get(Number(p.plantilla.outfits)) : null;
         if (!cosa) {
             return;
         }
@@ -619,7 +620,9 @@ export function importar(opciones) {
         }
         const img = Img.leer(archivo);
         const c = img.w / 3;              // 128 (2x2 casillas); las hojas antiguas, 64
-        const celdas = [0, 1, 2, 3].map((d) => [0, 1, 2].map((f) => img.recortar(f * c, d * c, c, c)));
+        // 4 filas (N, E, S, O) u 8 (N, NE, E, SE, S, SO, O, NO): una por dirección (patrón X).
+        const filas = Math.round(img.h / c);
+        const celdas = [...Array(filas).keys()].map((d) => [0, 1, 2].map((f) => img.recortar(f * c, d * c, c, c)));
         const nueva = cosaHD(store, p.aspecto, path.basename(p.archivo, '.png'), celdas, 'personaje');
         const antes = vieja('outfits', p.aspecto);
         const cosa = sustituir(antes, nueva);

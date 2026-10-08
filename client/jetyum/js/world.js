@@ -73,6 +73,21 @@ class MovingCreature {
     }
 }
 
+/**
+ * LA DIRECCIÓN DE 8 PUNTOS de un paso (dx, dy): 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SO, 6 O, 7 NO. El
+ * motor sólo manda 4 (N, E, S, O), pero un paso en diagonal se ve en el propio mensaje de
+ * movimiento, y un aspecto de 8 direcciones (patrón X de 8) lo aprovecha.
+ */
+export function direccion8(dx, dy) {
+    const sx = Math.sign(dx);
+    const sy = Math.sign(dy);
+    if (sx === 0 && sy === 0) {
+        return null;
+    }
+    const tabla = { '0,-1': 0, '1,-1': 1, '1,0': 2, '1,1': 3, '0,1': 4, '-1,1': 5, '-1,0': 6, '-1,-1': 7 };
+    return tabla[sx + ',' + sy];
+}
+
 export class ClientWorld {
     constructor(options) {
         const opts = options || {};
@@ -511,6 +526,8 @@ export class ClientWorld {
         creature.y = message[M.FROM_Y];
         creature.z = message[M.TO_Z];
         creature.direction = direction;
+        const d8 = direccion8(to.x - message[M.FROM_X], to.y - message[M.FROM_Y]);
+        creature.direction8 = d8 === null ? direction * 2 : d8;
 
         // El jugador propio se interpola IGUAL que los demás, y eso es una decisión
         // que se corrigió: al principio se colocaba de golpe, con el argumento de
@@ -530,6 +547,9 @@ export class ClientWorld {
         const creature = this.creatures.get(message[U.ID]);
         if (!creature) {
             return;
+        }
+        if (creature.direction !== message[U.DIRECTION]) {
+            creature.direction8 = message[U.DIRECTION] * 2;
         }
         creature.direction = message[U.DIRECTION];
         creature.health = message[U.HEALTH];

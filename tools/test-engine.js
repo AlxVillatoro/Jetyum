@@ -182,8 +182,8 @@ function main() {
 
     // --- Aspectos ---
 
-    check('se cargan los aspectos de outfits.js (15 de siempre y 7 humanos del OpenTibia Sprite Pack)',
-        engine.stats.outfits === 22 && world.outfitTypes.has(136),
+    check('se cargan los aspectos de outfits.js (15 de siempre, 7 humanos del OpenTibia Sprite Pack y el explorador)',
+        engine.stats.outfits === 23 && world.outfitTypes.has(136) && world.outfitTypes.has(350),
         engine.stats.outfits + ' aspectos, y el 136 es "' +
         (world.outfitTypes.get(136) ? world.outfitTypes.get(136).name : '?') + '"');
 
