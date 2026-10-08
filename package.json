@@ -33,6 +33,7 @@
         "test:arte": "node tools/test-arte-hd.mjs",
         "assets:otsp": "node tools/importar-otsp.mjs --pack /tmp/otsp",
         "arte:plantillas": "node tools/arte-hd.mjs plantillas",
+        "arte:personaje8": "node tools/generar-personaje-8d.mjs",
         "arte:importar": "node tools/arte-hd.mjs importar && node tools/generar-banderas.mjs",
         "banderas:generar": "node tools/generar-banderas.mjs",
         "mundo:otsp": "node tools/generar-mundo-otsp.mjs",

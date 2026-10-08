@@ -139,6 +139,7 @@ export function buildDrawList(world, camera, options) {
                         id: entry.creature.id,
                         name: entry.creature.name,
                         direction: entry.creature.direction,
+                        direction8: entry.creature.direction8,
                         health: entry.creature.health,
                         isPlayer: entry.creature.isPlayer,
                         outfit: entry.creature.outfit,

@@ -1863,6 +1863,12 @@
       "plantilla": {
         "outfits": 33
       }
+    },
+    {
+      "archivo": "personajes/explorador.png",
+      "aspecto": 350,
+      "nuevo": true,
+      "nota": "8 direcciones para la vista isometrica; lo genera tools/generar-personaje-8d.mjs"
     }
   ]
 }

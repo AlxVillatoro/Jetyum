@@ -99,6 +99,8 @@ Es un prototipo para VER cómo quedaría antes de decidir si el proyecto cambia 
 - `IsoRenderer` sustituye a `Renderer`: el suelo se deforma al rombo (la textura real); lo que
   está de pie se pinta como un cartel vertical centrado en su casilla, con una sombra elíptica
   debajo. Etiquetas, efectos, noche y textos son los de siempre.
+- `direction8` (world.js): la dirección de 8 puntos del último paso, para los aspectos con patrón
+  X de 8 (el explorador, aspecto 350). Un aspecto de 4 sigue usando la dirección del motor.
 - El motor no cambia. Lo que no encaja: el arte está dibujado para verse de frente (los muros
   salen planos), las flechas siguen siendo norte/sur/este/oeste del mundo (el norte va arriba a
   la derecha), y el editor sigue en la vista de Tibia.

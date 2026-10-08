@@ -16,6 +16,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { Img, scale2x, plantillas, importar, MARCA_INICIO } from './arte-hd.mjs';
 import { mapaAldea, HD } from './generar-aldea-hd.mjs';
+import { generar as generarExplorador } from './generar-personaje-8d.mjs';
 import { FLAG_KEYS } from '../shared/js/assets.mjs';
 
 const require = createRequire(import.meta.url);
@@ -71,7 +72,7 @@ section('1. Scale2x y el manifiesto');
             faltan.push(p.sustituye);
         }
     }));
-    man.personajes.forEach((p) => { if (!existe('outfits', p.aspecto)) { faltan.push('aspecto ' + p.aspecto); } });
+    man.personajes.forEach((p) => { if (!p.nuevo && !existe('outfits', p.aspecto)) { faltan.push('aspecto ' + p.aspecto); } });
     check('lo que se sustituye existe ya en el juego', faltan.length === 0, faltan.join(', '));
     check('la marca `hd` es una bandera conocida del formato', FLAG_KEYS.includes('hd'));
 }
@@ -90,6 +91,8 @@ section('2. Plantillas e importador (sobre una copia)');
     fs.copyFileSync(path.join(ROOT, 'data/items/items.xml'), items);
 
     const hechas = plantillas({ dir, assets });
+    // El explorador de 8 direcciones no es una plantilla: se genera aparte.
+    generarExplorador(path.join(dir, 'personajes/explorador.png'));
     const tam = (f) => { const i = Img.leer(path.join(dir, f)); return i.w + 'x' + i.h; };
     check('las plantillas salen con el tamaño de su hoja',
         tam('suelos.png') === '512x256' && tam('muros.png') === '512x128' && tam('objetos.png') === '1024x256' &&
@@ -102,7 +105,7 @@ section('2. Plantillas e importador (sobre una copia)');
     const antes = indice();
     const t = JSON.parse(fs.readFileSync(path.join(assets, 'things.json'), 'utf8'));
     const cosa = (cat, id) => t[cat].find((x) => x.id === id);
-    check('importa objetos, aspectos y efectos', r.items === 64 && r.outfits === 11 && r.effects === 8 && r.nuevos === 39,
+    check('importa objetos, aspectos y efectos', r.items === 64 && r.outfits === 12 && r.effects === 8 && r.nuevos === 39,
         JSON.stringify(r));
     check('un suelo nuevo: 64 px (2x2 trozos), 4 variantes por casilla y la marca hd',
         cosa('items', HD.hierba).width === 2 && cosa('items', HD.hierba).patternX === 2 && cosa('items', HD.hierba).patternY === 2 &&
@@ -117,6 +120,9 @@ section('2. Plantillas e importador (sobre una copia)');
     check('un personaje: 4 direcciones x 3 fotogramas, sin máscara de colores',
         cosa('outfits', 131).patternX === 4 && cosa('outfits', 131).frames === 3 && cosa('outfits', 131).layers === 1 &&
         cosa('outfits', 131).flags.hd === true && !cosa('outfits', 131).flags.offset);
+    check('el explorador de 8 direcciones: patrón X de 8, 3 fotogramas, 2x2 casillas',
+        cosa('outfits', 350).patternX === 8 && cosa('outfits', 350).frames === 3 && cosa('outfits', 350).width === 2 &&
+        cosa('outfits', 350).flags.hd === true);
     const xml = fs.readFileSync(items, 'utf8');
     const definiciones = Xml.loadItems(items);
     const def = (id) => (definiciones.items || definiciones).get ? (definiciones.items || definiciones).get(id) : null;
