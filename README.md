@@ -76,6 +76,9 @@ apuntar el cliente a otro motor: `.../jetyum/index.html?ws=otra-maquina:8081`.
 **Área visible.** `visibleTilesX` y `visibleTilesY` en `config.js` (15×11 por defecto, como
 Tibia).
 
+**Vista isométrica (prototipo).** `http://localhost:8000/jetyum/?iso=1` dibuja el mismo mundo en
+rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.md#25-la-vista-isométrica-prototipo)).
+
 ---
 
 ## 2. El juego

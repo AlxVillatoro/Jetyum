@@ -21,6 +21,7 @@ import { Camera } from './camera.js';
 import { buildDrawList, summarize } from './drawlist.js';
 import { crearVentanaPersonaje } from './personaje.js';
 import { Renderer } from './renderer.js';
+import { IsoCamera, IsoRenderer } from './iso.js';
 import { createProvider, TILE } from './sprites.js';
 import * as itemtypes from './itemtypes.js';
 import { crearArrastre } from './arrastrar.js';
@@ -73,9 +74,12 @@ class Game {
         this.diagnostics = opts.diagnostics || null;
 
         this.world = new ClientWorld();
-        this.camera = new Camera({ width: 960, height: 640, tileSize: TILE });
+        // LA VISTA ISOMÉTRICA (prototipo, js/iso.js): `?iso=1` en la URL. Mismo mundo, otra cámara
+        // y otro pintado.
+        this.iso = !!opts.iso;
+        this.camera = new (this.iso ? IsoCamera : Camera)({ width: 960, height: 640, tileSize: TILE });
         this.provider = createProvider({ provider: 'assets', sinRespaldo: true });
-        this.renderer = new Renderer({
+        this.renderer = new (this.iso ? IsoRenderer : Renderer)({
             canvas: this.canvas,
             provider: this.provider
         });
@@ -1192,7 +1196,11 @@ function boot() {
     const chatInput = document.getElementById('chat');
     const overlay = document.getElementById('overlay');
 
-    const game = new Game({ canvas: canvas, diagnostics: diagnostics });
+    const game = new Game({
+        canvas: canvas,
+        diagnostics: diagnostics,
+        iso: new URLSearchParams(window.location.search).get('iso') === '1'
+    });
     window.game = game;
 
     // Se expone para poder mirar el estado desde la consola del navegador, que es

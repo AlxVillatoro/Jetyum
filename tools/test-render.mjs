@@ -22,6 +22,7 @@ import { buildDrawList, forEachTileInDrawOrder, summarize, DRAW } from '../clien
 import { paletteColor, darker, PALETTE_SIZE, createProvider, ProceduralProvider } from '../client/jetyum/js/sprites.js';
 import { accionDe, teclaDe, TECLAS } from '../client/jetyum/js/hotkeys.js';
 import { scale2xDatos, bilineal2xDatos, modoValido } from '../client/jetyum/js/suavizado.js';
+import { IsoCamera, ANCHO_ROMBO, ALTO_ROMBO, ALTO_PLANTA } from '../client/jetyum/js/iso.js';
 
 // El protocolo es el mismo archivo que usa el motor, y es CommonJS-friendly: se
 // carga con require para no depender de la ruta del montaje del servidor.
@@ -672,6 +673,31 @@ function main() {
         check('el bilineal funde el borde con lo transparente sin halo oscuro',
             px(b, 4, 1, 0)[3] > 0 && px(b, 4, 1, 0)[3] < 255 && px(b, 4, 1, 0)[2] === 255 && px(b, 4, 0, 0)[3] === 255);
         check('un modo desconocido es el de por defecto', modoValido('x') === 'pixel' && modoValido('suave') === 'suave');
+    }
+
+    section('15. La cámara isométrica (prototipo)');
+    {
+        const cam = new IsoCamera({ width: 800, height: 400, tileSize: TILE_PIXELS });
+        cam.setCenter(10, 10, 7);
+        const c = cam.worldToScreen(10, 10, 7);
+        const e = cam.worldToScreen(11, 10, 7);
+        const s2 = cam.worldToScreen(11, 11, 7);
+        check('la casilla de la cámara cae en el centro y el este va abajo a la derecha',
+            c.x === 400 && c.y === 200 && e.x === 400 + ANCHO_ROMBO / 2 && e.y === 200 + ALTO_ROMBO / 2 &&
+            s2.x === 400 && s2.y === 200 + ALTO_ROMBO);
+        check('una planta de abajo se ve más abajo', cam.worldToScreen(10, 10, 8).y === 200 + ALTO_PLANTA);
+        let ok = true;
+        for (let x = 5; x < 15 && ok; x++) {
+            for (let y = 5; y < 15 && ok; y++) {
+                const p = cam.worldToScreen(x + 0.5, y + 0.5, 7);
+                const w = cam.screenToWorld(p.x, p.y, 7);
+                ok = w.x === x && w.y === y;
+            }
+        }
+        check('el centro de cada rombo vuelve a su casilla (clic)', ok);
+        const r = cam.visibleRect(7);
+        check('el rectángulo visible cubre la pantalla entera', r.x0 <= cam.screenToWorld(0, 0, 7).x && r.x1 >= cam.screenToWorld(800, 400, 7).x &&
+            r.y0 <= cam.screenToWorld(800, 0, 7).y && r.y1 >= cam.screenToWorld(0, 400, 7).y);
     }
 
     console.log('');
