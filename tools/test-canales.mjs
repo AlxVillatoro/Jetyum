@@ -50,6 +50,8 @@ const section = (t) => console.log('\n' + t);
 const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'jetyum-canales-'));
 const archivoDb = path.join(carpeta, 'canales.db');
 const CONFIG = {
+    mapName: 'jetyum',
+    mapFile: null,
     useDatabase: true,
     databaseFile: archivoDb,
     // Ayuda pide nivel 8, para probar el nivel; Comercio, la espera de TFS.

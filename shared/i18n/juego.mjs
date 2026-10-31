@@ -15,6 +15,7 @@ import correo from './en/correo.mjs';
 import intercambio from './en/intercambio.mjs';
 import gremios from './en/gremios.mjs';
 import canales from './en/canales.mjs';
+import continente from './en/continente.mjs';
 
 registrar('en', motor);
 registrar('en', contenido);
@@ -26,3 +27,4 @@ registrar('en', correo);
 registrar('en', intercambio);
 registrar('en', gremios);
 registrar('en', canales);
+registrar('en', continente);

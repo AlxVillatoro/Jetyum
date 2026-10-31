@@ -427,7 +427,12 @@ async function main() {
         const uid = world.adoptItem(suelto);
         check('un objeto del mapa con atributos recibe identidad al hacer falta', uid > 0 && world.getItem(uid) === suelto);
         engine.reloadContent();
-        check('recargar vacía también los registros por aid/uid', engine.registry.actionsByAid.size === 0 && engine.registry.actionsByUid.size === 0);
+        // Los de la prueba se van; los de data/scripts (el museo usa el aid 40000) vuelven a cargarse.
+        const claves = (m) => [...m.keys()].map(String);
+        check('recargar vacía también los registros por aid/uid',
+            !claves(engine.registry.actionsByAid).some((k) => k.includes('4242')) &&
+            !claves(engine.registry.actionsByUid).some((k) => k.includes('7777')),
+            claves(engine.registry.actionsByAid).join(','));
         if (engine.stop) { engine.stop(); }
     }
 

@@ -82,6 +82,7 @@ Other commands:
 | `npm run engine` | Starts only the engine and summarizes the loaded datapack |
 | `npm run engine:reload` | Checks hot reloading of content |
 | `npm run mundo:otsp` | Regenerates the brushes, the composites and the `jetyum` map |
+| `npm run mapa:continente` | Regenerates the big `continente` map |
 | `npm run mundo:aldea` | Regenerates the HD village map |
 | `npm run arte:plantillas` | Generates the provisional HD art sheets from the 32 px art |
 | `npm run arte:importar` | Brings the HD art from `data/arte-hd/` into the game |
@@ -168,7 +169,9 @@ diamonds like Habbo, with the same sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE
 - **Worlds.** The default map is **`jetyum`** (`data/world/jetyum.map.json`), with the OpenTibia
   Sprite Pack art: temple, square with a market, houses, shop, smithy, bank, park and, outside,
   forest, ruins, farm, lake and goblin camp. The **village** (`aldea.map.json`) is made with the HD
-  art.
+  art. The **continent** (`continente.map.json`, `mapName: 'continente'`) is the big map: a
+  256×256 island with four towns, every monster and NPC, caves on three floors and a museum with
+  every item, effect, missile and outfit.
 - **Chat commands:** `/spells`, `/pos`, `/i`, `/outfit …`, `/stats`, `/party`, `/vocacion`,
   `/wasd` and `/ayuda` (help). GM: `/ir <place>` and `/montura`. God: `/item <id>`,
   `/raid [name]`, `/grupo` and changing the vocation with `/vocacion <name>`.

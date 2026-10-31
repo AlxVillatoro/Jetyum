@@ -77,6 +77,7 @@ Otros comandos:
 | `npm run engine` | Arranca solo el motor y resume el datapack cargado |
 | `npm run engine:reload` | Comprueba la recarga en caliente del contenido |
 | `npm run mundo:otsp` | Regenera los pinceles, los compuestos y el mapa `jetyum` |
+| `npm run mapa:continente` | Regenera el mapa grande `continente` |
 | `npm run mundo:aldea` | Regenera el mapa de la aldea HD |
 | `npm run arte:plantillas` | Genera las hojas provisionales del arte HD a partir del arte de 32 px |
 | `npm run arte:importar` | Mete el arte HD de `data/arte-hd/` en el juego |
@@ -164,7 +165,9 @@ rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.
 - **Mundos.** El mapa por defecto es **`jetyum`** (`data/world/jetyum.map.json`), con el arte del
   OpenTibia Sprite Pack: templo, plaza con mercado, casas, tienda, herrería, banco, parque y, fuera,
   bosque, ruinas, granja, lago y campamento goblin. La **aldea** (`aldea.map.json`) está hecha con
-  el arte HD.
+  el arte HD. El **continente** (`continente.map.json`, `mapName: 'continente'`) es el mapa grande:
+  una isla de 256×256 con cuatro ciudades, todos los monstruos y NPC, cuevas en tres plantas y un
+  museo con todos los objetos, efectos, proyectiles y aspectos.
 - **Comandos de chat:** `/spells`, `/pos`, `/i`, `/outfit …`, `/stats`, `/party`, `/vocacion`,
   `/wasd` y `/ayuda`. De GM: `/ir <lugar>` y `/montura`. De god: `/item <id>`,
   `/raid [nombre]`, `/grupo` y cambiar la vocación con `/vocacion <nombre>`.

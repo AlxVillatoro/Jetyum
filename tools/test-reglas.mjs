@@ -37,7 +37,7 @@ function check(label, condition, detail) {
 }
 const section = (t) => console.log('\n' + t);
 
-const e = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { useDatabase: false } });
+const e = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { mapName: 'jetyum', mapFile: null, useDatabase: false } });
 const world = e.world;
 
 // EL RELOJ EN LA MANO: el mundo y el planificador miran este número.
@@ -407,7 +407,7 @@ section('8. Guardado: grupo, ciudad y montura');
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jetyum-reglas-'));
     const archivo = path.join(tmp, 'reglas.db');
     const abrir = () => createEngine({ rootDir: ROOT, logLevel: 'error',
-        overrides: { useDatabase: true, databaseFile: archivo, newPlayerLevel: 8 } });
+        overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: archivo, newPlayerLevel: 8 } });
 
     const e1 = abrir();
     const s1 = e1.createSession(() => {});

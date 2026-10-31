@@ -52,7 +52,7 @@ function arrancar() {
     e = createEngine({
         rootDir: ROOT,
         logLevel: 'error',
-        overrides: { useDatabase: true, databaseFile: baseDeDatos, guildCreateLevel: 8 }
+        overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: baseDeDatos, guildCreateLevel: 8 }
     });
     world = e.world;
     db = e.repository.database;

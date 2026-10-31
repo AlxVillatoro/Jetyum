@@ -53,7 +53,7 @@ const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'jetyum-intercambio-'));
 const e = createEngine({
     rootDir: ROOT,
     logLevel: 'error',
-    overrides: { useDatabase: true, databaseFile: path.join(carpeta, 'intercambio.db') }
+    overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: path.join(carpeta, 'intercambio.db') }
 });
 const world = e.world;
 

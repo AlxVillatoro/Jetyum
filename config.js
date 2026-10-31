@@ -72,7 +72,11 @@ module.exports = {
     // Nombre del mapa, SIN extensión: el motor resuelve
     // `<worldDirectory>/<mapName>.map.json`. `mapFile` permite apuntar a un
     // archivo concreto y gana sobre `mapName` si está definido.
-    mapName: 'jetyum',
+    //
+    // Los mapas que vienen: 'jetyum' (la ciudad, pequeño), 'continente' (el grande: cuatro ciudades,
+    // todos los monstruos y NPC, cuevas en tres plantas y el museo con todos los objetos; lo hace
+    // tools/generar-continente.mjs), 'aldea' (el arte HD) y 'sample' (el de las pruebas).
+    mapName: 'continente',
     mapFile: null,
 
     // ==========================================================================

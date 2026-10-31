@@ -36,7 +36,7 @@ const carpeta = fs.mkdtempSync(path.join(os.tmpdir(), 'jetyum-texto-'));
 const e = createEngine({
     rootDir: ROOT,
     logLevel: 'error',
-    overrides: { useDatabase: true, databaseFile: path.join(carpeta, 'texto.db') }
+    overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: path.join(carpeta, 'texto.db') }
 });
 const world = e.world;
 

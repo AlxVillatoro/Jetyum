@@ -36,7 +36,7 @@ function check(label, condition, detail) {
 }
 const section = (t) => console.log('\n' + t);
 
-const e = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { useDatabase: false } });
+const e = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { mapName: 'jetyum', mapFile: null, useDatabase: false } });
 const world = e.world;
 
 let reloj = 60000000;

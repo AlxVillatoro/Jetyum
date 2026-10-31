@@ -1530,6 +1530,10 @@ class PlayerWrapper extends CreatureWrapper {
 
         // La montura va en el aspecto (`lookMount`): un aspecto nuevo no puede bajarle de ella.
         player.outfit = { ...candidate, lookMount: (player.outfit && player.outfit.lookMount) || 0 };
+        // Y los que lo ven se enteran, como cuando lo cambia desde su ventana.
+        if (player.position) {
+            this.world.emit('onTileChanged', player.position, null);
+        }
         return { ok: true, reason: null };
     }
 }

@@ -47,7 +47,7 @@ let reloj = Date.now();
 const e = createEngine({
     rootDir: ROOT,
     logLevel: 'error',
-    overrides: { useDatabase: true, databaseFile: baseDeDatos, banDays: 7 }
+    overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: baseDeDatos, banDays: 7 }
 });
 const world = e.world;
 const db = e.repository.database;

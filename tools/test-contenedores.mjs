@@ -46,7 +46,7 @@ const ESPADA = 2400;       // magic sword
 const ORO = 3031;          // gold coin
 const BOLSITA = 99901;     // una bolsa de 3 huecos, hecha para la prueba (ver abajo)
 
-const e = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { useDatabase: false } });
+const e = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { mapName: 'jetyum', mapFile: null, useDatabase: false } });
 const world = e.world;
 
 /** Una bolsa de TRES huecos, copiada de la mochila: para probar que cada contenedor tiene los suyos. */
@@ -487,7 +487,7 @@ section('10. Guardar y cargar un personaje con bolsas dentro de bolsas');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jetyum-contenedores-'));
 const archivo = path.join(tmp, 'contenedores.db');
 const abrir = () => {
-    const motor = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { useDatabase: true, databaseFile: archivo } });
+    const motor = createEngine({ rootDir: ROOT, logLevel: 'error', overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: archivo } });
     anadirBolsita(motor.world);
     return motor;
 };

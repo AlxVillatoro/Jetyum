@@ -58,7 +58,7 @@ function arrancar() {
     e = createEngine({
         rootDir: ROOT,
         logLevel: 'error',
-        overrides: { useDatabase: true, databaseFile: baseDeDatos, houseRentPeriod: 'monthly', housePriceEachSQM: 1000 }
+        overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: baseDeDatos, houseRentPeriod: 'monthly', housePriceEachSQM: 1000 }
     });
     world = e.world;
     db = e.repository.database;

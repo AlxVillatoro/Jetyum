@@ -480,3 +480,61 @@ ventanas se ponen con el «door brush» y los bordes con el auto-borde, así que
 mismo que pintándolo a mano. Volver a generar sustituye el mapa: si lo editas en el editor, guarda
 tus cambios con otro nombre o deja de usar el generador.
 
+
+## El mapa «continente»: todo el contenido en un mundo
+
+`tools/generar-continente.mjs` (`npm run mapa:continente`) construye `data/world/continente.map.json`
+con las mismas piezas y pinceles que «jetyum». Para jugarlo, pon `mapName: 'continente'` en
+`config.js`. La prueba es `npm run test:continente`.
+
+- **Una isla de 256×256** rodeada de mar y con playa. Tiene la pradera del centro, la nieve del
+  norte, el desierto del suroeste, el pantano del sureste y las tierras calcinadas del oeste.
+  Al este están el bosque y la granja, y un río que baja al mar con su puente.
+  - **Bordes:** los de la nieve, la arena y el barro son del pack.
+  - **Pinceles:** se usan solo en memoria y no se escriben en `pinceles.json`.
+- **Cuatro ciudades:** Jetyum, Escarcha, Arenal y Ciénaga. Cada una tiene:
+  - templo, depósito (sus cofres llevan `townId`: el depósito es de esa ciudad), buzón, banco y
+    tienda;
+  - casas alquilables con su cama;
+  - **dos marcas de ciudadano** en el templo. Al pisarlas te haces vecino de esa ciudad, como el
+    `citizen.lua` de TFS: actionId 30020 + id de la ciudad, en
+    `data/scripts/movements/tiles/ciudadano.js`.
+  - La capital tiene además herrería, parque, una torre de dos pisos (plantas 6 y 5) y la entrada
+    del museo.
+- **Monstruos y NPC:** los 27 monstruos tienen respawn en su tierra y los 8 NPC están colocados.
+  Sanador, guía, banquero y tendero aparecen en cada ciudad.
+- **Bajo tierra, en las plantas 8 a 10:**
+  - las alcantarillas de Jetyum;
+  - las minas de Escarcha y el cubil de los cíclopes;
+  - la tumba del desierto y el laberinto de los minotauros;
+  - la cueva del pantano y la guarida de los hombres lagarto;
+  - la cripta del cementerio, las catacumbas y el abismo, con el cofre del tesoro al fondo.
+
+  Se entra y se sale por escaleras. También hay un agujero con su punto de cuerda debajo y un
+  montón de piedras que se abre con la pala.
+- **El museo (planta 12)**, al que lleva el teleport de Jetyum:
+  - Están **todos los objetos de `items.xml`**, repartidos en salas: suelos, bordes, muros,
+    naturaleza, muebles, armas, equipo, contenedores, objetos, la hoja de 5000 y los campos en
+    vitrina. Cada pieza tiene su hueco según el tamaño de su dibujo.
+  - Al mirar una pieza se ve su número («Pieza 11677 del museo.»).
+  - Las piezas no se cogen ni se usan: llevan `pickupable: 0` y el actionId 40000, que
+    `data/scripts/actions/museo.js` atiende antes que el script de su tipo.
+  - Hay una marca por cada **efecto** (41000 + id) y cada **proyectil** (43000 + id), que se ven
+    al pisarlas.
+  - El **probador** tiene una marca por cada **aspecto** (42000 + lookType): te lo pone mientras
+    estás encima.
+
+El mapa **no lleva `fallbackGround`**. El motor lo pondría en todas las plantas de la 7 hacia
+abajo, y las cuevas y el museo quedarían en medio de un prado; así, lo que no está excavado es
+roca.
+
+La prueba comprueba lo siguiente:
+
+- el mapa del repositorio es el que sale del generador;
+- el motor lo carga;
+- está todo el catálogo, con todos los monstruos, NPC, efectos, proyectiles y aspectos;
+- desde el templo de Jetyum se llega andando (por escaleras, agujeros, cuerda y teleports) a los
+  templos, NPC, respawns, casas, depósitos, lugares de `/ir`, salas del museo y al cofre del
+  abismo;
+- jugando: la marca de ciudadano, las escaleras, el teleport y las piezas, efectos y probador del
+  museo.

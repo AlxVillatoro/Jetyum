@@ -91,7 +91,7 @@ const baseDeDatos = path.join(carpeta, 'muerte.db');
 const e = createEngine({
     rootDir: ROOT,
     logLevel: 'error',
-    overrides: { useDatabase: true, databaseFile: baseDeDatos, deathLosePercent: 10, deathItemLoss: true, deathDropInventory: true }
+    overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: baseDeDatos, deathLosePercent: 10, deathItemLoss: true, deathDropInventory: true }
 });
 const world = e.world;
 

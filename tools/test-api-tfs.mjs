@@ -63,7 +63,7 @@ function arrancar() {
     e = createEngine({
         rootDir: ROOT,
         logLevel: 'error',
-        overrides: { useDatabase: true, databaseFile: baseDeDatos, autosaveIntervalMs: 60000 }
+        overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: baseDeDatos, autosaveIntervalMs: 60000 }
     });
     world = e.world;
     world.now = () => reloj;

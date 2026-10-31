@@ -58,7 +58,7 @@ const baseDeDatos = path.join(carpeta, 'correo.db');
 const e = createEngine({
     rootDir: ROOT,
     logLevel: 'error',
-    overrides: { useDatabase: true, databaseFile: baseDeDatos }
+    overrides: { mapName: 'jetyum', mapFile: null, useDatabase: true, databaseFile: baseDeDatos }
 });
 const world = e.world;
 const db = e.repository.database;
