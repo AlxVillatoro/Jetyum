@@ -408,7 +408,8 @@ class ViewManager {
             const luzMundo = this.world.worldLight();
             if (state.luzMundo === undefined || Math.abs(state.luzMundo - luzMundo) >= 4) {
                 state.luzMundo = luzMundo;
-                messages.push(P.message(P.SERVER.WORLD_LIGHT, luzMundo, 215));
+                messages.push(P.message(P.SERVER.WORLD_LIGHT, luzMundo,
+                    this.world.lightColor === undefined ? 215 : this.world.lightColor));
             }
             const luz = this.world.lightOf(player);
             if (state.luz !== luz) {
@@ -474,7 +475,13 @@ class ViewManager {
             stamina: player.stamina === undefined ? Vocacion.STAMINA_MAX : player.stamina,
             magicLevel: player.magicLevel || 0,
             magicPercent: vocation ? Vocacion.porcentajeMagia(vocation, player) : 0,
-            skills
+            skills,
+            // Los iconos de estado (reglas.js): en combate (no puede salir), PZ lock (no puede
+            // entrar en una zona de protección), en una zona de protección, y montado.
+            inFight: !!(this.world.isInFight && this.world.isInFight(player)),
+            pzLocked: !!(this.world.isPzLocked && this.world.isPzLocked(player)),
+            protectionZone: !!(this.world.inProtectionZone && this.world.inProtectionZone(player)),
+            mounted: player.mounted === true
         };
     }
 

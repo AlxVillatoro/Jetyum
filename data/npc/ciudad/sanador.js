@@ -3,32 +3,23 @@
 /**
  * El sanador.
  *
- * Un sanador que no cura parece una broma, y es la verdad de este motor: HOY NO HAY FORMA
- * DE DEVOLVER VIDA DESDE EL CONTENIDO. `engine/world/creature.js` tiene un `heal(amount)`,
- * pero ningun envoltorio de los que se le pasan a un modulo lo expone —mira
- * `engine/scripting/entities.js`—: el contenido puede LEER la salud de un jugador y no
- * puede escribirla. Escribir aqui `player.heal(...)` no daria un NPC que cura, daria una
- * excepcion en mitad de la conversacion, que es peor que no curar.
+ * CURA, como los sanadores de Tibia: «curar» le cierra las heridas a quien está herido y le quita
+ * lo que le esté haciendo daño por dentro (veneno, fuego, electricidad, hemorragia). Antes sólo
+ * diagnosticaba, porque el contenido no podía devolver vida; hoy el envoltorio tiene
+ * `player.addHealth` y `player.removeCondition` (engine/scripting/entities.js), y un sanador que
+ * no cura parecía una broma.
  *
- * Asi que hace lo unico honesto que se puede hacer con lo que hay: DIAGNOSTICAR, que es un
- * dato que el jugador no tiene —el cliente dibuja una barra, no un numero— y decir de donde
- * vuelve la salud de verdad. Y son dos sitios, los dos comprobables:
+ * NO CURA EN COMBATE: quien acaba de pelear (`player.isInFight()`, engine/world/reglas.js) no puede
+ * correr al sanador a mitad de la pelea y volver entero; tiene que salir del combate primero.
  *
- *   - El templo, porque al morir se reaparece con la salud entera
- *     (`applyDeath` en `engine/world/combat.js`, que la pone a `maxHealth` despues de
- *     teletransportar al templo).
- *   - Subir de nivel, que tambien la rellena (mismo fichero, en `giveExperience`).
- *
- * NO HAY REGENERACION POR TIEMPO: nadie la programa en el motor, asi que "espera y se te
- * pasara" seria mentira. Y tampoco hay veneno, ni enfermedad, ni condicion ninguna: el
- * combate aplica dano y armadura, y nada mas. Un NPC que ofreciera curar veneno estaria
- * inventandose un sistema que no existe.
- *
- * El dia que haya pociones o un `heal` en el envoltorio, este NPC tendra algo que vender.
- * Mientras tanto vende lo que tiene: saber por donde vas.
+ * Sigue diagnosticando con «como estoy», que es un dato que el jugador no tiene: el cliente dibuja
+ * una barra, no un número.
  *
  * DIBUJO: el del aspecto (`lookType`) en `client/jetyum/assets/things.json`.
  */
+
+/** Lo que el sanador quita, además de cerrar las heridas. */
+const MALES = ['veneno', 'fuego', 'energia', 'sangrado'];
 
 module.exports = {
 
@@ -46,26 +37,34 @@ module.exports = {
             greeting: true,
             say: (npc, player) => {
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
-                npc.say('Hola, ' + player.getName() + '. Dime "como estoy" y te digo como llevas ' +
-                    'el cuerpo.');
+                npc.say('Hola, ' + player.getName() + '. Dime "curar" si vienes herido, o ' +
+                    '"como estoy" y te digo como llevas el cuerpo.');
             }
         },
 
         {
-            /*
-             * CURAR va lo primero de las concretas, y con la respuesta mas larga a
-             * proposito: es lo que va a preguntar todo el mundo, y quien lo pregunta se
-             * merece que se le diga POR QUE no hay cura en vez de un "no puedo" seco.
-             *
-             * La respuesta va en el idioma del mundo, no en el del codigo: el jugador no
-             * tiene por que saber que existe un envoltorio.
-             */
             words: ['curar', 'cura', 'curas', 'sanar', 'sanacion', 'medico', 'remedio',
                 'heal', 'healing', 'cure', 'remedy', 'medic'],
-            say: (npc) => {
-                npc.say('No puedo cerrarte las heridas. Aqui no hay remedio que las ' +
-                    'cierre: la salud vuelve entera al templo, cuando caes, y al subir de ' +
-                    'nivel. Andando no se te pasa.');
+            say: (npc, player) => {
+                if (player.isInFight()) {
+                    npc.say('Todavia hueles a pelea. Sal del combate y vuelve, que no curo a ' +
+                        'nadie para que vuelva a meterse.');
+                    return;
+                }
+                const salud = player.getHealth();
+                const maxima = player.getMaxHealth();
+                const males = MALES.filter((mal) => player.hasCondition(mal));
+                if (salud >= maxima && males.length === 0) {
+                    npc.say('No tienes nada que curar. Vuelve cuando te hagan falta mis manos.');
+                    return;
+                }
+                males.forEach((mal) => player.removeCondition(mal));
+                if (salud < maxima) {
+                    player.addHealth(maxima - salud);
+                }
+                npc.say(males.length > 0
+                    ? 'Ya esta: te he cerrado las heridas y te he sacado lo que llevabas dentro.'
+                    : 'Ya esta: te he cerrado las heridas.');
             }
         },
 
@@ -84,10 +83,10 @@ module.exports = {
                 if (porcentaje >= 90) {
                     npc.say('Entero. No te metas donde no te llaman y seguiras asi.');
                 } else if (porcentaje >= 50) {
-                    npc.say('Aguantas, pero no fuerces: otra pelea asi te deja en el suelo.');
+                    npc.say('Aguantas, pero no fuerces: otra pelea asi te deja en el suelo. ' +
+                        'Dime "curar" y te cierro las heridas.');
                 } else if (porcentaje > 0) {
-                    npc.say('Estas para que te lleven. Si caes pierdes experiencia y sueltas ' +
-                        'todo lo que llevas encima.');
+                    npc.say('Estas para que te lleven. Dime "curar" antes de que caigas.');
                 } else {
                     npc.say('Estas muerto, y eso ya no es cosa mia.');
                 }
@@ -98,26 +97,36 @@ module.exports = {
             words: ['templo', 'reaparecer', 'resucitar', 'morir', 'muerte',
                 'temple', 'respawn', 'revive', 'resurrect', 'die', 'death'],
             say: (npc) => {
-                npc.say('El templo te rehace entero cuando caes, y por eso es lo unico que ' +
-                    'te devuelve la salud de golpe. Eso si: pierdes experiencia y sueltas ' +
-                    'lo que llevas, alli donde caiste.');
+                npc.say('El templo te rehace entero cuando caes. Eso si: pierdes experiencia ' +
+                    'por el camino.');
             }
         },
 
         {
             words: ['nivel', 'subir', 'experiencia', 'level', 'experience'],
             say: (npc) => {
-                npc.say('Al subir de nivel te rehaces entero, y ademas aguantas mas golpes ' +
-                    'que antes. Es la otra manera de curarse que hay.');
+                npc.say('Al subir de nivel aguantas mas golpes que antes. Pero para cerrar ' +
+                    'heridas, mejor ven a verme.');
             }
         },
 
         {
             words: ['veneno', 'enfermedad', 'maldicion', 'fiebre',
                 'poison', 'disease', 'curse', 'fever'],
-            say: (npc) => {
-                npc.say('Veneno no hay, ni fiebre tampoco. Aqui solo hacen dano: lo que te ' +
-                    'abre la piel es un golpe, no un bicho invisible.');
+            say: (npc, player) => {
+                const males = MALES.filter((mal) => player.hasCondition(mal));
+                if (males.length === 0) {
+                    npc.say('No llevas nada dentro. Las arañas de la mina si que envenenan: ' +
+                        'si te muerden, ven y dime "curar".');
+                    return;
+                }
+                if (player.isInFight()) {
+                    npc.say('Todavia hueles a pelea. Sal del combate y vuelve, que no curo a ' +
+                        'nadie para que vuelva a meterse.');
+                    return;
+                }
+                males.forEach((mal) => player.removeCondition(mal));
+                npc.say('Fuera. Ya no llevas nada dentro.');
             }
         },
 
@@ -125,7 +134,7 @@ module.exports = {
             words: ['mina', 'ratas', 'peligro', 'mine', 'rats', 'danger'],
             say: (npc) => {
                 npc.say('La mina esta planta abajo y las ratas junto al charco. Las dos ' +
-                    'cosas dejan marca, y ninguna de las dos te la quito yo.');
+                    'cosas dejan marca: si vuelves herido, ya sabes donde estoy.');
             }
         },
 

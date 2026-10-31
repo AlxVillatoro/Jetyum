@@ -392,6 +392,12 @@ async function main() {
             client.frames + ' marcos para ' + client.world.tiles.size +
             ' tiles y ' + (client.bytes / 1024).toFixed(0) + ' KB');
 
+        // Acaba de pelear (sección 5), y quien cierra en pleno combate se QUEDA en el mundo hasta
+        // que acabe (engine/world/reglas.js; lo prueba test-reglas). Aquí se prueba el cierre normal.
+        const pj = engine.world.getPlayer(client.world.playerId);
+        if (pj) {
+            engine.world.clearCombat(pj);
+        }
         client.close();
         await sleep(200);
 

@@ -62,6 +62,34 @@ const avanzar = (ms) => {
 
 const templo = world.map.getWaypoint('temple');
 
+/**
+ * LA ARENA: un sitio de 7x7 casillas transitables y FUERA de toda zona de protección, cerca del
+ * templo. Las pruebas de combate pasan aquí: en una zona de protección nadie puede herir a nadie
+ * (engine/world/reglas.js), y el templo lo es. Se busca en vez de escribir unas coordenadas para
+ * que un cambio del mapa no rompa las pruebas en silencio.
+ */
+const arena = (() => {
+    for (let r = 4; r < 60; r += 1) {
+        for (let dy = -r; dy <= r; dy += 1) {
+            for (let dx = -r; dx <= r; dx += 1) {
+                const c = { x: templo.x + dx, y: templo.y + dy, z: templo.z };
+                let libre = true;
+                for (let yy = -3; yy <= 3 && libre; yy += 1) {
+                    for (let xx = -3; xx <= 3 && libre; xx += 1) {
+                        const t = world.map.getTile(c.x + xx, c.y + yy, c.z);
+                        libre = (!t || (!t.isProtectionZone() && t.creatures.length === 0)) &&
+                            world.map.isWalkable(c.x + xx, c.y + yy, c.z);
+                    }
+                }
+                if (libre) {
+                    return c;
+                }
+            }
+        }
+    }
+    throw new Error('no hay sitio fuera de las zonas de protección para las pruebas');
+})();
+
 /** Una sesión con su buzón: lo que el motor le manda. */
 function conectar(nombre, vocacion) {
     const buzon = [];
@@ -208,7 +236,7 @@ section('4. Combate desde los scripts y condiciones');
 // ===========================================================================
 {
     const { sesion, buzon, pj, wrap } = conectar('Guerrera');
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     const rata = Game.createMonster('Rat', pj.position.x + 1, pj.position.y, pj.position.z);
     const r = Game.doTargetCombat(wrap, rata, { type: 'fire', min: 5, max: 5 });
     const fuego = recibido(buzon, P.SERVER.MAGIC_EFFECT).some((m) => m[4] === EFECTO.FUEGO);
@@ -260,7 +288,7 @@ section('5. Hechizos (type: spell)');
     const { sesion, pj, wrap } = conectar('Hechicera', 'Sorcerer');
     pj.level = 20;
     world.applyLevel(pj, { curar: true });
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     const mana = pj.mana;
     e.dispatchTalkAction('exori flam', { playerId: pj.id, type: 1 });
     check('sin objetivo, exori flam no se lanza ni gasta maná', pj.mana === mana && /objetivo/.test(world.textMessages
@@ -307,7 +335,7 @@ section('6. Usar lo que llevas, y el diario de misiones');
     let log = recibido(buzon, P.SERVER.QUEST_LOG)[0];
     check('el diario trae la misión empezada al entrar', log && log[1].length === 1 && log[1][0][0] === 'La plaga de ratas' &&
         /llevas 0/.test(log[1][0][2][0][1]));
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     for (let i = 0; i < 10; i += 1) {
         const rata = world.getCreature(Game.createMonster('Rat', pj.position.x + 1, pj.position.y, pj.position.z).getId());
         e.combat.applyDamage(rata, 999, { attacker: pj });
@@ -398,7 +426,7 @@ section('8. A distancia con munición, depósito y luz');
 // ===========================================================================
 {
     const { sesion, buzon, pj, wrap } = conectar('Arquera', 'Paladin');
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     wrap.addItem(2404, 1);
     world.moveItem(pj, { kind: 'inventory', index: indiceDe(pj, 2404) }, { kind: 'slot', slot: 'hand' });
     const rata = world.getCreature(Game.createMonster('Rat', pj.position.x + 3, pj.position.y, pj.position.z).getId());
@@ -450,7 +478,7 @@ section('9. Contenedores: abrir y cerrar, usar y mirar dentro, y la mochila llen
 // ===========================================================================
 {
     const { sesion, buzon, pj, wrap } = conectar('Ordenada');
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     const pos = cerca(pj, 1, 0);
     const bolsa = Game.createItem(2412, 1, pos.x, pos.y, pos.z);
     bolsa.addItem(2413, 1);
@@ -501,7 +529,7 @@ section('10. Pilas de 100, el diálogo (popupFYI) y /spells');
 // ===========================================================================
 {
     const { sesion, buzon, pj, wrap } = conectar('Apiladora');
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     world.takeItem(pj, 3031, world.countOf(pj, 3031));
     const pilasDeOro = () => world.contentsOf(pj).filter((x) => x.typeId === 3031).map((x) => x.count);
     wrap.addItem(3031, 250);
@@ -554,7 +582,7 @@ section('11. Monedas: cambiarlas con clic derecho y pagar con cambio');
 // ===========================================================================
 {
     const { sesion, buzon, pj, wrap } = conectar('Cambista');
-    world.teleportCreature(pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(pj, { ...arena });
     [3031, 2152, 2160].forEach((id) => world.takeItem(pj, id, world.countOf(pj, id)));
     const cuenta = () => [3031, 2152, 2160].map((id) => world.countOf(pj, id)).join('/');
     const usar = (id) => sesion.handle([P.CLIENT.USE_INVENTORY, indiceDe(pj, id)]);
@@ -598,7 +626,7 @@ section('12. El tajo de espada (onAttack)');
 {
     const atacar = (nombre, vocacion, arma, dx, dy) => {
         const c = conectar(nombre, vocacion);
-        world.teleportCreature(c.pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+        world.teleportCreature(c.pj, { ...arena });
         if (arma) {
             c.wrap.addItem(arma, 1);
             world.moveItem(c.pj, { kind: 'inventory', index: indiceDe(c.pj, arma) }, { kind: 'slot', slot: 'hand' });
@@ -648,7 +676,7 @@ section('13. El minimapa y el área visible');
     check('el saludo dice lo que se ve (config.js visibleTilesX/Y: 15x11) y lo que se manda (+4)',
         hello && hello[7] === 15 && hello[8] === 11 && hello[5] === 19 && hello[6] === 15, JSON.stringify(hello));
 
-    world.teleportCreature(c.pj, { x: templo.x, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(c.pj, { ...arena });
     const yo = c.pj.position;
     // Un destino imposible: muy lejos, fuera del mapa (una zona «sin descubrir»).
     const lejos = { x: yo.x + 120, y: yo.y - 300, z: yo.z };
@@ -674,8 +702,8 @@ section('14. Hotkeys con objetos (USE_HOTKEY_ITEM)');
 {
     const a = conectar('Curandera');
     const b = conectar('Herido');
-    world.teleportCreature(a.pj, { x: templo.x, y: templo.y + 3, z: templo.z });
-    world.teleportCreature(b.pj, { x: templo.x + 2, y: templo.y + 3, z: templo.z });
+    world.teleportCreature(a.pj, { ...arena });
+    world.teleportCreature(b.pj, { x: arena.x + 2, y: arena.y, z: arena.z });
     a.wrap.addItem(2413, 3);
     avanzar(1100);
     a.pj.health = 40;

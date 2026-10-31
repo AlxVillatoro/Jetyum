@@ -162,26 +162,33 @@ export default {
     // -----------------------------------------------------------------------
     'No te entiendo. Dime "como estoy", "curar", "templo" o "veneno".':
         'I don\'t understand. Say "how am I", "heal", "temple" or "poison".',
-    'Hola, {nombre}. Dime "como estoy" y te digo como llevas el cuerpo.':
-        'Hello, {nombre}. Say "how am I" and I\'ll tell you how your body is holding up.',
-    'No puedo cerrarte las heridas. Aqui no hay remedio que las cierre: la salud vuelve entera al templo, cuando caes, y al subir de nivel. Andando no se te pasa.':
-        'I can\'t close your wounds. There is no remedy here that closes them: your health comes back in full at the temple when you fall, and when you level up. Walking it off won\'t help.',
+    'Hola, {nombre}. Dime "curar" si vienes herido, o "como estoy" y te digo como llevas el cuerpo.':
+        'Hello, {nombre}. Say "heal" if you come wounded, or "how am I" and I\'ll tell you how your body is holding up.',
+    'Todavia hueles a pelea. Sal del combate y vuelve, que no curo a nadie para que vuelva a meterse.':
+        'You still smell of battle. Get out of the fight and come back: I don\'t heal anyone just so they can jump back in.',
+    'No tienes nada que curar. Vuelve cuando te hagan falta mis manos.':
+        'You have nothing to heal. Come back when you need my hands.',
+    'Ya esta: te he cerrado las heridas y te he sacado lo que llevabas dentro.':
+        'There you go: I closed your wounds and drew out what you had inside.',
+    'Ya esta: te he cerrado las heridas.': 'There you go: I closed your wounds.',
     'Estas a {salud} de {maxima} ({porcentaje}%).': 'You are at {salud} of {maxima} ({porcentaje}%).',
     'Entero. No te metas donde no te llaman y seguiras asi.':
         'In one piece. Stay out of trouble and you\'ll stay that way.',
     'Aguantas, pero no fuerces: otra pelea asi te deja en el suelo.':
         'You\'re holding up, but don\'t push it: another fight like that will put you on the ground.',
-    'Estas para que te lleven. Si caes pierdes experiencia y sueltas todo lo que llevas encima.':
-        'You look like you need carrying. If you fall you lose experience and drop everything you carry.',
+    'Dime "curar" y te cierro las heridas.': 'Say "heal" and I\'ll close your wounds.',
+    'Estas para que te lleven. Dime "curar" antes de que caigas.':
+        'You look like you need carrying. Say "heal" before you fall.',
     'Estas muerto, y eso ya no es cosa mia.': 'You are dead, and that is no longer my business.',
-    'El templo te rehace entero cuando caes, y por eso es lo unico que te devuelve la salud de golpe. Eso si: pierdes experiencia y sueltas lo que llevas, alli donde caiste.':
-        'The temple puts you back together when you fall, which is why it is the only thing that restores your health at once. But mind you: you lose experience and drop what you carry, right where you fell.',
-    'Al subir de nivel te rehaces entero, y ademas aguantas mas golpes que antes. Es la otra manera de curarse que hay.':
-        'When you level up you are restored in full, and you can take more hits than before. It is the other way to heal there is.',
-    'Veneno no hay, ni fiebre tampoco. Aqui solo hacen dano: lo que te abre la piel es un golpe, no un bicho invisible.':
-        'There is no poison here, and no fever either. Things here only deal damage: what breaks your skin is a blow, not an invisible bug.',
-    'La mina esta planta abajo y las ratas junto al charco. Las dos cosas dejan marca, y ninguna de las dos te la quito yo.':
-        'The mine is one floor down and the rats are by the pond. Both leave their mark, and I can\'t take either one away.',
+    'El templo te rehace entero cuando caes. Eso si: pierdes experiencia por el camino.':
+        'The temple puts you back together when you fall. But mind you: you lose experience along the way.',
+    'Al subir de nivel aguantas mas golpes que antes. Pero para cerrar heridas, mejor ven a verme.':
+        'When you level up you can take more hits than before. But to close wounds, better come and see me.',
+    'No llevas nada dentro. Las arañas de la mina si que envenenan: si te muerden, ven y dime "curar".':
+        'You have nothing inside you. The spiders in the mine do poison, though: if they bite you, come and say "heal".',
+    'Fuera. Ya no llevas nada dentro.': 'Out. You have nothing inside you anymore.',
+    'La mina esta planta abajo y las ratas junto al charco. Las dos cosas dejan marca: si vuelves herido, ya sabes donde estoy.':
+        'The mine is one floor down and the rats are by the pond. Both leave their mark: if you come back wounded, you know where I am.',
     'Vete con cuidado.': 'Go carefully.',
 
     // -----------------------------------------------------------------------
@@ -310,5 +317,12 @@ export default {
     'Casa del Olmo': 'Elm House',
     'Casa del Roble': 'Oak House',
     'Casa de Piedra': 'Stone House',
-    'Casa del Pozo': 'Well House'
+    'Casa del Pozo': 'Well House',
+
+    // Las monturas (data/XML/mounts.js)
+    'Oso de carga': 'Pack Bear',
+    'Cerdo': 'Pig',
+    'Escarabajo': 'Beetle',
+    'Jabalí mecánico': 'Mechanical Boar',
+    'Escolopendra': 'Centipede'
 };

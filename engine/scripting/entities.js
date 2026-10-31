@@ -379,6 +379,58 @@ class PlayerWrapper extends CreatureWrapper {
         return canUseOutfit({ lookType: Number(lookType), addons: 0 }, this.world.outfitTypes, player.premium === true, player).ok;
     }
 
+    // -----------------------------------------------------------------------
+    // Rango de acceso, combate y monturas
+    // -----------------------------------------------------------------------
+
+    /** Su grupo de acceso (data/XML/groups.js): `{ id, name, access }`. */
+    getGroup() {
+        const player = this.world.getPlayer(this.id);
+        return player ? { ...this.world.groupOf(player) } : null;
+    }
+
+    /** ¿Tiene ese grupo de acceso o uno mayor? `player.hasGroup('gamemaster')`. */
+    hasGroup(nombre) {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.hasGroup(player, nombre));
+    }
+
+    /** ¿Está en combate? (No puede salir del juego.) */
+    isInFight() {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.isInFight(player));
+    }
+
+    /** ¿Tiene el PZ lock? (Atacó a otro jugador: no puede entrar en una zona de protección.) */
+    isPzLocked() {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.isPzLocked(player));
+    }
+
+    /** Le da una montura de data/XML/mounts.js (aunque esté `unlocked: false`). Se guarda con él. */
+    addMount(mountId) {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.giveMount(player, mountId));
+    }
+
+    /** Se la quita (y desmonta si iba en ella). */
+    removeMount(mountId) {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.takeMount(player, mountId));
+    }
+
+    /** ¿Puede llevar esa montura? */
+    hasMount(mountId) {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.canUseMount(player, mountId).ok);
+    }
+
+    /** ¿Va montado? */
+    isMounted() {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && player.mounted);
+    }
+
     /** Su grupo: `{ leader, members: [nombres] }`, o null. */
     getParty() {
         const player = this.world.getPlayer(this.id);
@@ -713,7 +765,8 @@ class PlayerWrapper extends CreatureWrapper {
             }
         }
 
-        player.outfit = candidate;
+        // La montura va en el aspecto (`lookMount`): un aspecto nuevo no puede bajarle de ella.
+        player.outfit = { ...candidate, lookMount: (player.outfit && player.outfit.lookMount) || 0 };
         return { ok: true, reason: null };
     }
 }

@@ -602,6 +602,17 @@ class World {
             return { moved: false, reason: check.reason };
         }
 
+        // EL PZ LOCK: quien acaba de atacar a otro jugador no puede refugiarse en una zona de
+        // protección hasta que se le pase (reglas.js). Desde dentro sí puede moverse.
+        if (creature.isPlayer && creature.isPlayer() && this.isPzLocked(creature)) {
+            const destino = this.map.getTile(to.x, to.y, to.z);
+            const origen = creature.tile;
+            if (destino && destino.isProtectionZone() && !(origen && origen.isProtectionZone())) {
+                creature.faceTowards(to);
+                return { moved: false, reason: 'pzLocked' };
+            }
+        }
+
         this._relocate(creature, to, offset);
 
         // El coste del paso lo pone el SUELO de destino, no el de origen: caminar
@@ -3072,7 +3083,9 @@ class World {
      * jugador. La dificultad la pone el multiplicador de la vocación.
      */
     addSkillTries(player, skill, tries) {
-        const r = Vocacion.sumarTries(player, this.vocationOf(player), skill, tries);
+        // `rateSkill` de config.js multiplica lo que se entrena (`rateMagic`, el nivel mágico).
+        const rate = this.rateSkill > 0 ? this.rateSkill : 1;
+        const r = Vocacion.sumarTries(player, this.vocationOf(player), skill, tries * rate);
         if (r.subidas > 0) {
             this.emit('onAdvance', player, skill, r.desde, r.hasta);
             this.sendTextMessage(player.id, 'Has subido a ' + Vocacion.NOMBRE_SKILL[skill] +
@@ -3083,7 +3096,8 @@ class World {
 
     /** Gasta maná para el nivel mágico (los hechizos lo llaman). */
     addManaSpent(player, mana) {
-        const r = Vocacion.sumarManaGastado(player, this.vocationOf(player), mana);
+        const rate = this.rateMagic > 0 ? this.rateMagic : 1;
+        const r = Vocacion.sumarManaGastado(player, this.vocationOf(player), mana * rate);
         if (r.subidas > 0) {
             this.emit('onAdvance', player, 'magic', r.desde, r.hasta);
             this.sendTextMessage(player.id, 'Has subido a nivel mágico ' + r.hasta + '.');
@@ -3287,7 +3301,7 @@ class World {
                 if (player.speedBonusUntil && ahora >= player.speedBonusUntil) {
                     player.speedBonus = 0;
                     player.speedBonusUntil = 0;
-                    player.speed = (player.baseSpeed || player.speed) + (player.condSpeed || 0);
+                    this.recomputeSpeed(player);
                 }
                 // La calavera caduca sola (avisa a quien la vea).
                 if (player.skull && player.skullUntil && ahora >= player.skullUntil) {
@@ -3335,5 +3349,7 @@ class World {
 
 // Curar, dar y quitar, luz, grupos, calaveras, mensajes privados y depósito (`extras.js`).
 Object.assign(World.prototype, require('./extras').extras);
+// Grupos de acceso, zonas y PvP, combate, templos y monturas (`reglas.js`).
+Object.assign(World.prototype, require('./reglas').reglas);
 
 module.exports = { World, DIRECTION_DELTA, COMPACT_EVERY_TICKS, resetIdCounter };

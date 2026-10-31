@@ -59,6 +59,13 @@ export default {
     'Mochila': 'Backpack',
     'peso / capacidad': 'weight / capacity',
 
+    // --- panels.js: los estados de debajo de la vida (los iconos de Tibia) ---
+    'En combate: no puedes salir del juego': 'In a fight: you may not log out',
+    'Protección bloqueada: no puedes entrar en una zona de protección':
+        'Protection zone blocked: you may not enter a protection zone',
+    'En zona de protección: aquí no se puede luchar': 'In a protection zone: no fighting here',
+    'Montado (Ctrl+R para desmontar)': 'Mounted (Ctrl+R to dismount)',
+
     // --- index.html: la ayuda ---
     'Ayuda': 'Help',
     'Flechas': 'Arrows',
@@ -76,6 +83,9 @@ export default {
         'pick up and move things: to the ground, to your equipment, to your backpack or to an open container',
     'usar lo que tienes delante (en modo /wasd)': 'use what is in front of you (in /wasd mode)',
     'dejar de atacar': 'stop attacking',
+    'Ctrl+R': 'Ctrl+R',
+    'montar o desmontar (la montura se elige en tu ficha; no se monta en una zona de protección)':
+        'mount or dismount (choose the mount in your character sheet; you cannot mount in a protection zone)',
     'tus': 'your',
     ': magias y objetos (configúralas con': ': spells and items (set them up with',
     'o el botón del teclado junto a la capacidad)': 'or the keyboard button next to the capacity)',
@@ -137,6 +147,7 @@ export default {
     'has muerto a manos de {asesino}; soltaste {n} cosa(s)': 'you were killed by {asesino}; you dropped {n} item(s)',
     'no se pudo entrar: {error}': 'could not log in: {error}',
     'has salido del mundo': 'you have left the world',
+    'No puedes salir ahora.': 'You may not log out now.',
 
     // --- main.js: mensajes en la consola ---
     'Has muerto.': 'You are dead.',
@@ -314,6 +325,17 @@ export default {
     'Cerrar (Escape)': 'Close (Escape)',
     'Guardar aspecto': 'Save outfit',
     'Ponerse este aspecto y estos colores': 'Wear this outfit and these colors',
+    'Ponerse este aspecto, estos colores y esta montura': 'Wear this outfit, these colors and this mount',
+    'Montura': 'Mount',
+    'Todavía no tienes monturas.': 'You have no mounts yet.',
+    'Montura anterior': 'Previous mount',
+    'Montura siguiente': 'Next mount',
+    'Ninguna': 'None',
+    '+{n} de velocidad': '+{n} speed',
+    'Vas a pie.': 'You are on foot.',
+    'Ir montado (también con Ctrl+R)': 'Ride the mount (also with Ctrl+R)',
+    'Elige antes una montura': 'Choose a mount first',
+    'Montar': 'Ride',
 
     // --- renderer.js: lo que dice una criatura, sobre su cabeza (lienzo) ---
     '{nombre} dice:': '{nombre} says:',

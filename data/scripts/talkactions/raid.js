@@ -3,11 +3,13 @@
 /**
  * /raid — lista las raids o lanza una a mano: `/raid` o `/raid <nombre>`.
  *
- * Es el `/raid` de los god de TFS. Sirve para probar una raid sin esperar a que salga sola.
+ * Es el `/raid` de los god de TFS. Sirve para probar una raid sin esperar a que salga sola. Sólo
+ * para el grupo god (data/XML/groups.js): para los demás, el comando no existe.
  */
 module.exports = {
     type: 'talkaction',
     words: '/raid',
+    access: 'god',
 
     onSay(player, words, param) {
         const nombre = String(param || '').trim();

@@ -23,6 +23,7 @@ import { paletteColor, darker, PALETTE_SIZE, createProvider, ProceduralProvider 
 import { accionDe, teclaDe, TECLAS } from '../client/jetyum/js/hotkeys.js';
 import { scale2xDatos, bilineal2xDatos, modoValido } from '../client/jetyum/js/suavizado.js';
 import { IsoCamera, ANCHO_ROMBO, ALTO_ROMBO, ALTO_PLANTA } from '../client/jetyum/js/iso.js';
+import { Renderer, alturaDelJinete } from '../client/jetyum/js/renderer.js';
 
 // El protocolo es el mismo archivo que usa el motor, y es CommonJS-friendly: se
 // carga con require para no depender de la ruta del montaje del servidor.
@@ -87,7 +88,8 @@ function creatureAdd(id, name, x, y, z, options) {
         x, y, z,
         opts.direction === undefined ? 2 : opts.direction,
         opts.health === undefined ? 100 : opts.health,
-        opts.kind === undefined ? 1 : opts.kind
+        opts.kind === undefined ? 1 : opts.kind,
+        opts.mount === undefined ? 0 : opts.mount
     ];
 }
 
@@ -698,6 +700,70 @@ function main() {
         const r = cam.visibleRect(7);
         check('el rectángulo visible cubre la pantalla entera', r.x0 <= cam.screenToWorld(0, 0, 7).x && r.x1 >= cam.screenToWorld(800, 400, 7).x &&
             r.y0 <= cam.screenToWorld(800, 0, 7).y && r.y1 >= cam.screenToWorld(0, 400, 7).y);
+    }
+
+    section('16. Las monturas: debajo del jinete, y el jinete alzado');
+    {
+        // La montura llega en el último campo de la criatura y se queda en su aspecto.
+        const { world } = makeWorld();
+        world.apply([
+            creatureAdd(1, 'Jinete', 10, 10, 7, { lookType: 128, mount: 312 }),
+            creatureAdd(2, 'Peaton', 11, 10, 7, { lookType: 128 }),
+            [P.SERVER.CREATURE_ADD, 3, 128, 0, 0, 0, 0, 0, 'Antiguo', 12, 10, 7, 2, 100, 0]
+        ], P);
+        check('el lookType de la montura se guarda en el aspecto (0 a pie, y sin el campo)',
+            world.creatures.get(1).outfit.lookMount === 312 && world.creatures.get(2).outfit.lookMount === 0 &&
+            world.creatures.get(3).outfit.lookMount === 0);
+        const salida = world.apply([[P.SERVER.LOGOUT_RESULT, 0, 'No puedes salir mientras estás en combate.'],
+            [P.SERVER.LOGOUT_RESULT, 1, '']], P).events;
+        check('la respuesta a salir llega como evento: no (con su motivo) o sí',
+            salida.length === 2 && salida[0].type === 'logoutResult' && salida[0].ok === false &&
+            salida[0].motivo === 'No puedes salir mientras estás en combate.' && salida[1].ok === true);
+
+        // El renderer, sin lienzo: un contexto que apunta lo que se dibuja y un proveedor de mentira
+        // (montura de 2x2, jinete de 1x1, anclados como los de assets.js).
+        const lienzoMontura = { width: 64, height: 64, nombre: 'montura' };
+        const lienzoJinete = { width: 32, height: 32, nombre: 'jinete' };
+        const sprites = {
+            312: { canvas: lienzoMontura, drawW: 64, drawH: 64, anchorX: 32, anchorY: 64 },
+            306: { canvas: { width: 32, height: 32 }, drawW: 32, drawH: 32, anchorX: 0, anchorY: 32 },
+            128: { canvas: lienzoJinete, drawW: 32, drawH: 32, anchorX: 0, anchorY: 32 }
+        };
+        const pedidas = [];
+        const dibujos = [];
+        const r = Object.create(Renderer.prototype);
+        r.ctx = { drawImage: (c, x, y) => dibujos.push({ c, x, y }) };
+        r.provider = { getCreature: (op) => { pedidas.push({ lookType: op.outfit.lookType, d: op.direction, m: op.moving, id: op.id }); return sprites[op.outfit.lookType] || null; } };
+        r._objetivo = null;
+        r._elevacion = { clave: null, valor: 0 };
+        r._etiquetas = [];
+        const op = (lookMount) => ({ kind: DRAW.CREATURE, id: 1, sx: 100, sy: 50, direction: 1, moving: true,
+            outfit: { lookType: 128, lookMount } });
+
+        r._drawCreature(op(0), 1000);
+        check('a pie: un solo dibujo, en su sitio, y la etiqueta donde siempre',
+            dibujos.length === 1 && dibujos[0].c === lienzoJinete && dibujos[0].y === 50 && r._etiquetas[0].y === 50);
+
+        dibujos.length = 0;
+        pedidas.length = 0;
+        r._etiquetas = [];
+        r._drawCreature(op(312), 1000);
+        const alzado = alturaDelJinete(sprites[312]);
+        check('montado: primero la montura y encima el jinete',
+            dibujos.length === 2 && dibujos[0].c === lienzoMontura && dibujos[1].c === lienzoJinete,
+            dibujos.map((d) => d.c.nombre).join(' → '));
+        check('la montura se ancla como cualquier aspecto (la de 2x2 sobresale arriba a la izquierda)',
+            dibujos[0].x === 100 - 32 && dibujos[0].y === 50 - 64 + 32);
+        check('el jinete se alza ' + alzado + ' px sobre una de 2x2, y su nombre con él',
+            alzado >= 8 && alzado <= 12 && dibujos[1].x === 100 && dibujos[1].y === 50 - alzado &&
+            r._etiquetas[0].y === 50 - alzado);
+        check('la montura mira y anda como el jinete',
+            pedidas.some((p) => p.lookType === 312 && p.d === 1 && p.m === true && p.id === 1));
+        check('sobre una de 1x1 se alza menos, y a pie nada',
+            alturaDelJinete(sprites[306]) > 0 && alturaDelJinete(sprites[306]) < alzado && alturaDelJinete(null) === 0);
+        const primera = r._opMontura;
+        r._drawCreature(op(312), 1100);
+        check('la operación de la montura se reutiliza (sin basura por fotograma)', r._opMontura === primera);
     }
 
     console.log('');

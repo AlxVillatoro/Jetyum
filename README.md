@@ -132,13 +132,29 @@ rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.
 - **Más juego.** Pociones y comida, hechizos de ataque y apoyo con enfriamiento, misiones,
   comercio con NPC, mensajes privados (`@nombre texto`), grupos (`/party`), calaveras PvP,
   depósito, arcos con flechas, efectos y proyectiles, y día y noche con luces.
-- **NPC.** Se saluda con `hola` y se despide con `adios`; tienen palabras clave y comercio.
+- **NPC.** Se saluda con `hola` y se despide con `adios`; tienen palabras clave y comercio. El
+  sanador cura las heridas y el veneno (`curar`), salvo en pleno combate.
+- **Monturas.** Se eligen en la ventana del personaje (clic derecho sobre ti) y se monta o desmonta
+  con **Ctrl+R** o la casilla «Montar»; suman velocidad. No se monta en una zona de protección.
+  Están en `data/XML/mounts.js`: el oso de carga y el cerdo los tiene todo el mundo, y las demás
+  se dan con `player.addMount(id)` o `/montura`.
+- **Reglas del mundo** (`engine/world/reglas.js`). En una **zona de protección** nadie pega ni
+  recibe golpes, y los monstruos dejan de perseguirte. El PvP sigue `worldType` y
+  `protectionLevel` de `config.js`. Quien pega o recibe un golpe queda **en combate** durante
+  `pzLocked` (un minuto): no puede salir del juego, y si se le cae la conexión el personaje se
+  queda hasta que acabe. Quien ataca a otro jugador, además, no puede entrar en una zona de
+  protección en ese tiempo.
+- **Rangos de acceso** (`data/XML/groups.js`): jugador, tutor, senior tutor, gamemaster, community
+  manager y god. Los comandos de GM no existen para un jugador. El primer god se nombra con
+  `npm run grupo -- <personaje> god` (con el servidor parado), y desde el juego un god da rangos
+  con `/grupo`.
 - **Mundos.** El mapa por defecto es **`jetyum`** (`data/world/jetyum.map.json`), con el arte del
   OpenTibia Sprite Pack: templo, plaza con mercado, casas, tienda, herrería, banco, parque y, fuera,
   bosque, ruinas, granja, lago y campamento goblin. La **aldea** (`aldea.map.json`) está hecha con
   el arte HD.
-- **Comandos de chat:** `/ir <lugar>`, `/spells`, `/pos`, `/i`, `/item <id>`, `/outfit …`,
-  `/raid [nombre]`, `/wasd` y `/ayuda`.
+- **Comandos de chat:** `/spells`, `/pos`, `/i`, `/outfit …`, `/stats`, `/party`, `/vocacion`,
+  `/wasd` y `/ayuda`. De GM: `/ir <lugar>` y `/montura`. De god: `/item <id>`,
+  `/raid [nombre]`, `/grupo` y cambiar la vocación con `/vocacion <nombre>`.
 
 Todo el juego (acciones, movimientos, comandos, eventos, eventos globales y raids) está escrito con
 la API de scripts del servidor: ver [docs/SCRIPTS.md](docs/SCRIPTS.md).
@@ -246,6 +262,7 @@ copias temporales):
 | `test:scripts` | La API de scripts y el juego hecho con ella |
 | `test:arte` | El arte HD: plantillas, importador y la aldea |
 | `test:i18n` | Los idiomas: traducción, diccionarios y que todo el texto de las páginas tenga traducción |
+| `test:reglas` | Rangos de acceso, zonas de protección y PvP, en combate y PZ lock, protección de la red, rates, el sanador y las monturas |
 
 `npm run check:jetyum` comprueba además que el cliente y el editor cargan todos sus módulos.
 

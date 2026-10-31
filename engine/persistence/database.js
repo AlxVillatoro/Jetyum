@@ -36,7 +36,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 /** Versión del esquema. Sube cuando cambie la estructura. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /**
  * Las tablas.
@@ -199,6 +199,25 @@ const MIGRATIONS = {
                 }
             }
         });
+    },
+
+    /**
+     * Versión 4: el GRUPO de acceso (`group_id`, como en TFS: 1 jugador ... 6 god; ver
+     * `data/XML/groups.js`), la CIUDAD (`town_id`: adónde se vuelve al morir) y la MONTURA
+     * (`mount_id`, la elegida, y `mounted`, si iba montado al salir).
+     */
+    4: (db) => {
+        [['group_id', 'INTEGER NOT NULL DEFAULT 1'], ['town_id', 'INTEGER NOT NULL DEFAULT 0'],
+            ['mount_id', 'INTEGER NOT NULL DEFAULT 0'], ['mounted', 'INTEGER NOT NULL DEFAULT 0']]
+            .forEach(([column, type]) => {
+                try {
+                    db.exec('ALTER TABLE players ADD COLUMN ' + column + ' ' + type);
+                } catch (error) {
+                    if (!/duplicate column name/i.test(String(error.message))) {
+                        throw error;
+                    }
+                }
+            });
     }
 };
 
@@ -474,19 +493,22 @@ class Database {
             const result = this.db.prepare(
                 `INSERT INTO players
                  (account_id, name, vocation, sex, level, experience, health, max_health,
-                  direction, pos_x, pos_y, pos_z, created_at)
-                 VALUES (?, ?, ?, ?, 1, 0, ?, ?, 2, ?, ?, ?, ?)`
+                  direction, pos_x, pos_y, pos_z, created_at, town_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 2, ?, ?, ?, ?, ?)`
             ).run(
                 Number(accountId),
                 clean,
                 opts.vocation || 'None',
                 opts.sex === 'female' ? 'female' : 'male',
+                Math.max(1, Number(opts.level) || 1),
+                Math.max(0, Number(opts.experience) || 0),
                 opts.maxHealth === undefined ? 150 : Number(opts.maxHealth),
                 opts.maxHealth === undefined ? 150 : Number(opts.maxHealth),
                 opts.x === undefined ? 0 : Number(opts.x),
                 opts.y === undefined ? 0 : Number(opts.y),
                 opts.z === undefined ? 7 : Number(opts.z),
-                this.now()
+                this.now(),
+                Number(opts.townId) || 0
             );
 
             return this.db.prepare('SELECT * FROM players WHERE id = ?')
@@ -497,6 +519,26 @@ class Database {
             }
             throw error;
         }
+    }
+
+    /**
+     * Cambia el GRUPO de acceso de un personaje (groups.js) por su nombre. Va aparte del guardado
+     * normal a propósito: el grupo no lo cambia el juego al guardar, sólo quien administra
+     * (`npm run grupo` o `/grupo`), y así un guardado no puede deshacer un ascenso.
+     *
+     * @returns {boolean} si existía el personaje
+     */
+    setCharacterGroup(name, groupId) {
+        const r = this.db.prepare('UPDATE players SET group_id = ? WHERE name = ? COLLATE NOCASE')
+            .run(Math.max(1, Number(groupId) || 1), String(name || '').trim());
+        return r.changes > 0;
+    }
+
+    /** El grupo de un personaje por su nombre, o null si no existe. */
+    characterGroup(name) {
+        const row = this.db.prepare('SELECT group_id FROM players WHERE name = ? COLLATE NOCASE')
+            .get(String(name || '').trim());
+        return row ? Number(row.group_id) || 1 : null;
     }
 
     /**
@@ -582,6 +624,11 @@ class Database {
                 maxHealth: row.max_health,
                 direction: row.direction,
                 position: { x: row.pos_x, y: row.pos_y, z: row.pos_z },
+                /** El grupo de acceso (groups.js), la ciudad y la montura (versión 4 del esquema). */
+                groupId: Number(row.group_id) || 1,
+                townId: Number(row.town_id) || 0,
+                mountId: Number(row.mount_id) || 0,
+                mounted: Number(row.mounted) === 1,
                 /**
                  * El aspecto. `looktype` a 0 significa que la fila es de ANTES de que
                  * existieran los aspectos, y quien la lea tiene que decidir qué hacer;
@@ -627,7 +674,7 @@ class Database {
                     vocation = ?, level = ?, experience = ?, health = ?, max_health = ?,
                     direction = ?, pos_x = ?, pos_y = ?, pos_z = ?, last_login = ?,
                     looktype = ?, lookhead = ?, lookbody = ?, looklegs = ?, lookfeet = ?,
-                    lookaddons = ?, sex = ?, progress = ?
+                    lookaddons = ?, sex = ?, progress = ?, town_id = ?, mount_id = ?, mounted = ?
                  WHERE id = ?`
             ).run(
                 player.vocation || 'None',
@@ -648,6 +695,9 @@ class Database {
                 Number(player.outfit && player.outfit.addons || 0),
                 player.sex === 'female' ? 'female' : 'male',
                 player.progress ? JSON.stringify(player.progress) : null,
+                Number(player.townId) || 0,
+                Number(player.mountId) || 0,
+                player.mounted ? 1 : 0,
                 Number(player.id)
             );
 

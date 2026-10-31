@@ -268,6 +268,11 @@ class Combat {
         if (this.world && !this.world.map.canSee(attacker.position.z, target.position.z)) {
             return { allowed: false, reason: 'differentFloor' };
         }
+        // Las reglas del mundo (reglas.js): zonas de protección, no-PvP y nivel de protección.
+        const bloqueo = this.world && this.world.combatBlocked ? this.world.combatBlocked(attacker, target) : null;
+        if (bloqueo) {
+            return { allowed: false, reason: 'protected', block: bloqueo };
+        }
 
         const range = this.attackRange(attacker);
         if (attacker.position.distanceTo(target.position) > range) {
@@ -407,6 +412,11 @@ class Combat {
         }
 
         target.damage(damage);
+
+        // Los dos quedan EN COMBATE (no pueden salir), y quien pega a otro jugador, con PZ lock.
+        if (opts.attacker && opts.attacker !== target && this.world && this.world.noteCombat) {
+            this.world.noteCombat(opts.attacker, target);
+        }
 
         // PvP: pegar a un jugador sin calavera pone la blanca al que pega.
         if (opts.attacker && opts.attacker !== target && opts.attacker.isPlayer && opts.attacker.isPlayer() &&
@@ -585,10 +595,14 @@ class Combat {
             }
         }
 
-        // --- 3. Reaparecer ---
-        const temple = this.world.map ? this.world.map.getWaypoint('temple') : null;
+        // --- 3. Reaparecer: en el templo de SU ciudad (reglas.js), y ya fuera de combate ---
+        const temple = this.world.templeOf ? this.world.templeOf(player)
+            : (this.world.map ? this.world.map.getWaypoint('temple') : null);
         const spawn = this.config.templePosition ||
             (temple ? { x: temple.x, y: temple.y, z: temple.z } : null);
+        if (this.world.clearCombat) {
+            this.world.clearCombat(player);
+        }
 
         if (spawn) {
             this.world.teleportCreature(player, spawn);
@@ -654,8 +668,10 @@ class Combat {
             return dropped;
         }
 
+        // `rateLoot` multiplica la probabilidad de cada objeto (con 2, sale el doble de a menudo).
+        const rateLoot = Number(this.config.rateLoot) > 0 ? Number(this.config.rateLoot) : 1;
         loot.forEach((entry) => {
-            const chance = entry.chance === undefined ? LOOT_CHANCE_BASE : Number(entry.chance);
+            const chance = (entry.chance === undefined ? LOOT_CHANCE_BASE : Number(entry.chance)) * rateLoot;
             if (this.random() * LOOT_CHANCE_BASE >= chance) {
                 return;
             }
@@ -718,7 +734,9 @@ class Combat {
         }
 
         const stages = this.config.experienceStages;
-        const gained = applyExperienceStages(base, player.level, stages);
+        // `rateExperience` multiplica DESPUÉS de las etapas: es el «por dos» de un evento.
+        const rate = Number(this.config.rateExperience) > 0 ? Number(this.config.rateExperience) : 1;
+        const gained = Math.max(1, Math.floor(applyExperienceStages(base, player.level, stages) * rate));
 
         // EN GRUPO SE REPARTE (como el «shared experience» de Tibia): a partes iguales entre los
         // del grupo que estén cerca, con un 20 % de premio por ir juntos.

@@ -163,8 +163,22 @@ module.exports = {
 };
 ```
 
-Los que vienen hechos: `/pos`, `/i`, `/item <id>`, `/outfit`, `/equipar`, `/quitar`, `/stats`,
-`/ayuda`, `/ir <lugar>` (viajar a un waypoint del mapa) y `/raid [nombre]`.
+Los que vienen hechos: `/pos`, `/i`, `/outfit`, `/equipar`, `/quitar`, `/stats`, `/ayuda`; de GM,
+`/ir <lugar>` (viajar a un waypoint del mapa) y `/montura`; de god, `/item <id>`, `/raid [nombre]` y
+`/grupo`.
+
+**Comandos del personal.** `access: 'gamemaster'` (o `'god'`, `'tutor'`…: los nombres de
+`data/XML/groups.js`) deja el comando sólo para ese grupo o uno mayor. Para los demás NO EXISTE: la
+frase se dice en voz alta como cualquier otra, igual que en TFS.
+
+```js
+module.exports = {
+    type: 'talkaction',
+    words: '/teletransportar',
+    access: 'gamemaster',
+    onSay(player, words, param) { /* ... */ return true; }
+};
+```
 
 Los **hechizos** se escriben igual, sin barra (`exura`, `exori flam`…), pero tienen su propio
 tipo, `spell`, más abajo.
@@ -428,6 +442,9 @@ Los tipos de daño (`type`): `physical`, `fire`, `energy`, `earth`, `ice`, `holy
 | `getStorageValue(clave)`, `setStorageValue(clave, n)` | La memoria del contenido (se guarda con el personaje) |
 | `sendTextMessage(texto)`, `sendCancelMessage(texto)`, `sendPrivateMessage(nombre, texto)` | Mensajes |
 | `getOutfit()`, `setOutfit(...)`, `addOutfit(id)`, `hasOutfit(id)` | Aspectos (`addOutfit` desbloquea uno) |
+| `addMount(id)`, `removeMount(id)`, `hasMount(id)`, `isMounted()` | Monturas de `data/XML/mounts.js` (`addMount` da una bloqueada) |
+| `getGroup()`, `hasGroup(nombre)` | Su grupo de acceso (`{ id, name, access }`) y si tiene ese o uno mayor |
+| `isInFight()`, `isPzLocked()` | En combate (no puede salir) y con PZ lock (no puede entrar en una zona de protección) |
 | `getParty()`, `partyInvite(nombre)`, `partyJoin(nombre)`, `partyLeave()` | El grupo |
 | `getSkull()` | `''`, `'blanca'` o `'roja'` |
 | `getWeaponType()` | El tipo del arma de la mano (`weaponType` de items.xml: `'sword'`, `'axe'`, `'club'`, `'distance'`...) o `'fist'` |

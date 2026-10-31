@@ -249,7 +249,10 @@ async function main() {
         check('un archivo con un error no rompe nada: se queda lo último bueno',
             roto.errores.length === 1 && e.world.vocationOf(k).gainHp === 50);
         e.dispatchTalkAction('/vocacion Druid', { playerId: k.id });
-        check('/vocacion cambia la vocación del personaje', k.vocation === 'Druid');
+        check('/vocacion no deja cambiarla a quien no es god', k.vocation !== 'Druid');
+        k.groupId = 6;
+        e.dispatchTalkAction('/vocacion Druid', { playerId: k.id });
+        check('/vocacion cambia la vocación del personaje (siendo god)', k.vocation === 'Druid');
         e.shutdown();
         fs.rmSync(tmp, { recursive: true, force: true });
     }

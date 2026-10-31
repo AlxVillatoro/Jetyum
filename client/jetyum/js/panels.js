@@ -1,5 +1,5 @@
 import { SLOT_INSIDE } from '../../../shared/js/protocol.mjs';
-import { pintarIconos } from './iconos.js';
+import { pintarIconos, svgDe } from './iconos.js';
 
 /**
  * Los dos paneles del cliente: el equipo -con la mochila- y los stats.
@@ -61,6 +61,39 @@ const SKILLS = [
     ['fist', 'Puño'], ['club', 'Maza'], ['sword', 'Espada'], ['axe', 'Hacha'],
     ['distance', 'Distancia'], ['shielding', 'Escudo'], ['fishing', 'Pesca']
 ];
+
+/**
+ * LOS ESTADOS de debajo de la vida, como los iconos de Tibia: cada uno es un booleano de
+ * PLAYER_STATS y sale sólo mientras es verdad. El motor decide; aquí sólo se enseña.
+ */
+const ESTADOS = [
+    { clave: 'inFight', icono: 'combate', clase: 'combate', titulo: 'En combate: no puedes salir del juego' },
+    { clave: 'pzLocked', icono: 'pz-bloqueado', clase: 'pz-bloqueado',
+        titulo: 'Protección bloqueada: no puedes entrar en una zona de protección' },
+    { clave: 'protectionZone', icono: 'zona-proteccion', clase: 'zona-proteccion',
+        titulo: 'En zona de protección: aquí no se puede luchar' },
+    { clave: 'mounted', icono: 'montura', clase: 'montura', titulo: 'Montado (Ctrl+R para desmontar)' }
+];
+
+/** Los estados que se pintaron la última vez (para no rehacer el HTML en cada PLAYER_STATS). */
+let ultimosEstados = null;
+
+/** Pinta los iconos de estado que estén encendidos en `st` (o ninguno, sin `st`). */
+function pintarEstados(st) {
+    const caja = document.getElementById('estados');
+    if (!caja) {
+        return;
+    }
+    const encendidos = st ? ESTADOS.filter((e) => st[e.clave] === true) : [];
+    const firma = encendidos.map((e) => e.clave).join(',');
+    if (firma === ultimosEstados) {
+        return;
+    }
+    ultimosEstados = firma;
+    caja.innerHTML = encendidos.map((e) =>
+        '<span class="estado ' + e.clase + '" title="' + e.titulo + '" aria-label="' + e.titulo + '">' +
+        svgDe(e.icono) + '</span>').join('');
+}
 
 /**
  * El dibujo que se cuelga del cursor mientras se arrastra.
@@ -209,6 +242,7 @@ function armazonDeRanuras() {
 export function limpiarPaneles() {
     ultimaFirma = null;
     pendiente = false;
+    pintarEstados(null);
 
     const contenedor = document.getElementById(ID.ranuras);
     if (contenedor) {
@@ -706,6 +740,8 @@ export function actualizarStats(jugador) {
     if (!st) {
         return;
     }
+
+    pintarEstados(st);
 
     const texto = (id, valor) => {
         const e = document.getElementById(id);

@@ -149,7 +149,8 @@ const extras = {
         const t = ((this.now() % ciclo) + ciclo) % ciclo / ciclo;   // 0..1: 0 = medianoche
         const sol = Math.max(0, Math.sin((t - 0.25) * 2 * Math.PI) * 0.5 + 0.5);
         const noche = this.nightLight === undefined ? 40 : this.nightLight;
-        return Math.round(noche + (255 - noche) * Math.min(1, sol * 1.6));
+        const dia = this.dayLight === undefined ? 255 : this.dayLight;
+        return Math.round(noche + (dia - noche) * Math.min(1, sol * 1.6));
     },
 
     /** La hora del día del mundo, «HH:MM» (para `Game.getWorldHour`). */
@@ -255,7 +256,8 @@ const extras = {
         }
         return grupo.members.filter((m) => this.players.has(m.id) && !m.isDead() &&
             m.position.z === player.position.z &&
-            Math.max(Math.abs(m.position.x - player.position.x), Math.abs(m.position.y - player.position.y)) <= ALCANCE_GRUPO);
+            Math.max(Math.abs(m.position.x - player.position.x), Math.abs(m.position.y - player.position.y)) <=
+                (Number(this.expShareRange) || ALCANCE_GRUPO));
     },
 
     /** ¿Van juntos? (los del mismo grupo no se ponen calavera al pegarse por error). */
@@ -295,7 +297,7 @@ const extras = {
         if (this.skullOf(attacker) !== 'roja') {
             const nueva = attacker.skull !== 'blanca';
             attacker.skull = 'blanca';
-            attacker.skullUntil = this.now() + DURA_CALAVERA_BLANCA;
+            attacker.skullUntil = this.now() + (Number(this.whiteSkullTime) || DURA_CALAVERA_BLANCA);
             if (nueva) {
                 this.emit('onSkullChange', attacker);
             }
@@ -308,11 +310,12 @@ const extras = {
             return;
         }
         const ahora = this.now();
-        killer.unjustifiedKills = (killer.unjustifiedKills || []).filter((t) => ahora - t < DURA_CALAVERA_ROJA);
+        const duraRoja = Number(this.redSkullTime) || DURA_CALAVERA_ROJA;
+        killer.unjustifiedKills = (killer.unjustifiedKills || []).filter((t) => ahora - t < duraRoja);
         killer.unjustifiedKills.push(ahora);
         if (killer.unjustifiedKills.length >= (this.redSkullKills || MUERTES_PARA_ROJA)) {
             killer.skull = 'roja';
-            killer.skullUntil = ahora + DURA_CALAVERA_ROJA;
+            killer.skullUntil = ahora + duraRoja;
             this.emit('onSkullChange', killer);
             this.sendTextMessage(killer.id, 'Llevas la calavera roja: has matado a demasiados inocentes.');
         }

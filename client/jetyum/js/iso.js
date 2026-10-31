@@ -24,7 +24,7 @@
  */
 
 import { Camera, TILE_PIXELS as TILE } from './camera.js';
-import { Renderer } from './renderer.js';
+import { Renderer, alturaDelJinete } from './renderer.js';
 import { DRAW as DRAW_KINDS } from './drawlist.js';
 
 /** El rombo de una casilla, en píxeles lógicos: proporción 2:1 como Habbo. */
@@ -214,10 +214,17 @@ export class IsoRenderer extends Renderer {
             ctx.restore();
         }
 
-        this._sombra(c.x, c.y + 4 - elevacion, 12, 6, 0.35);
-        let arriba = c.y - 40;
+        // La montura (si va montado) es otro cartel debajo, y el jinete se alza sobre ella, como en
+        // la vista de siempre (`Renderer._drawCreature`).
+        const montura = this._spriteMontura(op, ahora);
+        const alzado = alturaDelJinete(montura);
+        this._sombra(c.x, c.y + 4 - elevacion, montura ? 16 : 12, montura ? 8 : 6, 0.35);
+        if (montura) {
+            this._cartel(op, montura, elevacion);
+        }
+        let arriba = c.y - 40 - alzado;
         if (sprite) {
-            const d = this._cartel(op, sprite, elevacion);
+            const d = this._cartel(op, sprite, elevacion + alzado);
             // La cabeza: lo primero no transparente sería lo exacto; el borde del dibujo basta.
             arriba = d.y + Math.max(0, d.alto - TILE - 16);
         }

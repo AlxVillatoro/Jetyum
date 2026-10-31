@@ -180,8 +180,18 @@ export const SERVER = {
     /**
      * La ventana del personaje (el «Set Outfit» de Tibia, 0xC8): un objeto con el aspecto
      * actual, los aspectos que puede llevar y sus datos (nivel, vocación, vida, capacidad...).
+     * También las MONTURAS: `mounts` (`[{id, name, lookType, speed}]`, las que tiene), `mount`
+     * (el id de la elegida, 0 ninguna) y `mounted` (si va montado).
      */
     OUTFIT_WINDOW: 0xC8,
+
+    /**
+     * La respuesta a LOGOUT: `[ok, motivo]`. Con `ok` a 1 el motor ya lo ha sacado del mundo y el
+     * cliente puede cerrar; a 0, NO sale (está en combate) y `motivo` dice por qué. Hace falta
+     * porque salir ya no es siempre posible, y un cliente que cerrara sin esperar dejaría al
+     * personaje en el mundo hasta que acabe el combate, que es lo que pasa en Tibia.
+     */
+    LOGOUT_RESULT: 0x43,
 
     /**
      * Latido del servidor: el instante del motor y cuántos mensajes se enviaron.
@@ -234,8 +244,15 @@ export const CLIENT = {
     /** Pedir la ventana del personaje (0xD2 en Tibia). */
     REQUEST_OUTFIT: 0xD2,
 
-    /** Cambiar de aspecto: [0xD3, lookType, cabeza, cuerpo, piernas, pies, añadidos]. */
+    /**
+     * Cambiar de aspecto: [0xD3, lookType, cabeza, cuerpo, piernas, pies, añadidos, montura,
+     * montado]. `montura` es el id de `data/XML/mounts.js` (0 ninguna) y `montado` 1 o 0; los
+     * dos son opcionales (sin ellos, la montura no cambia).
+     */
     SET_OUTFIT: 0xD3,
+
+    /** Montar o desmontar la montura elegida (Ctrl+R en Tibia; el 0xD4 de su protocolo). */
+    TOGGLE_MOUNT: 0xD4,
 
     /** Mirar algo. */
     LOOK: 0x8C,
@@ -528,7 +545,9 @@ export const CREATURE_FIELD = {
     Z: 11,
     DIRECTION: 12,
     HEALTH: 13,
-    KIND: 14
+    KIND: 14,
+    /** El lookType de la MONTURA sobre la que va (0 si va a pie). Ver `data/XML/mounts.js`. */
+    MOUNT: 15
 };
 
 export const TILE_FIELD = {
@@ -732,7 +751,8 @@ export function describeCreature(creature) {
         creature.direction,
         healthPercent(creature),
         // 0 jugador, 1 monstruo, 2 NPC: el cliente sólo deja atacar a los monstruos y jugadores.
-        creature.isPlayer() ? 0 : (creature.kind === 'npc' ? 2 : 1)
+        creature.isPlayer() ? 0 : (creature.kind === 'npc' ? 2 : 1),
+        outfit.lookMount === undefined ? 0 : outfit.lookMount
     ];
 }
 

@@ -2,11 +2,13 @@
 
 /**
  * /ir — viajar a un lugar del mapa por su nombre (los «waypoints»): `/ir` los lista y
- * `/ir templo` lleva allí. Es el `/goto` de TFS, pensado para probar el mapa.
+ * `/ir templo` lleva allí. Es el `/goto` de TFS, pensado para probar el mapa: por eso es de GM (un
+ * jugador escaparía de cualquier pelea).
  */
 module.exports = {
     type: 'talkaction',
     words: '/ir',
+    access: 'gamemaster',
 
     onSay(player, words, param) {
         const nombre = String(param || '').trim();

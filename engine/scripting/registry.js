@@ -266,7 +266,11 @@ class ScriptRegistry {
                 existing.script + ' y ' + script);
         }
 
-        this.talkActions.push({ words: words, handler: definition.onSay, script: script });
+        // `access: 'gamemaster'`: sólo para ese grupo o uno mayor (data/XML/groups.js). Sin él, la
+        // usa cualquiera.
+        const access = definition.access === undefined || definition.access === null || definition.access === ''
+            ? null : String(definition.access);
+        this.talkActions.push({ words: words, handler: definition.onSay, script: script, access: access });
         this.registeredScripts.add(script);
         return { kind: 'talkaction', count: 1 };
     }
@@ -754,8 +758,18 @@ class ScriptRegistry {
     dispatchTalkAction(words, context) {
         const lower = String(words).toLowerCase();
 
+        const c = context || {};
+
+        /*
+         * UN COMANDO DE GM NO EXISTE PARA QUIEN NO LO ES, como en TFS: no se ejecuta y la frase se
+         * dice en voz alta como cualquier otra. Así un jugador no puede crear objetos ni lanzar
+         * raids, y tampoco descubre qué comandos hay probando.
+         */
+        const jugador = this.world && this.world.getCreature ? this.world.getCreature(Number(c.playerId) || 0) : null;
+        const puede = (t) => !t.access ||
+            !!(jugador && this.world.hasGroup && this.world.hasGroup(jugador, t.access));
         const matches = this.talkActions.filter((t) =>
-            lower === t.words || lower.startsWith(t.words + ' '));
+            (lower === t.words || lower.startsWith(t.words + ' ')) && puede(t));
 
         if (matches.length === 0) {
             return { handled: false };
@@ -765,7 +779,6 @@ class ScriptRegistry {
         matches.sort((a, b) => b.words.length - a.words.length);
         const entry = matches[0];
 
-        const c = context || {};
         const param = String(words).slice(entry.words.length).replace(/^\s+/, '');
 
         return this._invoke(entry, 'onSay', [

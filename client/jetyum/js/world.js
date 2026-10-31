@@ -264,6 +264,13 @@ export class ClientWorld {
                     this._updateCreature(message);
                     break;
 
+                case P.SERVER.LOGOUT_RESULT:
+                    // Salir YA NO ES SIEMPRE POSIBLE (en combate, no), así que el cliente espera a
+                    // que el motor diga si ha salido. El motivo es una frase del motor: se traduce.
+                    events.push({ type: 'logoutResult', ok: Number(message[1]) === 1,
+                        motivo: message[2] ? traducir(message[2]) : '' });
+                    break;
+
                 case P.SERVER.OUTFIT_WINDOW:
                     events.push({ type: 'outfitWindow', data: message[1] });
                     break;
@@ -489,7 +496,13 @@ export class ClientWorld {
                 body: message[F.BODY],
                 legs: message[F.LEGS],
                 feet: message[F.FEET],
-                addons: message[F.ADDONS]
+                addons: message[F.ADDONS],
+                /*
+                 * LA MONTURA va con el aspecto porque llega en el mismo mensaje y cambia con él: al
+                 * montar o desmontar el motor vuelve a mandar la criatura entera (CREATURE_ADD). Es
+                 * el lookType de la montura, 0 a pie; un motor antiguo no lo manda y se lee 0.
+                 */
+                lookMount: Number(message[F.MOUNT]) || 0
             },
             name: message[F.NAME],
             x: message[F.X],

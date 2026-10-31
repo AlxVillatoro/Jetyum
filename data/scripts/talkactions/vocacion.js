@@ -4,10 +4,8 @@
  * /vocacion — tu vocación y las reglas que te aplica `data/XML/vocations.js`.
  *
  *   /vocacion           dice tu vocación y sus números (vida por nivel, regeneración, daño...)
- *   /vocacion Knight    te cambia a esa vocación (servidor de desarrollo: sirve para los
- *                       personajes creados antes de que hubiera vocaciones, que se quedaron «None»)
- *
- * Como `/item` o `/raid`, es un comando de pruebas: en un servidor de verdad sería de un god.
+ *   /vocacion Knight    te cambia a esa vocación (sólo un god: sirve para los personajes creados
+ *                       antes de que hubiera vocaciones, que se quedaron «None»)
  */
 module.exports = {
     type: 'talkaction',
@@ -15,6 +13,11 @@ module.exports = {
 
     onSay(player, words, param) {
         const pedida = String(param || '').trim();
+        // Mirar la tuya lo puede cualquiera; CAMBIARLA, sólo un god (data/XML/groups.js).
+        if (pedida && !player.hasGroup('god')) {
+            player.sendTextMessage('Sólo un god puede cambiar la vocación.');
+            return true;
+        }
         if (pedida) {
             const r = player.setVocation(pedida);
             if (!r.ok) {

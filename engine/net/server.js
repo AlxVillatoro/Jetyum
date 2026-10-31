@@ -32,10 +32,25 @@ function createNetworkServer(options) {
         throw new Error('createNetworkServer necesita un motor');
     }
 
+    const config = (engine && engine.config) || {};
+
+    /*
+     * EL TAMAÑO DE UN MENSAJE tiene tope (`maxMessageBytes` de config.js, 64 KB si no se dice). El
+     * cliente manda mensajes de unos pocos bytes; sin tope, la librería acepta hasta 100 MB, y uno
+     * solo basta para que el servidor se pase un rato parseando basura.
+     */
     const wss = new WebSocketServer({
         port: opts.port,
-        host: opts.host || '0.0.0.0'
+        host: opts.host || '0.0.0.0',
+        maxPayload: Number(config.maxMessageBytes) || 64 * 1024
     });
+
+    /*
+     * Y EL RITMO: `maxPacketsPerSecond` mensajes por segundo y conexión (50 si no se dice). Lo que
+     * pase de ahí se descarta; quien mande más del TRIPLE se desconecta, porque eso ya no es un
+     * cliente con prisa sino uno que intenta tumbar el servidor.
+     */
+    const porSegundo = Number(config.maxPacketsPerSecond) || 50;
 
     /** Conexiones vivas: socket -> { session, queue } */
     const connections = new Map();
@@ -62,7 +77,7 @@ function createNetworkServer(options) {
             queue.push(message);
         });
 
-        const entry = { session: session, queue: queue, socket: socket };
+        const entry = { session: session, queue: queue, socket: socket, ventana: 0, cuenta: 0 };
         connections.set(socket, entry);
         stats.accepted += 1;
 
@@ -92,10 +107,27 @@ function createNetworkServer(options) {
                 ? parsed
                 : [parsed];
 
-            messages.forEach((message) => {
+            const segundo = Math.floor(Date.now() / 1000);
+            if (entry.ventana !== segundo) {
+                entry.ventana = segundo;
+                entry.cuenta = 0;
+            }
+            for (const message of messages) {
+                entry.cuenta += 1;
+                if (entry.cuenta > porSegundo * 3) {
+                    stats.flooded = (stats.flooded || 0) + 1;
+                    (log.warning || log.warn).call(log, 'desconectado por inundar el servidor (' + entry.cuenta +
+                        ' mensajes en un segundo)');
+                    socket.close(1008, 'demasiados mensajes');
+                    return;
+                }
+                if (entry.cuenta > porSegundo) {
+                    stats.rejected += 1;
+                    continue;
+                }
                 stats.messages += 1;
                 session.handle(message);
-            });
+            }
         });
 
         socket.on('close', () => {

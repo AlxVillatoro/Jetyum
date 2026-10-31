@@ -99,6 +99,16 @@ class GameSession {
         let player = null;
         let created = false;
 
+        // EL SERVIDOR LLENO (`maxPlayers` de config.js): no entra nadie más, salvo el personal
+        // (data/XML/groups.js), que tiene que poder entrar precisamente cuando hay problemas.
+        const maximo = Number(this._config().maxPlayers) || 0;
+        if (maximo > 0 && this.world.players.size >= maximo && !this._esPersonal(credentials_.character)) {
+            const motivo = 'el servidor esta lleno (' + maximo + ' jugadores): prueba mas tarde';
+            this._send(P.message(P.SERVER.LOGIN_ERROR, motivo));
+            this.stats.rejected += 1;
+            return { handled: false, reason: 'serverFull', error: motivo };
+        }
+
         if (this.repository && this.repository.isOpen) {
             const result = this.repository.login(credentials_);
 
@@ -224,12 +234,86 @@ class GameSession {
         return { x: 0, y: 0, z: 0 };
     }
 
+    /** La configuración del motor (config.js), o un objeto vacío en las pruebas sin motor. */
+    _config() {
+        return (this.engine && this.engine.config) || {};
+    }
+
+    /** ¿Ese personaje es del personal? Se mira en la base antes de cargarlo. */
+    _esPersonal(nombre) {
+        const db = this.repository && this.repository.isOpen && this.repository.database;
+        const id = db && nombre ? db.characterGroup(nombre) : null;
+        const grupo = id ? this.world.groupByName(id) : null;
+        return !!(grupo && grupo.access);
+    }
+
+    /**
+     * SALIR, como en Tibia: en combate no se puede (el motor contesta con LOGOUT_RESULT y el
+     * motivo, y el cliente se queda), ni en una casilla «noLogout». Si se puede, se contesta que
+     * sí y se cierra.
+     */
+    _handleLogout() {
+        const player = this.player;
+        let motivo = null;
+        if (player && !this.world.isStaff(player)) {
+            const tile = this.world.map ? this.world.map.getTile(player.position.x, player.position.y, player.position.z) : null;
+            if (this.world.isInFight(player)) {
+                motivo = 'No puedes salir mientras estás en combate.';
+            } else if (tile && tile.hasFlag && tile.hasFlag(4)) {   // TILE_FLAGS.NO_LOGOUT
+                motivo = 'No puedes salir aquí.';
+            }
+        }
+        if (motivo) {
+            this._send(P.message(P.SERVER.LOGOUT_RESULT, 0, motivo));
+            return { handled: true, action: 'logout', ok: false, reason: motivo };
+        }
+        this._send(P.message(P.SERVER.LOGOUT_RESULT, 1, ''));
+        this.close();
+        return { handled: true, action: 'logout', ok: true };
+    }
+
+    /**
+     * ¿Tiene que QUEDARSE en el mundo aunque se haya ido? Si se le cae la conexión (o cierra la
+     * pestaña) en pleno combate y fuera de una zona de protección, sí: el personaje sigue allí
+     * hasta que acabe el combate, como en Tibia. Si no, desconectarse sería la forma de escapar de
+     * cualquier pelea perdida.
+     */
+    _debeQuedarse() {
+        return !!(this.entered && this.player && !this.player.isDead() && this.engine && this.engine.scheduler &&
+            this.world.getPlayer(this.playerId) && this.world.isInFight(this.player) &&
+            !this.world.inProtectionZone(this.player));
+    }
+
     close() {
         if (this.closed) {
             return false;
         }
         this.closed = true;
 
+        if (this._debeQuedarse()) {
+            this._esperarFinDelCombate();
+            return true;
+        }
+        this._salirDelMundo();
+        return true;
+    }
+
+    /** Mira cada segundo si ya puede irse (se acabó el combate, murió o llegó a una zona segura). */
+    _esperarFinDelCombate() {
+        this.esperandoSalida = true;
+        const comprobar = () => {
+            if (this._debeQuedarse()) {
+                this.engine.scheduler.schedule(1000, comprobar, 'salida-' + this.player.name);
+                return;
+            }
+            this.esperandoSalida = false;
+            this._salirDelMundo();
+        };
+        this.engine.scheduler.schedule(1000, comprobar, 'salida-' + this.player.name);
+    }
+
+    /** Lo que se hace al irse de verdad: avisar a los scripts, guardar y sacarlo del mundo. */
+    _salirDelMundo() {
         // `onLogout` de los scripts, todavía en el mundo (por si guardan algo en un storage).
         if (this.entered && this.player && this.engine && this.engine.creatureEvent) {
             this.engine.creatureEvent('logout', this.player);
@@ -264,7 +348,6 @@ class GameSession {
                 this.manager.unregister(this);
             }
         }
-        return true;
     }
 
     // -----------------------------------------------------------------------
@@ -414,8 +497,10 @@ class GameSession {
                 return this._handlePrivate(message[1], message[2]);
 
             case P.CLIENT.LOGOUT:
-                this.close();
-                return { handled: true, action: 'logout' };
+                return this._handleLogout();
+
+            case P.CLIENT.TOGGLE_MOUNT:
+                return this._handleToggleMount();
 
             default:
                 this.stats.rejected += 1;
@@ -453,6 +538,9 @@ class GameSession {
             return { handled: true, action: 'walk', to: result.to, duration: result.duration };
         }
 
+        if (result.reason === 'pzLocked') {
+            this.sendText('No puedes entrar en una zona de protección después de atacar a otro jugador.');
+        }
         // Aun sin moverse, girar hacia donde se intentaba es lo que hace Tibia.
         this.view.markDirty(this.playerId);
         return { handled: true, action: 'walk', moved: false, reason: result.reason };
@@ -486,6 +574,11 @@ class GameSession {
             return { handled: true, action: 'command', text: message };
         }
 
+        if (!this._puedeHablar()) {
+            this.sendText('Estás hablando demasiado deprisa: espera un momento.');
+            return { handled: true, action: 'say', ok: false, reason: 'spam' };
+        }
+
         // El habla se difunde por cercanía, no por vista, y de eso se encarga el motor
         // al avisar del hecho de hablar: la sesión no reparte nada por su cuenta. Es lo
         // que hace que un monstruo que dice algo use el mismo camino.
@@ -500,6 +593,27 @@ class GameSession {
         }
 
         return { handled: true, action: 'say', text: message };
+    }
+
+    /**
+     * EL RITMO DEL CHAT: como mucho `talkSpamMessages` frases cada `talkSpamWindowMs` (config.js;
+     * 6 cada 5 s si no se dice). Sólo cuenta lo que se difunde —hablar y los mensajes privados—: los
+     * comandos y los hechizos tienen sus propias esperas. El personal no tiene límite.
+     */
+    _puedeHablar() {
+        const cfg = this._config();
+        const maximo = cfg.talkSpamMessages === undefined ? 6 : Number(cfg.talkSpamMessages);
+        if (!(maximo > 0) || this.world.isStaff(this.player)) {
+            return true;
+        }
+        const ventana = Number(cfg.talkSpamWindowMs) || 5000;
+        const ahora = this.world.now();
+        this.frases = (this.frases || []).filter((t) => ahora - t < ventana);
+        if (this.frases.length >= maximo) {
+            return false;
+        }
+        this.frases.push(ahora);
+        return true;
     }
 
     /** Un mensaje privado para este jugador. */
@@ -881,6 +995,10 @@ class GameSession {
         this._send(P.message(P.SERVER.OUTFIT_WINDOW, {
             outfit: { ...player.outfit },
             outfits: aspectos,
+            // Las monturas que puede llevar (data/XML/mounts.js), la elegida y si va montado.
+            mounts: this.world.mountsOf(player),
+            mount: Number(player.mountId) || 0,
+            mounted: player.mounted === true,
             stats: {
                 ...this.view.statsOf(player),
                 name: player.name,
@@ -902,10 +1020,42 @@ class GameSession {
             return { handled: true, action: 'setOutfit', ok: false, reason: permitido.reason };
         }
         this.player.outfit = pedido;
+
+        // LA MONTURA (opcional, detrás del aspecto): cuál y si va montado. El aspecto nuevo
+        // conserva la montura que llevaba (`_aplicarMontura` le vuelve a poner `lookMount`).
+        let avisoMontura = null;
+        if (valores && valores.length >= 7 && valores[6] !== undefined && valores[6] !== null) {
+            const r = this.world.chooseMount(this.player, Number(valores[6]) || 0);
+            if (!r.ok) {
+                avisoMontura = 'No puedes llevar esa montura: ' + r.reason + '.';
+            }
+        }
+        this.world._aplicarMontura(this.player);
+        if (!avisoMontura && valores && valores.length >= 8 && valores[7] !== undefined && valores[7] !== null) {
+            const r = this.world.rideMount(this.player, Number(valores[7]) === 1);
+            if (!r.ok) {
+                avisoMontura = r.reason.charAt(0).toUpperCase() + r.reason.slice(1) + '.';
+            }
+        }
+
         this.world.emit('onTileChanged', this.player.position, null);
         this.view.markDirty(this.playerId);
         this.sendText('Aspecto cambiado.');
-        return { handled: true, action: 'setOutfit', ok: true };
+        if (avisoMontura) {
+            this.sendText(avisoMontura);
+        }
+        return { handled: true, action: 'setOutfit', ok: true, mountWarning: avisoMontura };
+    }
+
+    /** Montar o desmontar (Ctrl+R): las reglas están en `reglas.js`. */
+    _handleToggleMount() {
+        const r = this.world.rideMount(this.player);
+        if (!r.ok) {
+            this.sendText(r.reason.charAt(0).toUpperCase() + r.reason.slice(1) + '.');
+            return { handled: true, action: 'toggleMount', ok: false, reason: r.reason };
+        }
+        this.view.markDirty(this.playerId);
+        return { handled: true, action: 'toggleMount', ok: true, mounted: this.player.mounted === true };
     }
 
     _handlePickup(x, y, z) {
@@ -1178,6 +1328,13 @@ class GameSession {
         if (target.kind === 'npc') {
             this.sendText('No puedes atacar a ' + target.name + '.');
             return { handled: true, action: 'attack', result: { hit: false, reason: 'npc' } };
+        }
+        // Las reglas del mundo (reglas.js): zonas de protección, no-PvP, nivel de protección.
+        const bloqueo = this.world.combatBlocked(this.player, target);
+        if (bloqueo) {
+            this.sendText(this.world.combatBlockedText(bloqueo));
+            this.player.target = null;
+            return { handled: true, action: 'attack', result: { hit: false, reason: 'protected', block: bloqueo } };
         }
 
         const result = this.combat.attack(this.player, target);
@@ -1468,6 +1625,10 @@ class GameSession {
 
     /** Un mensaje privado (a un jugador por su nombre) o al grupo (`#grupo`). */
     _handlePrivate(destino, texto) {
+        if (!this._puedeHablar()) {
+            this.sendText('Estás hablando demasiado deprisa: espera un momento.');
+            return { handled: true, action: 'privateMessage', ok: false, reason: 'spam' };
+        }
         const canal = destino === '#grupo' ? 'grupo' : 'privado';
         const r = this.world.sendPrivateMessage(this.player, destino, texto, canal);
         if (!r.ok) {

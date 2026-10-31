@@ -9,9 +9,15 @@
  *
  * El motor manda los datos (`OUTFIT_WINDOW`) y es quien decide si el aspecto elegido vale
  * (`SET_OUTFIT`): esta ventana sólo enseña y propone.
+ *
+ * LA MONTURA va en la misma ventana, como en Tibia: se elige entre las que tienes (◀ ▶, o
+ * «Ninguna»), se ve en el muñeco con el jinete encima, y la casilla «Montar» dice si vas montado.
+ * Al guardar viaja con el aspecto (los dos últimos campos de `SET_OUTFIT`); montar y desmontar
+ * sin abrir la ventana es Ctrl+R.
  */
 
 import { paletteColor, PALETTE_SIZE } from './sprites.js';
+import { alturaDelJinete } from './renderer.js';
 
 const PARTES = [
     { clave: 'head', nombre: 'Cabeza' },
@@ -40,7 +46,8 @@ function onzas(centesimas) {
 /**
  * @param {Object} opciones
  * @param {Object} opciones.provider el proveedor de sprites del juego (dibuja el muñeco)
- * @param {Function} opciones.guardar (outfit) => void, manda el aspecto al motor
+ * @param {Function} opciones.guardar (outfit, montura) => void, manda el aspecto al motor;
+ *        `montura` es `{id, montado}`, o null si el motor no manda monturas
  */
 export function crearVentanaPersonaje(opciones) {
     const { provider, guardar } = opciones;
@@ -51,6 +58,9 @@ export function crearVentanaPersonaje(opciones) {
     let caja = null;
     let lienzo = null;
     let animacion = null;
+    /** La montura elegida (su id; 0 ninguna) y si se va montado. */
+    let montura = 0;
+    let montado = false;
 
     function cerrar() {
         if (caja) {
@@ -74,16 +84,71 @@ export function crearVentanaPersonaje(opciones) {
         const ctx = lienzo.getContext('2d');
         ctx.imageSmoothingEnabled = false;
         ctx.clearRect(0, 0, lienzo.width, lienzo.height);
+        const ahora = performance.now();
         const sprite = provider.getCreature
-            ? provider.getCreature({ id: 0, outfit, direction: direccion, moving: true }, performance.now())
+            ? provider.getCreature({ id: 0, outfit, direction: direccion, moving: true }, ahora)
             : null;
-        if (sprite && sprite.canvas) {
-            const escala = Math.floor(Math.min(lienzo.width, lienzo.height) / Math.max(sprite.canvas.width, sprite.canvas.height)) || 1;
-            const w = sprite.canvas.width * escala;
-            const h = sprite.canvas.height * escala;
-            ctx.drawImage(sprite.canvas, (lienzo.width - w) / 2, (lienzo.height - h) / 2, w, h);
+        const def = monturaElegida();
+        const bajo = def && provider.getCreature
+            ? provider.getCreature({ id: 0, outfit: { lookType: def.lookType }, direction: direccion, moving: true }, ahora)
+            : null;
+        if (!bajo) {
+            // A pie, como siempre: el dibujo entero, centrado y ampliado lo que quepa.
+            if (sprite && sprite.canvas) {
+                const escala = Math.floor(Math.min(lienzo.width, lienzo.height) / Math.max(sprite.canvas.width, sprite.canvas.height)) || 1;
+                const w = sprite.canvas.width * escala;
+                const h = sprite.canvas.height * escala;
+                ctx.drawImage(sprite.canvas, (lienzo.width - w) / 2, (lienzo.height - h) / 2, w, h);
+            }
+        } else {
+            dibujarMontado(ctx, bajo, sprite);
         }
         animacion = requestAnimationFrame(dibujarMuneco);
+    }
+
+    /**
+     * EL MUÑECO MONTADO: los dos dibujos colocados como en el mapa (anclados a la casilla de abajo
+     * a la derecha, la montura debajo y el jinete alzado `alturaDelJinete`), y la caja que ocupan
+     * juntos, centrada y ampliada lo que quepa en el marco.
+     */
+    function dibujarMontado(ctx, bajo, jinete) {
+        const piezas = [{ s: bajo, alzado: 0 }];
+        if (jinete && jinete.canvas) {
+            piezas.push({ s: jinete, alzado: alturaDelJinete(bajo) });
+        }
+        let x0 = Infinity;
+        let y0 = Infinity;
+        let x1 = -Infinity;
+        let y1 = -Infinity;
+        piezas.forEach((p) => {
+            p.w = p.s.drawW || p.s.canvas.width;
+            p.h = p.s.drawH || p.s.canvas.height;
+            p.x = -(p.s.anchorX || 0);
+            p.y = 32 - (typeof p.s.anchorY === 'number' ? p.s.anchorY : p.h) - p.alzado;
+            x0 = Math.min(x0, p.x);
+            y0 = Math.min(y0, p.y);
+            x1 = Math.max(x1, p.x + p.w);
+            y1 = Math.max(y1, p.y + p.h);
+        });
+        const cabe = Math.min(lienzo.width, lienzo.height) / Math.max(x1 - x0, y1 - y0);
+        // Entera si se puede (el pixel art se amplía mejor así); a medios si no llega a 2.
+        const escala = cabe >= 2 ? Math.floor(cabe) : Math.max(0.5, Math.floor(cabe * 2) / 2);
+        const ox = (lienzo.width - (x1 - x0) * escala) / 2 - x0 * escala;
+        const oy = (lienzo.height - (y1 - y0) * escala) / 2 - y0 * escala;
+        piezas.forEach((p) => {
+            ctx.drawImage(p.s.canvas, Math.round(ox + p.x * escala), Math.round(oy + p.y * escala),
+                Math.round(p.w * escala), Math.round(p.h * escala));
+        });
+    }
+
+    /** Las monturas que tiene (las que manda el motor), o una lista vacía. */
+    function monturas() {
+        return datos && Array.isArray(datos.mounts) ? datos.mounts : [];
+    }
+
+    /** La montura elegida en la ventana, o null si ninguna. */
+    function monturaElegida() {
+        return montura ? monturas().find((m) => m.id === montura) || null : null;
     }
 
     function aspectoActual() {
@@ -199,15 +264,77 @@ export function crearVentanaPersonaje(opciones) {
             fila('Sexo', s.sex === 'female' ? 'mujer' : 'hombre');
         }
 
+        // --- La montura (sólo si el motor las manda: uno antiguo no sabe de ellas) ---
+        if (Array.isArray(datos.mounts)) {
+            der.appendChild(seccionMontura());
+        }
+
         cuerpo.append(izq, der);
         if (!animacion) {
             animacion = requestAnimationFrame(dibujarMuneco);
         }
     }
 
+    /**
+     * La sección «Montura»: ◀ nombre ▶ entre «Ninguna» y las que tienes, lo que suma a la
+     * velocidad y la casilla «Montar». Sin ninguna, una nota.
+     */
+    function seccionMontura() {
+        const seccion = el('div', 'pj-montura');
+        seccion.appendChild(el('div', 'pj-subtitulo', 'Montura'));
+        const lista = monturas();
+        if (!lista.length) {
+            seccion.appendChild(el('div', 'pj-nota', 'Todavía no tienes monturas.'));
+            return seccion;
+        }
+        // «Ninguna» es la primera de la vuelta: así también se quita la montura con las flechas.
+        const vuelta = [null].concat(lista);
+        const indice = Math.max(0, vuelta.findIndex((m) => (m ? m.id : 0) === montura));
+        const actual = vuelta[indice];
+        const selector = el('div', 'pj-fila pj-selector');
+        const ant = el('button', 'pj-icono', '◀');
+        ant.title = 'Montura anterior';
+        const sig = el('button', 'pj-icono', '▶');
+        sig.title = 'Montura siguiente';
+        const nombre = el('span', 'pj-nombre-aspecto', actual ? actual.name : 'Ninguna');
+        const cambiar = (paso) => {
+            const nueva = vuelta[(indice + paso + vuelta.length) % vuelta.length];
+            montura = nueva ? nueva.id : 0;
+            // Sin montura no se va montado.
+            if (!montura) {
+                montado = false;
+            }
+            pintar();
+        };
+        ant.onclick = () => cambiar(-1);
+        sig.onclick = () => cambiar(1);
+        selector.append(ant, nombre, sig);
+        seccion.appendChild(selector);
+        seccion.appendChild(el('div', 'pj-nota', actual
+            ? '+' + (Number(actual.speed) || 0) + ' de velocidad'
+            : 'Vas a pie.'));
+
+        const lab = el('label', 'pj-anadido' + (actual ? '' : ' desactivado'));
+        lab.title = actual ? 'Ir montado (también con Ctrl+R)' : 'Elige antes una montura';
+        const chk = el('input');
+        chk.type = 'checkbox';
+        chk.disabled = !actual;
+        chk.checked = !!actual && montado;
+        chk.onchange = () => { montado = chk.checked; };
+        lab.append(chk, document.createTextNode(' Montar'));
+        seccion.appendChild(lab);
+        return seccion;
+    }
+
     function abrir(nuevosDatos) {
         datos = nuevosDatos;
         outfit = { ...datos.outfit };
+        montura = Number(datos.mount) || 0;
+        // Una montura que ya no está en la lista es como no tener ninguna.
+        if (montura && !monturaElegida()) {
+            montura = 0;
+        }
+        montado = !!datos.mounted && montura !== 0;
         cerrar();
         caja = el('div', 'pj-ventana');
         caja.setAttribute('role', 'dialog');
@@ -220,8 +347,13 @@ export function crearVentanaPersonaje(opciones) {
         const cuerpo = el('div', 'pj-cuerpo');
         const pie = el('div', 'pj-pie');
         const ok = el('button', 'pj-guardar', 'Guardar aspecto');
-        ok.title = 'Ponerse este aspecto y estos colores';
-        ok.onclick = () => { guardar(outfit); cerrar(); };
+        const conMonturas = Array.isArray(datos.mounts);
+        ok.title = conMonturas ? 'Ponerse este aspecto, estos colores y esta montura'
+            : 'Ponerse este aspecto y estos colores';
+        ok.onclick = () => {
+            guardar(outfit, conMonturas ? { id: montura, montado: montado && montura !== 0 } : null);
+            cerrar();
+        };
         const cancelar = el('button', '', 'Cerrar');
         cancelar.onclick = cerrar;
         pie.append(cancelar, ok);

@@ -137,13 +137,28 @@ diamonds like Habbo, with the same sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE
   private messages (`@name text`), parties (`/party`), PvP skulls, depot, bows with arrows,
   effects and projectiles, and day and night with lights.
 - **NPCs.** Greet them with `hi` (or `hola`) and say goodbye with `bye` (or `adios`); they have
-  keywords and trade.
+  keywords and trade. The healer heals wounds and poison (`heal`), except in the middle of a
+  fight.
+- **Mounts.** Pick one in the character window (right click on yourself) and mount or dismount with
+  **Ctrl+R** or the «Ride» checkbox; they add speed. You can't mount inside a protection zone. They
+  live in `data/XML/mounts.js`: everyone has the pack bear and the pig, and the others are given
+  with `player.addMount(id)` or `/montura`.
+- **World rules** (`engine/world/reglas.js`). In a **protection zone** nobody hits or gets hit,
+  and monsters stop chasing you. PvP follows `worldType` and `protectionLevel` in `config.js`.
+  Whoever hits or gets hit is **in a fight** for `pzLocked` (one minute): they can't log out, and
+  if their connection drops the character stays until the fight ends. Attacking another player
+  also bars you from entering a protection zone for that time.
+- **Access groups** (`data/XML/groups.js`): player, tutor, senior tutor, gamemaster, community
+  manager and god. GM commands don't exist for a player. The first god is named with
+  `npm run grupo -- <character> god` (with the server stopped), and in game a god gives groups
+  with `/grupo`.
 - **Worlds.** The default map is **`jetyum`** (`data/world/jetyum.map.json`), with the OpenTibia
   Sprite Pack art: temple, square with a market, houses, shop, smithy, bank, park and, outside,
   forest, ruins, farm, lake and goblin camp. The **village** (`aldea.map.json`) is made with the HD
   art.
-- **Chat commands:** `/ir <place>`, `/spells`, `/pos`, `/i`, `/item <id>`, `/outfit …`,
-  `/raid [name]`, `/wasd` and `/ayuda` (help).
+- **Chat commands:** `/spells`, `/pos`, `/i`, `/outfit …`, `/stats`, `/party`, `/vocacion`,
+  `/wasd` and `/ayuda` (help). GM: `/ir <place>` and `/montura`. God: `/item <id>`,
+  `/raid [name]`, `/grupo` and changing the vocation with `/vocacion <name>`.
 
 The whole game (actions, movements, commands, events, global events and raids) is written with the
 server's scripting API: see [docs/SCRIPTS.md](docs/SCRIPTS.md).
@@ -253,6 +268,7 @@ it writes to temporary copies):
 | `test:scripts` | The scripting API and the game built with it |
 | `test:arte` | The HD art: templates, importer and the village |
 | `test:i18n` | Languages: translation, dictionaries and that every text on the pages has a translation |
+| `test:reglas` | Access groups, protection zones and PvP, in-fight and PZ lock, network protection, rates, the healer and mounts |
 
 `npm run check:jetyum` also checks that the client and the editor load all their modules.
 

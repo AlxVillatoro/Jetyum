@@ -144,7 +144,8 @@ class Condiciones {
             return def.clase === 'velocidad' ? total + def.signo * Math.abs(c.value) : total;
         }, 0);
         creature.condSpeed = porCondicion;
-        creature.speed = Math.max(40, creature.baseSpeed + (creature.speedBonus || 0) + porCondicion);
+        creature.speed = Math.max(40, creature.baseSpeed + (creature.speedBonus || 0) + porCondicion +
+            (creature.mountSpeed || 0));
     }
 
     /** Un paso del reloj: golpea, cura y caduca lo que toque. Lo llama el mundo en cada tick. */

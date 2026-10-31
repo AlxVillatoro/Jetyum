@@ -143,6 +143,12 @@ function createGame(deps) {
         if (!world.combat) {
             return { hit: false, damage: 0 };
         }
+        // Las reglas del mundo valen también para los hechizos: en una zona de protección no se
+        // hiere a nadie, ni a un jugador donde el PvP no está permitido (reglas.js). Curar, sí.
+        const bloqueo = atacante && world.combatBlocked ? world.combatBlocked(atacante, objetivo) : null;
+        if (bloqueo) {
+            return { hit: false, damage: 0, reason: 'protected', block: bloqueo };
+        }
         return world.combat.applyDamage(objetivo, Math.abs(cantidad), {
             attacker: atacante,
             element: tipo === 'physical' ? null : tipo,
@@ -484,6 +490,38 @@ function createGame(deps) {
         /** Un mensaje a todos los jugadores conectados (los anuncios de las raids). */
         broadcastMessage(text) {
             return deps.globalClock ? deps.globalClock.anunciar(text) : 0;
+        },
+
+        /**
+         * CAMBIA EL GRUPO DE ACCESO de un personaje (data/XML/groups.js), esté dentro o no: el de
+         * dentro lo nota ya, y se guarda en la base. `grupo` es el nombre (`'gamemaster'`) o el id.
+         *
+         * @returns {{ok: boolean, reason?: string, group?: Object}}
+         */
+        setPlayerGroup(nombre, grupo) {
+            const def = world.groupByName(grupo);
+            if (!def) {
+                return { ok: false, reason: 'no existe el grupo «' + grupo + '»' };
+            }
+            const dentro = world.playerByName(nombre);
+            const guardado = world.guardarGrupo ? world.guardarGrupo(dentro ? dentro.name : nombre, def.id) : false;
+            if (!dentro && !guardado) {
+                return { ok: false, reason: 'no existe ningún personaje llamado «' + nombre + '»' };
+            }
+            if (dentro) {
+                dentro.groupId = def.id;
+            }
+            return { ok: true, group: { ...def } };
+        },
+
+        /** Los grupos de acceso, de menos a más poder. */
+        getGroups() {
+            return Array.from(world.groups.values()).sort((a, b) => a.id - b.id).map((g) => ({ ...g }));
+        },
+
+        /** Las monturas de data/XML/mounts.js. */
+        getMounts() {
+            return Array.from(world.mountTypes.values()).map((m) => ({ ...m }));
         },
 
         /** Lanza una raid por su nombre (`data/scripts/raids/`). */

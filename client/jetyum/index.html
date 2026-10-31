@@ -235,6 +235,18 @@
         pointer-events: none;
         font-variant-numeric: tabular-nums;
     }
+    /*
+     * LOS ESTADOS (panels.js): los iconos de Tibia debajo de la vida, sólo mientras están puestos.
+     * La fila guarda su alto aunque esté vacía, para que la ventana no salte al entrar en combate.
+     */
+    .estados { display: flex; gap: 3px; min-height: 18px; margin-top: 3px; }
+    .estado { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+        background: #1a1a22; border: 1px solid #000; }
+    .estado svg { width: 13px; height: 13px; }
+    .estado.combate { color: #f0d060; }
+    .estado.pz-bloqueado { color: #ff5a4a; background: #3a1616; }
+    .estado.zona-proteccion { color: #60d080; }
+    .estado.montura { color: #d0b080; }
 
     /*
      * EL EQUIPO: las diez ranuras de Tibia en su sitio (collar, cabeza y mochila; arma, cuerpo y
@@ -701,6 +713,11 @@
     .pj-barra div { height: 100%; background: #c04a4a; }
     .pj-pie { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 10px; border-top: 1px solid #2a2a3a; }
     .pj-guardar { background: #1f4a36 !important; border-color: #3fd6a0 !important; }
+    /* La montura, al pie de la ficha (personaje.js). */
+    .pj-montura { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid #2a2a3a; }
+    .pj-subtitulo { font-weight: bold; color: #cfe6ff; }
+    .pj-montura .pj-nota { min-width: 0; }
+    .pj-montura .pj-anadido { align-self: center; }
 </style>
 </head>
 <body>
@@ -762,6 +779,7 @@
                 <progress id="mana-bar" value="0" max="1"></progress>
                 <span class="value" id="mana-value">— / —</span>
             </div>
+            <div class="estados" id="estados"></div>
             </div>
         </section>
 
@@ -854,6 +872,7 @@
                     <tr><td>Arrastrar</td><td>coger y mover cosas: al suelo, a tu equipo, a tu mochila o a un contenedor abierto</td></tr>
                     <tr><td>E</td><td>usar lo que tienes delante (en modo /wasd)</td></tr>
                     <tr><td>Escape</td><td>dejar de atacar</td></tr>
+                    <tr><td>Ctrl+R</td><td>montar o desmontar (la montura se elige en tu ficha; no se monta en una zona de protección)</td></tr>
                     <tr><td>F1–F12, Shift+F1–F12</td><td>tus <b>hotkeys</b>: magias y objetos (configúralas con <b>Ctrl+K</b> o el botón del teclado junto a la capacidad)</td></tr>
                     <tr><td>Escribir</td><td>va directo al chat; Intro lo manda (con /wasd, Intro para empezar a escribir)</td></tr>
                     <tr><td>exura</td><td>curarte (gasta maná)</td></tr>

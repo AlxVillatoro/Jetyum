@@ -641,9 +641,35 @@ function main() {
 
     {
         const id = session.playerId;
+        const player = session.player;
         check('el jugador esta en el mundo', world.getPlayer(id) !== null);
 
+        // EN COMBATE (acaba de pegar a la rata) NO SE PUEDE SALIR: el motor contesta que no.
+        check('despues de pegar a la rata esta en combate', world.isInFight(player));
+        sent.length = 0;
+        const salida = session.handle(P.message(P.CLIENT.LOGOUT));
+        const respuesta = sent.find((m) => m[0] === P.SERVER.LOGOUT_RESULT);
+        check('en combate, pedir salir se rechaza y se dice por que',
+            salida.ok === false && respuesta && respuesta[1] === 0 &&
+            /combate/.test(respuesta[2]) && world.getPlayer(id) !== null,
+            JSON.stringify(respuesta));
+
+        // Y SI SE LE CAE LA CONEXION, EL PERSONAJE SE QUEDA hasta que acabe el combate: si no,
+        // desconectarse seria la forma de escapar de cualquier pelea perdida.
+        const reloj = { t: world.now() };
+        const nowOriginal = world.now;
+        const schedNowOriginal = engine.scheduler.now;
+        world.now = () => reloj.t;
+        engine.scheduler.now = () => reloj.t;
         session.close();
+        check('si se cae la conexion en combate, se queda en el mundo', world.getPlayer(id) !== null);
+        // Mientras le sigan pegando, sigue en combate (y se queda): se quitan los monstruos y se
+        // deja pasar el tiempo del combate.
+        Array.from(world.monsters.keys()).forEach((monstruo) => world.removeMonster(monstruo));
+        reloj.t += world.pzLockMs() + 2000;
+        engine.scheduler.tick(1000);
+        world.now = nowOriginal;
+        engine.scheduler.now = schedNowOriginal;
 
         check('al desconectar sale del mundo',
             world.getPlayer(id) === null && engine.view.snapshot(id) === null,

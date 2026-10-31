@@ -127,6 +127,25 @@ function createEngine(options) {
     world.outfitTypes = outfitTypes;
     world.vocations = vocations;
 
+    // Las MONTURAS y los GRUPOS de acceso: `data/XML/mounts.js` y `groups.js` (el `mounts.xml` y
+    // `groups.xml` de TFS). Sin el archivo de grupos sólo existe el de jugador, y ningún comando
+    // de GM se puede usar: es el lado seguro.
+    world.mountTypes = new Map();
+    const mountsPath = Definiciones.resolverRuta(resolve(config.mountsXml || 'data/XML/mounts.js'));
+    if (mountsPath) {
+        world.mountTypes = Definiciones.loadMounts(mountsPath);
+        log.info(path.basename(mountsPath) + ': ' + world.mountTypes.size + ' monturas');
+    }
+    world.groups = new Map([[1, { ...Definiciones.GRUPO_JUGADOR }]]);
+    const groupsPath = Definiciones.resolverRuta(resolve(config.groupsXml || 'data/XML/groups.js'));
+    if (groupsPath) {
+        world.groups = Definiciones.loadGroups(groupsPath);
+        log.info(path.basename(groupsPath) + ': ' + world.groups.size + ' grupos');
+    } else {
+        log.warning('no se encontro ' + resolve(config.groupsXml || 'data/XML/groups.js') +
+            ': nadie podra usar los comandos de GM');
+    }
+
     /**
      * RECARGAR vocations.js y outfits.js sin reiniciar: se vuelven a leer y se aplican ya a los
      * jugadores conectados (vida y maná máximos, velocidad, armadura, ritmo de regeneración).
@@ -450,6 +469,22 @@ function createEngine(options) {
     world.depotItemId = Number(config.depotItemId) || 0;
     world.redSkullKills = Number(config.redSkullKills) || 3;
 
+    // LAS REGLAS (reglas.js y extras.js): PvP, zonas, combate, calaveras, grupo y luz. Todas salen
+    // de config.js; sin la clave, el valor de siempre.
+    world.worldType = String(config.worldType || 'pvp').toLowerCase();
+    world.rateSkill = Number(config.rateSkill) > 0 ? Number(config.rateSkill) : 1;
+    world.rateMagic = Number(config.rateMagic) > 0 ? Number(config.rateMagic) : 1;
+    world.protectionLevel = Number(config.protectionLevel) || 0;
+    world.pzLocked = config.pzLocked === undefined ? undefined : Number(config.pzLocked);
+    world.whiteSkullTime = Number(config.whiteSkullTime) || undefined;
+    world.redSkullTime = Number(config.redSkullTime) || undefined;
+    world.expShareRange = Number(config.expShareRange) || undefined;
+    world.newPlayerTownId = Number(config.newPlayerTownId) || 0;
+    if (config.defaultWorldLight) {
+        world.dayLight = Math.max(0, Math.min(255, Number(config.defaultWorldLight.level) || 255));
+        world.lightColor = Number(config.defaultWorldLight.color) || 215;
+    }
+
     // La IA se crea ANTES de cargar los spawns: se suscribe a la aparicion de
     // criaturas, asi que los monstruos que aparezcan despues empiezan a pensar
     // solos. Si se creara despues, los del arranque se quedarian quietos.
@@ -504,7 +539,7 @@ function createEngine(options) {
     // --- 11. Spawns -------------------------------------------------------
     // El gestor se suscribe por su cuenta al evento de muerte: es quien lo
     // necesita, asi que no depende de que el motor se acuerde de cablearlo.
-    const spawner = new Spawner({ world: world, scheduler: scheduler, logger: log });
+    const spawner = new Spawner({ world: world, scheduler: scheduler, logger: log, rateSpawn: config.rateSpawn });
 
     let spawnStats = { spawns: 0, monsters: 0 };
     if (world.map) {
@@ -638,6 +673,9 @@ function createEngine(options) {
 
         repository.open();
         persistenceStats = repository.database.stats_();
+
+        // El GRUPO de acceso se guarda aparte del personaje (`/grupo`, también con él desconectado).
+        world.guardarGrupo = (nombre, grupoId) => repository.database.setCharacterGroup(nombre, grupoId);
 
         log.info('personajes guardados: ' + persistenceStats.players +
             ' en ' + persistenceStats.accounts + ' cuenta(s)');

@@ -25,6 +25,8 @@ const DEFAULTS = {
     itemsOtb: 'data/items/items.otb',
     vocationsXml: 'data/XML/vocations.js',
     outfitsXml: 'data/XML/outfits.js',
+    mountsXml: 'data/XML/mounts.js',
+    groupsXml: 'data/XML/groups.js',
     scriptsDirectory: 'data/scripts',
     monstersDirectory: 'data/monsters',
     worldDirectory: 'data/world',
@@ -34,16 +36,23 @@ const DEFAULTS = {
     enginePort: 8081,
     webPort: 8000,
     maxPlayers: 200,
+    maxPacketsPerSecond: 50,
+    maxMessageBytes: 64 * 1024,
+    talkSpamMessages: 6,
+    talkSpamWindowMs: 5000,
     scriptingEnabled: true,
     showScriptsLogInConsole: true,
     scriptErrorPolicy: 'abort',
     worldType: 'pvp',
     protectionLevel: 1,
+    pzLocked: 60 * 1000,
+    redSkullKills: 3,
+    redSkullTime: 24 * 60 * 60 * 1000,
+    whiteSkullTime: 15 * 60 * 1000,
+    expShareRange: 30,
     tickIntervalMs: 50,
     newPlayerLevel: 1,
-    newPlayerHealth: 150,
-    newPlayerCap: 400,
-    newPlayerSpawnPos: { x: 100, y: 100, z: 7 },
+    newPlayerTownId: 1,
     // El objeto con el que empieza un personaje nuevo. Sin el no tendria donde llevar nada, y
     // como sin contenedor no se puede coger del suelo -ni una mochila-, el personaje se quedaria
     // sin poder jugar. Es lo mismo que hace Tibia.
@@ -58,6 +67,7 @@ const DEFAULTS = {
     corpseFallbackDuration: 120,
     rateExperience: 1,
     rateSkill: 1,
+    rateMagic: 1,
     rateLoot: 1,
     rateSpawn: 1
 };

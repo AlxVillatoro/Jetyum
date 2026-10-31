@@ -387,5 +387,47 @@ export default {
     // data/scripts/talkactions/vocacion.js
     'No existe la vocación «{vocacion}».': 'There is no vocation «{vocacion}».',
     'Vocación: {vocacion} (nivel {nivel}). Por nivel: +{vida} vida, +{mana} maná, +{cap} oz. Regenera {rvida} de vida cada {tvida} s y {rmana} de maná cada {tmana} s. Daño cuerpo a cuerpo x{melee}, a distancia x{dist}, golpe cada {velocidad} ms.':
-        'Vocation: {vocacion} (level {nivel}). Per level: +{vida} health, +{mana} mana, +{cap} oz. Regenerates {rvida} health every {tvida} s and {rmana} mana every {tmana} s. Melee damage x{melee}, distance x{dist}, one hit every {velocidad} ms.'
+        'Vocation: {vocacion} (level {nivel}). Per level: +{vida} health, +{mana} mana, +{cap} oz. Regenerates {rvida} health every {tvida} s and {rmana} mana every {tmana} s. Melee damage x{melee}, distance x{dist}, one hit every {velocidad} ms.',
+
+    // -----------------------------------------------------------------------
+    // Reglas del mundo (engine/world/reglas.js, engine/net/session.js): zonas, PvP, combate,
+    // salida, chat y servidor lleno
+    // -----------------------------------------------------------------------
+    'No puedes atacar desde una zona de protección.': 'You may not attack from a protection zone.',
+    'No puedes atacar a quien está en una zona de protección.': 'You may not attack someone in a protection zone.',
+    'En este mundo no se puede atacar a otros jugadores.': 'Attacking other players is not allowed in this world.',
+    'Aquí no se puede atacar a otros jugadores.': 'You may not attack other players here.',
+    'No puedes atacar a otros jugadores hasta el nivel {n}.': 'You may not attack other players until level {n}.',
+    'Ese jugador está protegido hasta el nivel {n}.': 'That player is protected until level {n}.',
+    'No puedes atacar ahora.': 'You cannot attack right now.',
+    'No puedes entrar en una zona de protección después de atacar a otro jugador.':
+        'You may not enter a protection zone after attacking another player.',
+    'No puedes salir mientras estás en combate.': 'You may not log out during a fight.',
+    'No puedes salir aquí.': 'You may not log out here.',
+    'el servidor esta lleno ({n} jugadores): prueba mas tarde': 'the server is full ({n} players): try again later',
+    'Estás hablando demasiado deprisa: espera un momento.': 'You are talking too fast: wait a moment.',
+
+    // Monturas (reglas.js y la ventana del personaje)
+    'No puedes llevar esa montura: {motivo}.': 'You cannot use that mount: {motivo}.',
+    'esa montura no existe': 'that mount does not exist',
+    'todavía no tienes la montura «{nombre}»': 'you do not have the «{nombre}» mount yet',
+    'la montura «{nombre}» es premium': 'the «{nombre}» mount is premium',
+    'Esa montura no existe.': 'That mount does not exist.',
+    'Todavía no tienes la montura «{nombre}».': 'You do not have the «{nombre}» mount yet.',
+    'La montura «{nombre}» es premium.': 'The «{nombre}» mount is premium.',
+    'Espera un momento antes de volver a montar o desmontar.': 'Wait a moment before mounting or dismounting again.',
+    'Elige primero una montura en la ventana del personaje.': 'Choose a mount in the character window first.',
+    'No puedes montar en una zona de protección.': 'You may not mount in a protection zone.',
+
+    // Comandos del personal (data/scripts/talkactions/personal.js, vocacion.js)
+    'Sólo un god puede cambiar la vocación.': 'Only a god can change the vocation.',
+    'Grupos: {lista}. Uso: /grupo <personaje>, <grupo>': 'Groups: {lista}. Usage: /grupo <character>, <group>',
+    '{nombre} es ahora del grupo «{grupo}».': '{nombre} is now in the «{grupo}» group.',
+    'No se pudo: {motivo}.': 'Could not do it: {motivo}.',
+    'no existe el grupo «{grupo}»': 'there is no «{grupo}» group',
+    'no existe ningún personaje llamado «{nombre}»': 'there is no character named «{nombre}»',
+    'Monturas: {lista}. Uso: /montura <id>[, personaje]': 'Mounts: {lista}. Usage: /montura <id>[, character]',
+    'No existe la montura «{montura}».': 'There is no «{montura}» mount.',
+    'No hay nadie dentro llamado «{nombre}».': 'There is nobody online named «{nombre}».',
+    '{nombre} tiene ahora la montura «{montura}».': '{nombre} now has the «{montura}» mount.'
 };

@@ -374,11 +374,27 @@ export class Renderer {
             dibujarCirculoObjetivo(this.ctx, Math.round(op.sx) + TILE / 2 - elev, Math.round(op.sy) + TILE / 2 + 2 - elev, ahora);
         }
 
+        /*
+         * LA MONTURA, DEBAJO Y PRIMERO, y el jinete encima y ALZADO. Los aspectos del pack no
+         * tienen la postura de «montado» (el patrón Z de Tibia), así que el truco es el de siempre:
+         * el muñeco de pie, subido lo que mide el lomo (ver `alturaDelJinete`). La montura mira y
+         * anda igual que quien la lleva, con el mismo fotograma.
+         */
+        const montura = this._spriteMontura(op, ahora);
+        const alzado = alturaDelJinete(montura);
+        const elevacion = this._elevacion ? this._elevacion.valor : 0;
+        if (montura) {
+            this.ctx.drawImage(montura.canvas,
+                x - (montura.anchorX || 0) - elevacion,
+                y - montura.anchorY + TILE - elevacion,
+                montura.drawW || montura.canvas.width,
+                montura.drawH || montura.canvas.height);
+        }
+
         if (sprite) {
-            const elevacion = this._elevacion ? this._elevacion.valor : 0;
             this.ctx.drawImage(sprite.canvas,
-                Math.round(op.sx) - (sprite.anchorX || 0) - elevacion,
-                Math.round(op.sy) - sprite.anchorY + TILE - elevacion,
+                x - (sprite.anchorX || 0) - elevacion,
+                y - sprite.anchorY + TILE - elevacion - alzado,
                 sprite.drawW || sprite.canvas.width,
                 sprite.drawH || sprite.canvas.height);
         }
@@ -386,8 +402,30 @@ export class Renderer {
         // de las primeras versiones se veía como rayas y cuadrados al entrar. Mientras carga, el
         // cliente enseña la pantalla de carga encima.
 
-        const elevacionEtiqueta = this._elevacion ? this._elevacion.valor : 0;
-        this._etiquetas.push({ x: x - elevacionEtiqueta, y: y - elevacionEtiqueta, op });
+        // El nombre y la vida suben con el jinete.
+        this._etiquetas.push({ x: x - elevacion, y: y - elevacion - alzado, op });
+    }
+
+    /**
+     * EL DIBUJO DE LA MONTURA de una criatura, o null si va a pie. Se pide al proveedor como un
+     * aspecto más (el lookType de la montura, sin colores) con la dirección, el paso y el `id` del
+     * jinete, que es lo que reparte el fotograma de andar: así los dos mueven las patas a la vez.
+     *
+     * La operación que se le pasa es SIEMPRE LA MISMA, rellenada en cada llamada: esto corre por
+     * cada criatura y cada fotograma, y un objeto nuevo cada vez sería basura para el recolector.
+     */
+    _spriteMontura(op, ahora) {
+        const lookMount = op.outfit ? Number(op.outfit.lookMount) || 0 : 0;
+        if (!lookMount || !this.provider || !this.provider.getCreature) {
+            return null;
+        }
+        const m = this._opMontura || (this._opMontura = { id: 0, direction: 0, direction8: undefined, moving: false, outfit: { lookType: 0 } });
+        m.id = op.id;
+        m.direction = op.direction;
+        m.direction8 = op.direction8;
+        m.moving = op.moving;
+        m.outfit.lookType = lookMount;
+        return this.provider.getCreature(m, ahora) || null;
     }
 
     /**
@@ -660,6 +698,22 @@ export function dibujarCirculoObjetivo(ctx, cx, cy, ahora) {
     ctx.arc(cx, cy, radio - 1.5, 0, Math.PI * 2, true);
     ctx.fill();
     ctx.restore();
+}
+
+/**
+ * CUÁNTO SE ALZA EL JINETE sobre su montura, en píxeles lógicos (32 por casilla).
+ *
+ * Depende del alto de la montura: el lomo de una de 2x2 (el oso, el jabalí, la escolopendra) cae
+ * unos 10 px por encima del suelo de la casilla, y el de una de 1x1 (el cerdo, el escarabajo), la
+ * mitad. Proporcional al alto (5 px por casilla) y entre 4 y 12, para que un dibujo raro no deje
+ * al jinete flotando. Sin montura, 0.
+ */
+export function alturaDelJinete(montura) {
+    if (!montura) {
+        return 0;
+    }
+    const alto = montura.drawH || (montura.canvas && montura.canvas.height) || TILE;
+    return Math.max(4, Math.min(12, Math.round(alto * 5 / TILE)));
 }
 
 /** Lo que dura cada fotograma de un efecto, en milisegundos (el `durations` del pack). */

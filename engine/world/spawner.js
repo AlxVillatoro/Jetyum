@@ -41,6 +41,9 @@ class Spawner {
         /** Inyectable para que las pruebas sean deterministas. */
         this.random = opts.random || Math.random;
 
+        /** `rateSpawn` de config.js: con 2, los monstruos vuelven en la mitad de tiempo. */
+        this.rate = Number(opts.rateSpawn) > 0 ? Number(opts.rateSpawn) : 1;
+
         /** Lista de puntos de aparición, con el monstruo vivo que tienen. */
         this.spawns = [];
 
@@ -177,7 +180,7 @@ class Spawner {
         entry.activeMonsterId = null;
 
         if (this.scheduler) {
-            this.scheduler.schedule(entry.interval, () => {
+            this.scheduler.schedule(Math.round(entry.interval / this.rate), () => {
                 this.stats.respawns += 1;
                 this.spawn(entry);
             }, 'respawn-' + entry.monster);

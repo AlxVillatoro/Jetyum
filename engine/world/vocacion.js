@@ -89,7 +89,8 @@ function aplicarNivel(jugador, vocacion, opciones) {
     jugador.maxHealth = maxHealthPara(vocacion, jugador.level);
     jugador.maxMana = maxManaPara(vocacion, jugador.level);
     jugador.baseSpeed = velocidadPara(vocacion, jugador.level);
-    jugador.speed = jugador.baseSpeed + (jugador.speedBonus || 0) + (jugador.condSpeed || 0);
+    jugador.speed = jugador.baseSpeed + (jugador.speedBonus || 0) + (jugador.condSpeed || 0) +
+        (jugador.mountSpeed || 0);
     jugador.soulMax = vocacion.soulMax;
 
     if (curar) {

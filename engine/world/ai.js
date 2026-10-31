@@ -177,6 +177,10 @@ class MonsterAI {
         if (monster.position.z !== target.position.z) {
             return false;
         }
+        // En una zona de protección no se le puede pegar: el monstruo lo deja, como en Tibia.
+        if (this.world.inProtectionZone && this.world.inProtectionZone(target)) {
+            return false;
+        }
         return monster.position.distanceTo(target.position) <= CHASE_RADIUS;
     }
 
@@ -190,6 +194,9 @@ class MonsterAI {
                 return;
             }
             if (player.position.z !== monster.position.z) {
+                return;
+            }
+            if (this.world.inProtectionZone && this.world.inProtectionZone(player)) {
                 return;
             }
 

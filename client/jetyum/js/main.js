@@ -63,6 +63,9 @@ import {
 
 const REPEAT_DELAY = 150;
 
+/** Lo que se espera la respuesta a «salir» (LOGOUT_RESULT) antes de cerrar igualmente. */
+const ESPERA_SALIDA = 4000;
+
 /** Cuánto dura un texto dicho por alguien en pantalla. */
 const SAY_DURATION = 4000;
 
@@ -141,8 +144,11 @@ class Game {
         /** La ventana del personaje: clic derecho sobre uno mismo. */
         this.ventanaPersonaje = crearVentanaPersonaje({
             provider: this.provider,
-            guardar: (o) => this.connection && this.connection.send(
-                [CLIENT.SET_OUTFIT, o.lookType, o.head, o.body, o.legs, o.feet, o.addons || 0])
+            // La montura va en los dos últimos campos; si el motor no mandó monturas, no se mandan
+            // (y la montura no cambia).
+            guardar: (o, montura) => this.connection && this.connection.send(
+                [CLIENT.SET_OUTFIT, o.lookType, o.head, o.body, o.legs, o.feet, o.addons || 0]
+                    .concat(montura ? [montura.id || 0, montura.montado ? 1 : 0] : []))
         });
 
         /** La consola de abajo: lo que se dice y los mensajes del servidor, con su hora. */
@@ -276,6 +282,12 @@ class Game {
             onMessages: (messages) => this._onMessages(messages),
             onOpen: () => this._setStatus('conectado, entrando al mundo...'),
             onClose: (wasConnected) => {
+                // Si se estaba esperando la respuesta a «salir» y el motor cierra antes de que se
+                // lea, es que ha salido: se vuelve a la entrada en vez de reintentar.
+                if (this._salida) {
+                    this._cerrarSesion();
+                    return;
+                }
                 this._setStatus(wasConnected
                     ? 'desconectado, reintentando...'
                     : 'no se pudo conectar, reintentando...');
@@ -350,6 +362,8 @@ class Game {
                 this.contenedor.cerrar(event.id);
             } else if (event.type === 'outfitWindow') {
                 this.ventanaPersonaje.abrir(event.data);
+            } else if (event.type === 'logoutResult') {
+                this._alResponderSalida(event.ok, event.motivo);
             } else if (event.type === 'hello') {
                 // El motor dice cuántas casillas se VEN (config.js `visibleTilesX/Y`). Uno antiguo
                 // sólo dice cuántas manda: se enseñan dos menos por lado, que es el margen que
@@ -870,10 +884,60 @@ class Game {
         this.objetivo = null;
     }
 
-    /** Logout: salir del mundo y volver a la pantalla de entrada. */
+    /**
+     * Logout: PEDIR salir del mundo. Ya no se cierra a la vez: en combate el motor no deja (como en
+     * Tibia), y un cliente que cerrara sin esperar dejaría al personaje en el mundo, quieto y a
+     * merced de quien le pegaba. Se manda LOGOUT y se espera LOGOUT_RESULT
+     * (`_alResponderSalida`); si no llega en `ESPERA_SALIDA`, se cierra como antes.
+     */
     salir() {
+        if (!this.connection) {
+            this._cerrarSesion();
+            return;
+        }
+        if (this._salida) {
+            // Ya se pidió: se espera la respuesta.
+            return;
+        }
+        if (!this.connection.send([CLIENT.LOGOUT])) {
+            // El socket no está abierto: no hay a quién preguntar.
+            this._cerrarSesion();
+            return;
+        }
+        this._salida = setTimeout(() => this._cerrarSesion(), ESPERA_SALIDA);
+    }
+
+    /** La respuesta del motor a «salir»: fuera (se vuelve a la entrada) o no (y por qué). */
+    _alResponderSalida(ok, motivo) {
+        if (this._salida) {
+            clearTimeout(this._salida);
+            this._salida = null;
+        }
+        if (ok) {
+            this._cerrarSesion();
+            return;
+        }
+        // Se queda en el juego: el motivo en la consola y, un rato, sobre el mapa.
+        // (Lo que se pinta lo traducen la consola y el renderer: aquí va en español.)
+        const texto = motivo || 'No puedes salir ahora.';
+        this.consola.servidor(texto);
+        this._addSay(undefined, texto, undefined);
+    }
+
+    /** Montar o desmontar (Ctrl+R): lo decide el motor, que contesta con un texto si no se puede. */
+    alternarMontura() {
         if (this.connection) {
-            this.connection.send([CLIENT.LOGOUT]);
+            this.connection.send([CLIENT.TOGGLE_MOUNT]);
+        }
+    }
+
+    /** Cerrar la sesión y volver a la pantalla de entrada (lo que hacía «salir» antes de esperar). */
+    _cerrarSesion() {
+        if (this._salida) {
+            clearTimeout(this._salida);
+            this._salida = null;
+        }
+        if (this.connection) {
             this.connection.close();
             this.connection = null;
         }
@@ -1414,6 +1478,19 @@ function boot() {
     window.addEventListener('keydown', (event) => {
         // En la pantalla de entrada, el teclado es del formulario.
         if (overlay.style.display !== 'none') {
+            return;
+        }
+        /*
+         * CTRL+R: MONTAR O DESMONTAR, como en Tibia, esté donde esté el cursor. En el navegador es
+         * «recargar», y recargar en mitad de la partida te saca del mundo: dentro del juego se le
+         * quita (`preventDefault`). Ctrl+Mayús+R sigue recargando. Una tecla mantenida no repite.
+         */
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey &&
+            (event.key === 'r' || event.key === 'R')) {
+            event.preventDefault();
+            if (!event.repeat) {
+                game.alternarMontura();
+            }
             return;
         }
         const enChat = document.activeElement === chatInput;

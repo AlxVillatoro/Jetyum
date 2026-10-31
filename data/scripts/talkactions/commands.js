@@ -36,6 +36,8 @@ module.exports = [
     {
         type: 'talkaction',
         words: '/item',
+        // Crear objetos de la nada es cosa de un god (data/XML/groups.js).
+        access: 'god',
 
         onSay(player, words, param, type) {
             const itemId = Number(param);

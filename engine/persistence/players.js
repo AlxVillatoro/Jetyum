@@ -30,6 +30,7 @@
 const { Database } = require('./database');
 const { normalizeOutfit, defaultOutfitFor } = require('../world/outfit');
 const Vocacion = require('../world/vocacion');
+const { experienceForLevel } = require('../world/experience');
 
 /*
  * El nombre de la ranura de "dentro de la mochila" sale del archivo COMPARTIDO, porque el motor y
@@ -205,9 +206,18 @@ class PlayerRepository {
             if (!vocacion.ok) {
                 return { error: vocacion.reason };
             }
+            // Empieza en el templo de la ciudad de los nuevos (`newPlayerTownId`), y al nivel
+            // `newPlayerLevel` con la experiencia justa de ese nivel.
+            const ciudad = Number(this.config.newPlayerTownId) || 0;
+            const templo = this.world.templeOf ? this.world.templeOf({ townId: ciudad }) : null;
+            const inicio = templo || spawn;
+            const nivel = Math.max(1, Number(this.config.newPlayerLevel) || 1);
             try {
                 row = this.database.createCharacter(account.id, characterName, {
-                    x: spawn.x, y: spawn.y, z: spawn.z,
+                    x: inicio.x, y: inicio.y, z: inicio.z,
+                    level: nivel,
+                    experience: experienceForLevel(nivel),
+                    townId: ciudad,
                     vocation: vocacion.vocation,
                     sex: credentials.sex,
                     maxHealth: Vocacion.maxHealthPara(this.world.vocationOf({ vocation: vocacion.vocation }), 1)
@@ -261,6 +271,10 @@ class PlayerRepository {
         player.health = row.health;
         player.maxHealth = row.maxHealth;
         player.direction = row.direction;
+        player.groupId = row.groupId || 1;
+        player.townId = row.townId || 0;
+        player.mountId = row.mountId || 0;
+        player.mounted = row.mounted === true;
 
         // Lo que da la vocación: maná, almas, skills… y lo que depende del nivel (vida y maná
         // máximos, velocidad) se recalcula con vocations.js, por si han cambiado sus números.
@@ -294,6 +308,14 @@ class PlayerRepository {
         player.outfit = (stored.lookType
             ? normalizeOutfit(stored)
             : defaultOutfitFor(player, this.world.outfitTypes));
+
+        // Quien salió montado vuelve montado, si aún puede llevar esa montura.
+        if (player.mounted && this.world.canUseMount && !this.world.canUseMount(player, player.mountId).ok) {
+            player.mounted = false;
+        }
+        if (this.world._aplicarMontura) {
+            this.world._aplicarMontura(player);
+        }
 
         return player;
     }
@@ -430,7 +452,10 @@ class PlayerRepository {
                     y: player.position.y,
                     z: player.position.z
                 },
-                outfit: player.outfit
+                outfit: player.outfit,
+                townId: player.townId,
+                mountId: player.mountId,
+                mounted: player.mounted === true
             },
             items: player.inventory || [],
             storages: storages

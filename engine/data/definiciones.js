@@ -181,6 +181,59 @@ function loadOutfits(ruta) {
     return aspectos;
 }
 
+/**
+ * Carga las monturas (`data/XML/mounts.js`).
+ * @returns {Map<number, Object>} id → {id, name, lookType, speed, premium, unlocked, enabled}
+ */
+function loadMounts(ruta) {
+    const monturas = new Map();
+    leerModulo(ruta).forEach((entrada, i) => {
+        const id = Number(entrada && entrada.id);
+        const lookType = Number(entrada && entrada.lookType);
+        if (!Number.isInteger(id) || id <= 0 || !Number.isInteger(lookType) || lookType <= 0) {
+            throw new Error('la montura ' + i + ' necesita un id y un lookType enteros');
+        }
+        if (monturas.has(id)) {
+            throw new Error('hay dos monturas con el id ' + id);
+        }
+        monturas.set(id, {
+            id,
+            name: String(entrada.name || ('Montura ' + id)),
+            lookType,
+            speed: Math.max(0, numero(entrada.speed, 0)),
+            premium: entrada.premium === true,
+            unlocked: entrada.unlocked !== false,
+            enabled: entrada.enabled !== false
+        });
+    });
+    return monturas;
+}
+
+/** El grupo que tiene un personaje sin grupo guardado: el de jugador. */
+const GRUPO_JUGADOR = { id: 1, name: 'player', access: false };
+
+/**
+ * Carga los grupos de acceso (`data/XML/groups.js`).
+ * @returns {Map<number, Object>} id → {id, name, access}
+ */
+function loadGroups(ruta) {
+    const grupos = new Map();
+    leerModulo(ruta).forEach((entrada, i) => {
+        const id = Number(entrada && entrada.id);
+        if (!Number.isInteger(id) || id <= 0 || !entrada.name) {
+            throw new Error('el grupo ' + i + ' necesita un id entero y un name');
+        }
+        if (grupos.has(id)) {
+            throw new Error('hay dos grupos con el id ' + id);
+        }
+        grupos.set(id, { id, name: String(entrada.name).toLowerCase(), access: entrada.access === true });
+    });
+    if (!grupos.has(1)) {
+        grupos.set(1, { ...GRUPO_JUGADOR });
+    }
+    return grupos;
+}
+
 /** ¿Existe el archivo? Si no, prueba la otra extensión (.js ↔ .xml). */
 function resolverRuta(ruta) {
     if (fs.existsSync(ruta)) {
@@ -190,4 +243,14 @@ function resolverRuta(ruta) {
     return fs.existsSync(otra) ? otra : null;
 }
 
-module.exports = { SKILLS, VOCACION_BASE, loadVocations, loadOutfits, resolverRuta, normalizarVocacion };
+module.exports = {
+    SKILLS,
+    VOCACION_BASE,
+    GRUPO_JUGADOR,
+    loadVocations,
+    loadOutfits,
+    loadMounts,
+    loadGroups,
+    resolverRuta,
+    normalizarVocacion
+};

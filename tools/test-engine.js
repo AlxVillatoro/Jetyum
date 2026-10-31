@@ -325,6 +325,13 @@ function main() {
         'Posicion: (40, 40, 8)  Vida: 150/150  Nivel: 1  Vocacion: None',
         JSON.stringify(lastMessage(world, player.id)));
 
+    // /item es de god (data/XML/groups.js): para un jugador normal no existe.
+    const itemsSinGrupo = world.items.size;
+    const sinGrupo = engine.dispatchTalkAction('/item 3031', { playerId: player.id });
+    check('un jugador normal no puede usar /item (el comando no existe para él)',
+        sinGrupo.handled === false && world.items.size === itemsSinGrupo);
+    player.groupId = 6;
+
     const itemsBefore = world.items.size;
     engine.dispatchTalkAction('/item 3031', { playerId: player.id });
     const enElSuelo = world.map.getTile(40, 40, 8);

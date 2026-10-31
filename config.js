@@ -32,8 +32,17 @@ module.exports = {
     // elección se recuerda en su navegador. El motor no traduce nada: cada cliente traduce lo que
     // le llega (ver `shared/js/i18n.mjs`).
     defaultLanguage: 'en',
+
+    // EL PvP (engine/world/reglas.js). En 'no-pvp' los jugadores no pueden atacarse; en 'pvp' y
+    // 'pvp-enforced', sí, salvo en las zonas de protección y no-PvP del mapa. Por debajo de
+    // `protectionLevel` nadie puede atacar a otro jugador ni ser atacado por uno (1 = sin protección).
     worldType: 'pvp',              // 'pvp' | 'no-pvp' | 'pvp-enforced'
     protectionLevel: 1,
+
+    // EN COMBATE: quien pega o recibe un golpe no puede salir del juego durante `pzLocked` ms (si se
+    // le cae la conexión, el personaje se queda en el mundo hasta que pase), y quien ataca a otro
+    // JUGADOR tampoco puede entrar en una zona de protección en ese tiempo. Es el «PZ lock» de Tibia.
+    pzLocked: 60 * 1000,
 
     // -----------------------------------------------------------------------
     // Rutas
@@ -47,6 +56,10 @@ module.exports = {
     itemsOtb: 'data/items/items.otb',
     vocationsXml: 'data/XML/vocations.js',
     outfitsXml: 'data/XML/outfits.js',
+    // Las monturas (se eligen en la ventana del personaje; Ctrl+R monta y desmonta) y los grupos de
+    // acceso (jugador, tutor, GM, god: quién puede usar los comandos de GM).
+    mountsXml: 'data/XML/mounts.js',
+    groupsXml: 'data/XML/groups.js',
 
     // Los NPC: `npcs.xml` lleva los datos estáticos y, junto a él, un módulo `.js` por
     // NPC con su diálogo. Es la disposición de TFS y se carga como contenido, así que
@@ -105,8 +118,18 @@ module.exports = {
     // Puerto del servidor web que sirve el cliente del navegador (engine/net/web.js):
     // http://localhost:8000/jetyum/. Lo arranca `npm start` junto al de juego.
     webPort: 8000,
+    // EL SERVIDOR LLENO: con `maxPlayers` dentro no entra nadie más, salvo el personal (GM y más).
     maxPlayers: ES_DESARROLLO ? 50 : 500,
+
+    // LA PROTECCIÓN DE LA RED (engine/net/server.js): mensajes por segundo y conexión (lo que pase
+    // se descarta, y quien mande el triple se desconecta) y el tamaño máximo de un mensaje.
     maxPacketsPerSecond: 50,
+    maxMessageBytes: 64 * 1024,
+
+    // EL RITMO DEL CHAT: como mucho `talkSpamMessages` frases cada `talkSpamWindowMs` (hablar y
+    // mensajes privados; los comandos y los hechizos tienen sus esperas). El personal, sin límite.
+    talkSpamMessages: 6,
+    talkSpamWindowMs: 5000,
 
     // -----------------------------------------------------------------------
     // Persistencia
@@ -177,19 +200,23 @@ module.exports = {
     // junto al templo al arrancar (data/scripts/globalevents/arranque.js).
     depotItemId: 11112,
 
-    // PvP: matar a tantos jugadores sin calavera en 24 h da la calavera ROJA. Atacar a quien no
-    // la lleva pone la BLANCA durante 15 minutos.
+    // PvP: matar a `redSkullKills` jugadores sin calavera en `redSkullTime` da la calavera ROJA, que
+    // dura eso mismo. Atacar a quien no la lleva pone la BLANCA durante `whiteSkullTime`.
     redSkullKills: 3,
+    redSkullTime: 24 * 60 * 60 * 1000,
+    whiteSkullTime: 15 * 60 * 1000,
+
+    // EL GRUPO (party) reparte la experiencia entre los que estén a `expShareRange` casillas o menos.
+    expShareRange: 30,
     tickIntervalMs: 50,            // 20 Hz, el valor clásico de estos servidores
 
     // -----------------------------------------------------------------------
     // Jugador nuevo
     // -----------------------------------------------------------------------
+    // El NIVEL con el que empieza un personaje, y su CIUDAD: aparece en su templo, y a ese templo
+    // vuelve al morir. La vida, el maná y la capacidad no van aquí: los da la vocación
+    // (data/XML/vocations.js), como en TFS.
     newPlayerLevel: 1,
-    newPlayerHealth: 150,
-    newPlayerMana: 0,
-    newPlayerCap: 400,
-    newPlayerSpawnPos: { x: 100, y: 100, z: 7 },
     newPlayerTownId: 1,
 
     // El objeto con el que EMPIEZA un personaje nuevo: la mochila (2412), que es el contenedor
@@ -214,8 +241,11 @@ module.exports = {
     // -----------------------------------------------------------------------
     // Rates
     // -----------------------------------------------------------------------
+    // Multiplicadores: experiencia (después de las etapas), skills, nivel mágico, probabilidad del
+    // botín y velocidad de reaparición de los monstruos (con 2, vuelven en la mitad de tiempo).
     rateExperience: 1,
     rateSkill: 1,
+    rateMagic: 1,
     rateLoot: 1,
     rateSpawn: 1,
 
