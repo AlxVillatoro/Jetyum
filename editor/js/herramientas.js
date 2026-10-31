@@ -14,10 +14,13 @@ import {
     rehacerAlrededor, borderizarArea
 } from './pinceles.js';
 import {
-    rectangulo, dentroDe, copiarArea, borrarArea, pegar, areaDeRelleno, buscar, reemplazar,
+    rectangulo, pegar, areaDeRelleno, buscar, reemplazar,
     quitarPorId, aleatorizar, estadisticas, crearCiudad, borrarCiudad, ponerTemplo, crearCasa,
     cambiarCasa, borrarCasa, pintarCasa, ponerSalida, casillasDeCasa, limpiarCasasInvalidas,
-    ponerWaypoint, quitarWaypoint
+    ponerWaypoint, quitarWaypoint,
+    MODOS_DE_SELECCION, plantasDeSeleccion, seleccionVacia, clonarSeleccion, enSeleccion,
+    marcarRectangulo, seleccionDeRectangulo, casillasDeSeleccion, limitesDeSeleccion,
+    copiarSeleccion, borrarCasillas, seleccionDePegado, moverSeleccion
 } from './edicion.js';
 import { Historial } from './historial.js';
 import { traducir } from '../../shared/js/i18n.mjs';
@@ -50,6 +53,33 @@ function colorDeCasa(id, alfa) {
     return 'hsla(' + tono + ', 80%, 55%, ' + alfa + ')';
 }
 
+/**
+ * Unos segmentos de línea que se trazan juntos y de un color: el contorno de una selección o de un
+ * fantasma, que tiene un lado por cada casilla del borde y se dibuja de un solo `stroke`.
+ */
+class Trazos {
+    constructor() {
+        this.segmentos = [];
+    }
+
+    add(x0, y0, x1, y1) {
+        this.segmentos.push([x0, y0, x1, y1]);
+    }
+
+    trazar(ctx, color) {
+        if (this.segmentos.length === 0) {
+            return;
+        }
+        ctx.beginPath();
+        this.segmentos.forEach(([x0, y0, x1, y1]) => {
+            ctx.moveTo(x0, y0);
+            ctx.lineTo(x1, y1);
+        });
+        ctx.strokeStyle = color;
+        ctx.stroke();
+    }
+}
+
 export class Herramientas {
     /**
      * @param {Object} ctx
@@ -69,7 +99,19 @@ export class Herramientas {
         this.autoborde = true;
         this.verCasas = true;
         this.verMinimapa = true;
+        /**
+         * LA SELECCIÓN: un conjunto de casillas `{claves: Set<'x,y,z'>}` (ver `edicion.js`), o null.
+         * NO SE CAMBIA EN SU SITIO: cada cambio pone un objeto nuevo con `_ponerSeleccion`. Así el
+         * historial puede guardarla tal cual en cada entrada (para que deshacer un movimiento
+         * devuelva también la selección a su sitio) sin copiar miles de claves en cada gesto.
+         */
         this.seleccion = null;
+        /** Su recuadro y sus plantas (`limitesDeSeleccion`), calculado una vez por cambio. */
+        this._limites = null;
+        /** La selección tal y como estaba al cerrar el último gesto: el «antes» del historial. */
+        this._selBase = null;
+        /** El modo de selección de RME: 'actual', 'inferiores' o 'visibles'. */
+        this.modoSeleccion = 'actual';
         this.portapapeles = null;
         this.pincelElegido = null;
         this.casaElegida = null;
@@ -116,7 +158,8 @@ export class Herramientas {
     /** Al abrir un mapa: historial nuevo y paletas de sus listas. */
     alAbrirMapa() {
         this.historial = new Historial(this.mapa);
-        this.seleccion = null;
+        this._ponerSeleccion(null);
+        this._selBase = null;
         this.casaElegida = null;
         this.ciudadElegida = null;
         this.versionMapa += 1;
@@ -159,18 +202,38 @@ export class Herramientas {
         if (!this.historial || !this.mapa) {
             return;
         }
-        const nombre = (this.$('map-status').textContent || 'cambio').slice(0, 80);
+        const estado = this.$('map-status');
+        const nombre = ((estado && estado.textContent) || 'cambio').slice(0, 80);
         if (this.historial.confirmar(nombre)) {
+            /*
+             * LA SELECCIÓN VA CON LA ENTRADA, como en RME: deshacer un movimiento devuelve el
+             * contenido a su sitio Y la selección con él; si no, quedaría marcando el destino ya
+             * vacío y el siguiente Supr borraría lo que no es. El historial es genérico (compara
+             * fotos del mapa) y no sabe de selecciones, así que se le cuelga aquí a su entrada.
+             */
+            const entrada = this.historial.pasado[this.historial.pasado.length - 1];
+            if (entrada) {
+                entrada.seleccion = { antes: this._selBase, despues: this.seleccion };
+            }
             this.versionMapa += 1;
             this._refrescarBotonesHistorial();
         }
+        this._selBase = this.seleccion;
     }
 
     deshacer() {
         if (!this.historial) {
             return;
         }
+        // Lo que esté a medias se cierra antes aquí (y no dentro del historial) para que su
+        // entrada lleve la selección.
+        this.confirmar();
+        const entrada = this.historial.pasado[this.historial.pasado.length - 1];
         const nombre = this.historial.deshacer();
+        if (nombre && entrada && entrada.seleccion) {
+            this._ponerSeleccion(entrada.seleccion.antes);
+        }
+        this._selBase = this.seleccion;
         this.versionMapa += 1;
         this.ctx.refrescar();
         this._refrescarBotonesHistorial();
@@ -182,7 +245,12 @@ export class Herramientas {
         if (!this.historial) {
             return;
         }
+        const entrada = this.historial.futuro[this.historial.futuro.length - 1];
         const nombre = this.historial.rehacer();
+        if (nombre && entrada && entrada.seleccion) {
+            this._ponerSeleccion(entrada.seleccion.despues);
+        }
+        this._selBase = this.seleccion;
         this.versionMapa += 1;
         this.ctx.refrescar();
         this._refrescarBotonesHistorial();
@@ -191,8 +259,10 @@ export class Herramientas {
     }
 
     _refrescarBotonesHistorial() {
-        this.$('rme-deshacer').disabled = !this.historial || !this.historial.puedeDeshacer;
-        this.$('rme-rehacer').disabled = !this.historial || !this.historial.puedeRehacer;
+        const deshacer = this.$('rme-deshacer');
+        const rehacer = this.$('rme-rehacer');
+        if (deshacer) { deshacer.disabled = !this.historial || !this.historial.puedeDeshacer; }
+        if (rehacer) { rehacer.disabled = !this.historial || !this.historial.puedeRehacer; }
     }
 
     _refrescarListas() {
@@ -301,18 +371,25 @@ export class Herramientas {
     // El ratón (main.js se lo cede con estas herramientas)
     // -----------------------------------------------------------------------
 
-    /** @returns {boolean} si se ha ocupado del clic */
+    /**
+     * @param {{x:number, y:number}|null} cell la casilla pulsada (null fuera del mapa)
+     * @param {MouseEvent} event el del lienzo: se miran `button`, `shiftKey` y `ctrlKey`/`metaKey`
+     * @returns {boolean} si se ha ocupado del clic
+     */
     alPulsar(cell, event) {
         const tool = this.state.tool;
         if (!this.maneja(tool) || !this.mapa) {
             return false;
         }
+        if (!cell) {
+            return true;
+        }
         const z = this.lienzo.z;
-        const derecho = event.button === 2;
+        const derecho = !!event && event.button === 2;
         this.pulsado = { inicio: cell, derecho, ultima: null };
 
         if (tool === 'seleccionar') {
-            this.seleccion = rectangulo(cell, cell, z);
+            this._pulsarSeleccion(cell, event);
             return true;
         }
         if (tool === 'pegar') {
@@ -352,12 +429,12 @@ export class Herramientas {
     }
 
     alMover(cell) {
-        if (!this.pulsado || !this.mapa) {
+        if (!this.pulsado || !this.mapa || !cell) {
             return;
         }
         const tool = this.state.tool;
         if (tool === 'seleccionar') {
-            this.seleccion = rectangulo(this.pulsado.inicio, cell, this.lienzo.z);
+            this._moverSeleccionando(cell);
             return;
         }
         if (DE_ARRASTRE.includes(tool)) {
@@ -369,12 +446,15 @@ export class Herramientas {
         if (!this.pulsado) {
             return;
         }
-        if (this.state.tool === 'seleccionar' && this.seleccion) {
-            const s = this.seleccion;
-            this.ctx.estado('selección de ' + (s.x1 - s.x0 + 1) + 'x' + (s.y1 - s.y0 + 1) + ' en la planta ' + s.z +
-                ': Ctrl+C copia, Ctrl+X corta, Supr borra, Ctrl+B borderiza');
-        }
+        const pulsado = this.pulsado;
         this.pulsado = null;
+        if (this.state.tool === 'seleccionar' && this.mapa) {
+            if (pulsado.mover) {
+                this._soltarMovimiento(pulsado.mover);
+            } else if (pulsado.trazo) {
+                this._soltarTrazo(pulsado.trazo);
+            }
+        }
         this.ctx.refrescar();
     }
 
@@ -466,23 +546,228 @@ export class Herramientas {
 
     herramientaSeleccionar(boton) {
         this.ctx.soltarMano();
-        this._poner('seleccionar', boton, 'seleccionar: arrastra un rectángulo en el mapa');
+        this._poner('seleccionar', boton, 'seleccionar: arrastra un rectángulo; Mayús suma, Ctrl resta, arrastrar lo seleccionado lo mueve');
         this.ctx.estado('seleccionar: arrastra para marcar un rectángulo');
     }
 
-    _rectActual() {
-        return this.seleccion && this.seleccion.z === this.lienzo.z ? this.seleccion : null;
+    /**
+     * EL MODO DE SELECCIÓN de RME («Selection mode»): qué plantas coge el rectángulo que se traza.
+     * Ver `plantasDeSeleccion` en `edicion.js`. No cambia la selección que ya hay: sólo las
+     * siguientes.
+     *
+     * @param {'actual'|'inferiores'|'visibles'} modo
+     * @returns {boolean} si el modo existe
+     */
+    setModoSeleccion(modo) {
+        if (!MODOS_DE_SELECCION.includes(modo)) {
+            return false;
+        }
+        this.modoSeleccion = modo;
+        this.ctx.estado({
+            actual: 'modo de selección: sólo la planta actual',
+            inferiores: 'modo de selección: esta planta y las de debajo (hasta la 7 al aire libre)',
+            visibles: 'modo de selección: las plantas visibles'
+        }[modo]);
+        return true;
     }
 
+    /** Pasa al modo siguiente (actual → inferiores → visibles → actual), para un botón o un atajo. */
+    siguienteModoSeleccion() {
+        const i = MODOS_DE_SELECCION.indexOf(this.modoSeleccion);
+        const modo = MODOS_DE_SELECCION[(i + 1) % MODOS_DE_SELECCION.length];
+        this.setModoSeleccion(modo);
+        return modo;
+    }
+
+    /** Quita la selección (sin tocar el mapa). */
+    quitarSeleccion() {
+        this._ponerSeleccion(null);
+    }
+
+    /**
+     * Si hay un arrastre de la selección a medias (trazar un rectángulo o moverla), lo cancela
+     * sin tocar el mapa. Es lo que tiene que hacer Escape en mitad del gesto.
+     *
+     * @returns {boolean} si había algo que cancelar
+     */
+    cancelarArrastre() {
+        if (!this.pulsado || this.state.tool !== 'seleccionar') {
+            return false;
+        }
+        this.pulsado = null;
+        this.ctx.estado('arrastre cancelado');
+        return true;
+    }
+
+    /** Pone la selección (un objeto nuevo: la de antes nunca se cambia) y calcula su resumen. */
+    _ponerSeleccion(sel) {
+        this.seleccion = sel && sel.claves.size > 0 ? sel : null;
+        this._limites = limitesDeSeleccion(this.seleccion);
+    }
+
+    /**
+     * La selección, si toca la planta que se está viendo; si no, null. Una selección hecha en
+     * otra planta no se copia ni se borra desde aquí sin verla, que es lo que hacía el rectángulo
+     * de antes; una de varias plantas vale desde cualquiera de las suyas.
+     */
+    _selActual() {
+        return this.seleccion && this._limites && this._limites.plantas.includes(this.lienzo.z) ? this.seleccion : null;
+    }
+
+    /** Lo mismo, con el nombre de antes, por si alguien de fuera lo usaba. */
+    _rectActual() {
+        return this._selActual();
+    }
+
+    /**
+     * EL CLIC CON «SELECCIONAR», como en RME:
+     *   - sobre una casilla YA SELECCIONADA y sin teclas: se agarra la selección para MOVERLA;
+     *   - con Mayús: se empieza un rectángulo que se SUMA a la selección;
+     *   - con Ctrl (Cmd en Mac): uno que se RESTA;
+     *   - si no: uno que la SUSTITUYE.
+     * El rectángulo coge las plantas del modo de selección.
+     */
+    _pulsarSeleccion(cell, event) {
+        const z = this.lienzo.z;
+        const sumar = !!(event && event.shiftKey);
+        const restar = !sumar && !!(event && (event.ctrlKey || event.metaKey));
+        const izquierdo = !event || !event.button;
+        if (izquierdo && !sumar && !restar && enSeleccion(this.seleccion, cell.x, cell.y, z)) {
+            this.pulsado.mover = {
+                dx: 0, dy: 0, limites: this._limites,
+                // Lo que se lleva, copiado UNA vez al agarrar: es lo que dibuja el fantasma.
+                fantasma: copiarSeleccion(this.mapa, this.seleccion, z)
+            };
+            this.ctx.estado('moviendo la selección: suelta donde va (Escape cancela)');
+            return;
+        }
+        this.pulsado.trazo = {
+            modo: sumar ? 'anadir' : (restar ? 'quitar' : 'nueva'),
+            base: sumar || restar ? this.seleccion : null,
+            plantas: plantasDeSeleccion(this.modoSeleccion, z, this.mapa.floors),
+            rect: rectangulo(cell, cell, z)
+        };
+    }
+
+    /**
+     * Mientras se arrastra NO SE TOCA NI EL MAPA NI LA SELECCIÓN: sólo se apunta el rectángulo o
+     * el desplazamiento, y el dibujo los enseña. Así el gesto entero es una sola entrada del
+     * historial (se aplica al soltar) y un rectángulo enorme no rehace un conjunto de miles de
+     * casillas en cada píxel de ratón.
+     */
+    _moverSeleccionando(cell) {
+        const p = this.pulsado;
+        if (p.mover) {
+            p.mover.dx = cell.x - p.inicio.x;
+            p.mover.dy = cell.y - p.inicio.y;
+            return;
+        }
+        if (p.trazo) {
+            p.trazo.rect = rectangulo(p.inicio, cell, this.lienzo.z);
+        }
+    }
+
+    _soltarTrazo(t) {
+        let sel;
+        if (t.modo === 'nueva') {
+            sel = seleccionDeRectangulo(t.rect, t.plantas);
+        } else {
+            sel = marcarRectangulo(clonarSeleccion(t.base) || seleccionVacia(), t.rect, t.plantas, t.modo === 'quitar');
+        }
+        this._ponerSeleccion(sel);
+        this._contarSeleccion();
+    }
+
+    _contarSeleccion() {
+        const l = this._limites;
+        if (!l) {
+            this.ctx.estado('selección vacía');
+            return;
+        }
+        const ancho = l.x1 - l.x0 + 1;
+        const alto = l.y1 - l.y0 + 1;
+        this.ctx.estado(l.plantas.length === 1
+            ? 'selección de ' + l.total + ' casilla(s) (' + ancho + 'x' + alto + ') en la planta ' + l.z0 +
+                ': Mayús suma, Ctrl resta, arrastrar la mueve; Ctrl+C copia, Ctrl+X corta, Supr borra'
+            : 'selección de ' + l.total + ' casilla(s) (' + ancho + 'x' + alto + ') en las plantas ' + l.z0 + ' a ' + l.z1 +
+                ': Mayús suma, Ctrl resta, arrastrar la mueve; Ctrl+C copia, Ctrl+X corta, Supr borra');
+    }
+
+    /**
+     * SOLTAR LA SELECCIÓN ARRASTRADA: el contenido se mueve de una vez (ver `moverSeleccion` en
+     * `edicion.js` para lo que viaja y lo que no) y, con el borde automático, se rehacen los
+     * bordes en el hueco que deja y en el sitio donde cae. Todo pasa dentro de este gesto, así
+     * que el historial lo apunta como UNA acción: Ctrl+Z lo devuelve todo, selección incluida.
+     * Un clic sin arrastrar sobre la selección no hace nada (no la pierde).
+     */
+    _soltarMovimiento(m) {
+        if (!m.dx && !m.dy) {
+            this._contarSeleccion();
+            return;
+        }
+        const r = moverSeleccion(this.mapa, this.seleccion, m.dx, m.dy, 0);
+        if (!r.ok) {
+            this.ctx.estado(r.problema, true);
+            return;
+        }
+        if (this.autoborde) {
+            this._borderizarCasillas(r.origen.concat(r.destino));
+        }
+        this._ponerSeleccion(r.seleccion);
+        const desplazamiento = (m.dx >= 0 ? '+' : '') + m.dx + ',' + (m.dy >= 0 ? '+' : '') + m.dy;
+        let texto = r.marcadores > 0
+            ? 'movida la selección (' + desplazamiento + '): ' + r.n + ' casilla(s) y ' + r.marcadores + ' marcador(es)'
+            : 'movida la selección (' + desplazamiento + '): ' + r.n + ' casilla(s)';
+        r.avisos.forEach((aviso) => { texto += ' — ' + aviso; });
+        this.ctx.estado(texto, r.avisos.length > 0);
+    }
+
+    /**
+     * Rehace bordes, muros, alfombras y mesas de unas casillas (de cualquier planta) y su
+     * anillo. @returns {number} las casillas que de verdad han cambiado
+     */
+    _borderizarCasillas(casillas) {
+        const porPlanta = new Map();
+        const tocadas = new Set();
+        casillas.forEach((c) => {
+            if (!porPlanta.has(c.z)) {
+                porPlanta.set(c.z, []);
+            }
+            porPlanta.get(c.z).push({ x: c.x, y: c.y });
+            for (let dy = -1; dy <= 1; dy += 1) {
+                for (let dx = -1; dx <= 1; dx += 1) {
+                    tocadas.add((c.x + dx) + ',' + (c.y + dy) + ',' + c.z);
+                }
+            }
+        });
+        const foto = (k) => JSON.stringify(this.mapa.tiles.get(k) || null);
+        const antes = new Map();
+        tocadas.forEach((k) => antes.set(k, foto(k)));
+        porPlanta.forEach((lista, z) => rehacerAlrededor(this.mapa, this.idx, lista, z));
+        let n = 0;
+        tocadas.forEach((k) => {
+            if (foto(k) !== antes.get(k)) {
+                n += 1;
+            }
+        });
+        return n;
+    }
+
+    /**
+     * COPIAR: la selección entera, con todas sus plantas. Las alturas se cuentan desde la planta
+     * que se está viendo, así que al pegar en otra los pisos llegan en el mismo orden.
+     */
     copiar() {
-        const r = this._rectActual();
-        if (!r) {
+        const sel = this._selActual();
+        if (!sel) {
             this.ctx.estado('no hay selección en esta planta: usa «Seleccionar» (S)', true);
             return false;
         }
-        this.portapapeles = copiarArea(this.mapa, r);
-        this.ctx.estado('copiadas ' + this.portapapeles.celdas.length + ' casilla(s) de ' +
-            this.portapapeles.ancho + 'x' + this.portapapeles.alto + '. Ctrl+V para pegar');
+        this.portapapeles = copiarSeleccion(this.mapa, sel, this.lienzo.z);
+        const p = this.portapapeles;
+        this.ctx.estado(p.plantas > 1
+            ? 'copiadas ' + p.celdas.length + ' casilla(s) de ' + p.ancho + 'x' + p.alto + ' en ' + p.plantas + ' plantas. Ctrl+V para pegar'
+            : 'copiadas ' + p.celdas.length + ' casilla(s) de ' + p.ancho + 'x' + p.alto + '. Ctrl+V para pegar');
         return true;
     }
 
@@ -490,10 +775,10 @@ export class Herramientas {
         if (!this.copiar()) {
             return;
         }
-        const r = this._rectActual();
-        const n = borrarArea(this.mapa, r);
+        const sel = this._selActual();
+        const n = borrarCasillas(this.mapa, sel);
         if (this.autoborde) {
-            borderizarArea(this.mapa, this.idx, r.x0, r.y0, r.x1, r.y1, r.z);
+            this._borderizarCasillas(casillasDeSeleccion(sel));
         }
         this.ctx.estado('cortadas ' + n + ' casilla(s): Ctrl+V para pegarlas');
         this.ctx.refrescar();
@@ -504,43 +789,42 @@ export class Herramientas {
             this.ctx.estado('no hay nada copiado', true);
             return;
         }
-        this._poner('pegar', boton, 'pegando ' + this.portapapeles.ancho + 'x' + this.portapapeles.alto +
-            ': clic para pegar (esquina de arriba a la izquierda), Escape para soltar');
+        const p = this.portapapeles;
+        this._poner('pegar', boton, p.plantas > 1
+            ? 'pegando ' + p.ancho + 'x' + p.alto + ' en ' + p.plantas + ' plantas: clic para pegar (esquina de arriba a la izquierda), Escape para soltar'
+            : 'pegando ' + p.ancho + 'x' + p.alto + ': clic para pegar (esquina de arriba a la izquierda), Escape para soltar');
         this.ctx.estado('pegar: clic donde va la esquina de arriba a la izquierda');
     }
 
+    /** PEGAR en (cell, planta actual): lo pegado queda seleccionado, con su forma y sus plantas. */
     pegarEn(cell) {
         const z = this.lienzo.z;
         const n = pegar(this.mapa, this.portapapeles, cell.x, cell.y, z);
+        const sel = seleccionDePegado(this.mapa, this.portapapeles, cell.x, cell.y, z);
         if (this.autoborde) {
-            borderizarArea(this.mapa, this.idx, cell.x, cell.y, cell.x + this.portapapeles.ancho - 1,
-                cell.y + this.portapapeles.alto - 1, z);
+            this._borderizarCasillas(casillasDeSeleccion(sel));
         }
-        this.seleccion = rectangulo(cell, { x: cell.x + this.portapapeles.ancho - 1, y: cell.y + this.portapapeles.alto - 1 }, z);
+        this._ponerSeleccion(sel);
         this.ctx.estado('pegadas ' + n + ' casilla(s) en (' + cell.x + ',' + cell.y + ',' + z + ')');
         this.ctx.refrescar();
     }
 
     borrarSeleccion() {
-        const r = this._rectActual();
-        if (!r) {
+        const sel = this._selActual();
+        if (!sel) {
             this.ctx.estado('no hay selección en esta planta', true);
             return;
         }
-        const n = borrarArea(this.mapa, r);
+        const n = borrarCasillas(this.mapa, sel);
         if (this.autoborde) {
-            borderizarArea(this.mapa, this.idx, r.x0, r.y0, r.x1, r.y1, r.z);
+            this._borderizarCasillas(casillasDeSeleccion(sel));
         }
         this.ctx.estado('borradas ' + n + ' casilla(s) de la selección');
         this.ctx.refrescar();
     }
 
-    /** La selección, o lo que se ve en pantalla si no hay selección. */
-    _areaDeTrabajo() {
-        const r = this._rectActual();
-        if (r) {
-            return r;
-        }
+    /** Lo que se ve en pantalla, como rectángulo de la planta actual (recortado al mapa). */
+    _areaVisible() {
         const cam = this.lienzo.camera;
         const paso = this.lienzo.tileSize;
         const ancho = this.lienzo.vista.ancho / paso / 2;
@@ -552,10 +836,21 @@ export class Herramientas {
         };
     }
 
+    /** La selección, o lo que se ve en pantalla si no hay selección. */
+    _areaDeTrabajo() {
+        return this._selActual() || this._areaVisible();
+    }
+
     borderizar() {
-        const r = this._areaDeTrabajo();
-        const n = borderizarArea(this.mapa, this.idx, r.x0, r.y0, r.x1, r.y1, r.z);
-        this.ctx.estado('borderizado ' + (this._rectActual() ? 'la selección' : 'lo visible') + ': ' + n + ' casilla(s) cambiadas');
+        const sel = this._selActual();
+        if (sel) {
+            const n = this._borderizarCasillas(casillasDeSeleccion(sel));
+            this.ctx.estado('borderizado la selección: ' + n + ' casilla(s) cambiadas');
+        } else {
+            const r = this._areaVisible();
+            const n = borderizarArea(this.mapa, this.idx, r.x0, r.y0, r.x1, r.y1, r.z);
+            this.ctx.estado('borderizado lo visible: ' + n + ' casilla(s) cambiadas');
+        }
         this.ctx.refrescar();
     }
 
@@ -945,7 +1240,7 @@ export class Herramientas {
             const lista = buscar(this.mapa, {
                 id: Number(id.value) || 0, actionId: Number(aid.value) || 0,
                 uniqueId: Number(uid.value) || 0, texto: texto.value.trim()
-            }, chk.checked ? this._rectActual() : null);
+            }, chk.checked ? this._selActual() : null);
             resultados.innerHTML = '';
             resultados.appendChild(el('div', 'nota', lista.length + ' resultado(s)' + (lista.length > 300 ? ' (se enseñan 300)' : '')));
             lista.slice(0, 300).forEach((r) => {
@@ -965,7 +1260,7 @@ export class Herramientas {
         const d = this._dialogo('Reemplazar objetos (Ctrl+Shift+F)');
         const de = this._campo(d, 'Cambiar el objeto', 'number');
         const a = this._campo(d, 'por el objeto', 'number');
-        d.appendChild(el('div', 'nota', this._rectActual() ? 'Se aplica en la SELECCIÓN.' : 'Sin selección: se aplica en TODO el mapa.'));
+        d.appendChild(el('div', 'nota', this._selActual() ? 'Se aplica en la SELECCIÓN.' : 'Sin selección: se aplica en TODO el mapa.'));
         d.appendChild(this._boton('Reemplazar', () => {
             const origen = Number(de.value);
             const destino = Number(a.value);
@@ -973,7 +1268,7 @@ export class Herramientas {
                 this.ctx.estado('el objeto ' + destino + ' no existe en items.xml', true);
                 return;
             }
-            const n = reemplazar(this.mapa, origen, destino, this._rectActual());
+            const n = reemplazar(this.mapa, origen, destino, this._selActual());
             this.ctx.estado('reemplazados ' + n + ' objeto(s) ' + origen + ' por ' + destino);
             this.ctx.refrescar();
         }, ''));
@@ -1017,8 +1312,8 @@ export class Herramientas {
         }, 'plain', 'Casillas marcadas con una casa que no está en la lista'));
         const id = this._campo(d, 'Quitar todos los objetos con el id', 'number');
         d.appendChild(this._boton('Quitar', () => {
-            const n = quitarPorId(this.mapa, Number(id.value), this._rectActual());
-            this.ctx.estado('quitados ' + n + ' objeto(s) ' + id.value + (this._rectActual() ? ' de la selección' : ' del mapa'));
+            const n = quitarPorId(this.mapa, Number(id.value), this._selActual());
+            this.ctx.estado('quitados ' + n + ' objeto(s) ' + id.value + (this._selActual() ? ' de la selección' : ' del mapa'));
             this.ctx.refrescar();
         }, 'danger'));
     }
@@ -1100,6 +1395,192 @@ export class Herramientas {
             ancho * escala, alto * escala);
     }
 
+    /**
+     * ¿Está (x, y, z) en la selección TAL Y COMO SE VE AHORA? Mientras se traza un rectángulo la
+     * selección no ha cambiado todavía (se cambia al soltar): aquí se compone la de antes con el
+     * rectángulo, según se esté sustituyendo, sumando o restando.
+     */
+    _enSeleccionViva(x, y, z) {
+        const t = this.pulsado && this.pulsado.trazo;
+        if (!t) {
+            return enSeleccion(this.seleccion, x, y, z);
+        }
+        const r = t.rect;
+        const enRect = x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1 && t.plantas.includes(z);
+        if (t.modo === 'nueva') {
+            return enRect;
+        }
+        const antes = enSeleccion(t.base, x, y, z);
+        return t.modo === 'anadir' ? antes || enRect : antes && !enRect;
+    }
+
+    /** El área visible con un margen (el de la perspectiva entre plantas y uno más). */
+    _visibleConMargen(lienzo) {
+        const v = this._areaVisible();
+        const camZ = lienzo.camera && Number.isFinite(lienzo.camera.z) ? lienzo.camera.z : lienzo.z;
+        const margen = Math.abs(lienzo.z - camZ) + 2;
+        return { x0: v.x0 - margen, y0: v.y0 - margen, x1: v.x1 + margen, y1: v.y1 + margen };
+    }
+
+    /**
+     * LA SELECCIÓN EN EL LIENZO, casilla a casilla: un velo azul en cada casilla seleccionada y la
+     * línea discontinua sólo en los lados que dan fuera, así que una selección con forma de L o
+     * con un agujero se ve como es. Sólo se recorre lo que cae en pantalla, y cada casilla se
+     * pregunta una vez (a una rejilla) aunque luego se miren sus cuatro vecinas.
+     *
+     * Mientras se mueve, lo de origen se oscurece: es el hueco que va a quedar.
+     */
+    _dibujarSeleccion(lienzo) {
+        const z = lienzo.z;
+        const t = this.pulsado && this.pulsado.trazo;
+        const l = this._limites;
+        let caja = null;
+        const unir = (r) => {
+            caja = caja ? {
+                x0: Math.min(caja.x0, r.x0), y0: Math.min(caja.y0, r.y0),
+                x1: Math.max(caja.x1, r.x1), y1: Math.max(caja.y1, r.y1)
+            } : { x0: r.x0, y0: r.y0, x1: r.x1, y1: r.y1 };
+        };
+        if (l && l.plantas.includes(z) && !(t && t.modo === 'nueva')) {
+            unir(l);
+        }
+        if (t && t.modo !== 'quitar' && t.plantas.includes(z)) {
+            unir(t.rect);
+        }
+        if (!caja) {
+            return;
+        }
+        const v = this._visibleConMargen(lienzo);
+        const x0 = Math.max(caja.x0, v.x0);
+        const y0 = Math.max(caja.y0, v.y0);
+        const x1 = Math.min(caja.x1, v.x1);
+        const y1 = Math.min(caja.y1, v.y1);
+        if (x0 > x1 || y0 > y1) {
+            return;
+        }
+        const ancho = x1 - x0 + 1;
+        const rejilla = new Uint8Array(ancho * (y1 - y0 + 1));
+        for (let y = y0; y <= y1; y += 1) {
+            for (let x = x0; x <= x1; x += 1) {
+                rejilla[(y - y0) * ancho + x - x0] = this._enSeleccionViva(x, y, z) ? 1 : 0;
+            }
+        }
+        const dentro = (x, y) => (x >= x0 && x <= x1 && y >= y0 && y <= y1
+            ? rejilla[(y - y0) * ancho + x - x0] === 1 : this._enSeleccionViva(x, y, z));
+
+        const paso = lienzo.tileSize;
+        const ctx = lienzo.ctx;
+        const moviendo = !!(this.pulsado && this.pulsado.mover && (this.pulsado.mover.dx || this.pulsado.mover.dy));
+        ctx.save();
+        ctx.fillStyle = moviendo ? 'rgba(0, 0, 0, 0.3)' : 'rgba(80, 160, 255, 0.12)';
+        ctx.beginPath();
+        for (let y = y0; y <= y1; y += 1) {
+            for (let x = x0; x <= x1; x += 1) {
+                if (!rejilla[(y - y0) * ancho + x - x0]) {
+                    continue;
+                }
+                const p = lienzo.camera.worldToScreen(x, y, z);
+                ctx.fillRect(p.x, p.y, paso, paso);
+                if (!dentro(x, y - 1)) { ctx.moveTo(p.x, p.y + 0.5); ctx.lineTo(p.x + paso, p.y + 0.5); }
+                if (!dentro(x, y + 1)) { ctx.moveTo(p.x, p.y + paso - 0.5); ctx.lineTo(p.x + paso, p.y + paso - 0.5); }
+                if (!dentro(x - 1, y)) { ctx.moveTo(p.x + 0.5, p.y); ctx.lineTo(p.x + 0.5, p.y + paso); }
+                if (!dentro(x + 1, y)) { ctx.moveTo(p.x + paso - 0.5, p.y); ctx.lineTo(p.x + paso - 0.5, p.y + paso); }
+            }
+        }
+        ctx.setLineDash([6, 3]);
+        ctx.strokeStyle = t && t.modo === 'quitar' ? '#ff8a5a' : '#5aa0ff';
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = moviendo ? 0.6 : 1;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    /**
+     * EL FANTASMA DE UN BLOQUE (lo que se pega o lo que se mueve) con su esquina de arriba a la
+     * izquierda en (ox, oy) de la planta que se ve: los SPRITES de verdad, semitransparentes, y
+     * el contorno de su forma. Es lo que hace RME al pegar: se ve lo que va a caer antes de
+     * soltarlo, no sólo un recuadro.
+     *
+     *   - Se dibuja en DOS PASADAS, primero todos los suelos y luego todas las pilas, fila a
+     *     fila: si no, el suelo de la casilla de abajo taparía la mitad de arriba de un muro alto.
+     *   - Sólo la planta que se ve (dz 0): las demás de un bloque de varias plantas no se verían en
+     *     su sitio, y se cuentan con una etiqueta.
+     *   - Lo que caería FUERA DEL MAPA sale en rojo: al pegar se recorta, y al mover no se deja.
+     *   - Sólo lo que cae en pantalla: un bloque grande no cuesta más que la vista.
+     */
+    _dibujarFantasma(lienzo, copia, ox, oy) {
+        if (!copia) {
+            return;
+        }
+        const ctx = lienzo.ctx;
+        const paso = lienzo.tileSize;
+        const z = lienzo.z;
+        const escala = paso / TILE;
+        const v = this._visibleConMargen(lienzo);
+        const aLaVista = (x, y) => x >= v.x0 && x <= v.x1 && y >= v.y0 && y <= v.y1;
+        const celdas = copia.celdas.filter((c) => !c.dz && aLaVista(ox + c.dx, oy + c.dy));
+        const dibujar = (id, x, y) => {
+            const sprite = lienzo.provider && lienzo.provider.get(id);
+            if (sprite && sprite.canvas) {
+                const p = lienzo.camera.worldToScreen(x, y, z);
+                ctx.drawImage(sprite.canvas, Math.round(p.x - (sprite.anchorX || 0) * escala),
+                    Math.round(p.y - sprite.anchorY * escala + paso), sprite.canvas.width * escala, sprite.canvas.height * escala);
+            }
+        };
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        celdas.forEach((c) => {
+            if (c.ground !== null && c.ground !== undefined) {
+                dibujar(c.ground, ox + c.dx, oy + c.dy);
+            }
+        });
+        celdas.forEach((c) => c.items.forEach((item) => dibujar(item.id, ox + c.dx, oy + c.dy)));
+        ctx.globalAlpha = 1;
+
+        // El contorno de la forma (la máscara; el rectángulo entero si es de `copiarArea`).
+        let forma = copia.mascara ? copia.mascara.filter((d) => !d.dz) : null;
+        if (!forma) {
+            forma = [];
+            for (let dy = 0; dy < copia.alto; dy += 1) {
+                for (let dx = 0; dx < copia.ancho; dx += 1) {
+                    forma.push({ dx, dy });
+                }
+            }
+        }
+        const enForma = new Set(forma.map((d) => d.dx + ',' + d.dy));
+        const dentro = (dx, dy) => enForma.has(dx + ',' + dy);
+        const azul = new Trazos();
+        const rojo = new Trazos();
+        forma.forEach((d) => {
+            const x = ox + d.dx;
+            const y = oy + d.dy;
+            if (!aLaVista(x, y)) {
+                return;
+            }
+            const p = lienzo.camera.worldToScreen(x, y, z);
+            const fuera = !this.mapa.inBounds(x, y, z);
+            if (fuera) {
+                ctx.fillStyle = 'rgba(255, 80, 80, 0.3)';
+                ctx.fillRect(p.x, p.y, paso, paso);
+            }
+            const linea = fuera ? rojo : azul;
+            if (!dentro(d.dx, d.dy - 1)) { linea.add(p.x, p.y + 0.5, p.x + paso, p.y + 0.5); }
+            if (!dentro(d.dx, d.dy + 1)) { linea.add(p.x, p.y + paso - 0.5, p.x + paso, p.y + paso - 0.5); }
+            if (!dentro(d.dx - 1, d.dy)) { linea.add(p.x + 0.5, p.y, p.x + 0.5, p.y + paso); }
+            if (!dentro(d.dx + 1, d.dy)) { linea.add(p.x + paso - 0.5, p.y, p.x + paso - 0.5, p.y + paso); }
+        });
+        ctx.lineWidth = 1.5;
+        azul.trazar(ctx, '#5aa0ff');
+        rojo.trazar(ctx, '#ff5050');
+        if (copia.plantas > 1 && paso >= 10) {
+            const p = lienzo.camera.worldToScreen(ox, oy, z);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '10px monospace';
+            ctx.fillText(traducir('y ' + (copia.plantas - 1) + ' planta(s) más'), p.x + 2, p.y - 3);
+        }
+        ctx.restore();
+    }
+
     _dibujarEncima(lienzo) {
         const ctx = lienzo.ctx;
         const paso = lienzo.tileSize;
@@ -1148,42 +1629,18 @@ export class Herramientas {
             ctx.restore();
         }
 
-        // La selección.
-        const s = this._rectActual();
-        if (s) {
-            const a = lienzo.camera.worldToScreen(s.x0, s.y0, z);
-            ctx.save();
-            ctx.fillStyle = 'rgba(80, 160, 255, 0.12)';
-            ctx.fillRect(a.x, a.y, (s.x1 - s.x0 + 1) * paso, (s.y1 - s.y0 + 1) * paso);
-            ctx.setLineDash([6, 3]);
-            ctx.strokeStyle = '#5aa0ff';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(a.x + 0.5, a.y + 0.5, (s.x1 - s.x0 + 1) * paso - 1, (s.y1 - s.y0 + 1) * paso - 1);
-            ctx.restore();
-        }
+        // La selección (con el rectángulo que se esté trazando, sumando o restando).
+        this._dibujarSeleccion(lienzo);
 
         const hover = lienzo.hover;
-        // El fantasma del pegado.
+        // El fantasma de lo que se mueve: el bloque entero, transparente, donde caería al soltar.
+        const mover = this.pulsado && this.pulsado.mover;
+        if (mover && mover.limites && (mover.dx || mover.dy)) {
+            this._dibujarFantasma(lienzo, mover.fantasma, mover.limites.x0 + mover.dx, mover.limites.y0 + mover.dy);
+        }
+        // El fantasma del pegado: lo copiado, con sus sprites, con la esquina bajo el ratón.
         if (this.state.tool === 'pegar' && this.portapapeles && hover) {
-            ctx.save();
-            ctx.globalAlpha = 0.55;
-            const escala = paso / TILE;
-            this.portapapeles.celdas.forEach((c) => {
-                const p = lienzo.camera.worldToScreen(hover.x + c.dx, hover.y + c.dy, z);
-                const ids = (c.ground !== null ? [c.ground] : []).concat(c.items.map((i) => i.id));
-                ids.forEach((id) => {
-                    const sprite = lienzo.provider.get(id);
-                    if (sprite && sprite.canvas) {
-                        ctx.drawImage(sprite.canvas, Math.round(p.x - (sprite.anchorX || 0) * escala),
-                            Math.round(p.y - sprite.anchorY * escala + paso), sprite.canvas.width * escala, sprite.canvas.height * escala);
-                    }
-                });
-            });
-            ctx.globalAlpha = 1;
-            const p = lienzo.camera.worldToScreen(hover.x, hover.y, z);
-            ctx.strokeStyle = '#5aa0ff';
-            ctx.strokeRect(p.x + 0.5, p.y + 0.5, this.portapapeles.ancho * paso - 1, this.portapapeles.alto * paso - 1);
-            ctx.restore();
+            this._dibujarFantasma(lienzo, this.portapapeles, hover.x, hover.y);
         }
 
         // El bloque del pincel de terreno o de casa.

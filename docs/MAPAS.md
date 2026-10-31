@@ -239,6 +239,11 @@ se prueban sin navegador (`tools/test-mapa.mjs`): `editor/js/pinceles.js`,
 | Remove Items by ID, Clear Invalid Houses | Limpiar | Barra |
 | Go to Position | Ir a… | Barra (Ctrl+G) |
 | Statistics | Estadísticas | Barra (F8) |
+| Map Diagnostics (NexaMap) | Diagnóstico: teleports rotos, uniqueId repetidos, casillas sin suelo… con un clic para ir | Barra (F7) |
+| Selection mode (current / lower / visible floors) | Desplegable junto a «Seleccionar» | Barra |
+| Show all floors / Show shade / Ghost higher floors | Plantas de abajo / Sombra / Planta de arriba | Barra (P, Q, Ctrl+L) |
+| New map, Save as, Map properties | Nuevo mapa, Guardar como, Propiedades del mapa | Barra, junto al selector de mapa |
+| (copias automáticas) | Copias de seguridad: las 10 últimas, con «Restaurar» | Barra, junto al selector de mapa |
 | Minimap | Minimapa (clic para ir) | Barra (M) |
 | Properties del objeto | Propiedades del objeto | Lo que hay puesto |
 
@@ -330,12 +335,36 @@ El historial funciona **por diferencias**, no por comandos:
 | Ctrl+Shift+F | Reemplazar |
 | Ctrl+G | Ir a posición |
 | F8 | Estadísticas |
+| F7 | Diagnóstico del mapa |
+| P | Ver las plantas de abajo (el Ctrl+W de RME: el navegador no deja quitarle Ctrl+W, que cierra la pestaña) |
+| Q | Sombra de las plantas de abajo |
+| Ctrl+L | Ver la planta de arriba en fantasma |
 | M | Minimapa |
 | T / I / D / H / W | Paletas Terreno / Objetos / Compuestos / Casas / Waypoints |
 | `[` `]` | Tamaño del pincel |
 | rueda / Ctrl+rueda | Zoom / planta |
 | RePág / AvPág | Planta |
-| Escape | Soltar lo que se lleva en la mano |
+| Escape | Cancelar el arrastre de la selección a medias; si no hay ninguno, soltar lo que se lleva en la mano |
+
+### 4.7 Varias plantas, selección, diagnóstico y archivos de mapa
+
+- **Las plantas a la vista** (botones de capas a la derecha de la barra). *Plantas de abajo* dibuja
+  bajo la que se edita las de debajo, como el juego: al aire libre hasta la 7 —desde la 7 misma no
+  hay nada que ver— y bajo tierra dos más. *Sombra* las oscurece, más cuanto más hondas. *Planta
+  de arriba* dibuja la de encima, transparente. Sólo se miran: se pinta y se elige siempre en la
+  planta del selector. Lo elegido se recuerda en el navegador.
+- **La selección** es un conjunto de casillas: Mayús+arrastrar suma, Ctrl+arrastrar resta y
+  arrastrar lo seleccionado lo mueve (Escape cancela el gesto). El desplegable de al lado elige
+  qué plantas coge el rectángulo: *Planta actual*, *Y las de abajo* o *Plantas visibles*.
+- **Diagnóstico** (F7) abre en la esquina del mapa la lista de problemas, con filtros por gravedad
+  y por tipo; un clic en una fila va a la casilla (y a su planta). El globito del botón cuenta lo
+  del último análisis: se analiza al abrir el mapa, al abrir el panel y con «Volver a analizar».
+- **Archivos de mapa**, junto al selector: *Nuevo mapa* (nombre, tamaño, plantas y suelo de la
+  superficie), *Guardar como* (los cambios sin guardar van a la copia; el original no se toca),
+  *Propiedades del mapa* (nombre, descripción, tamaño, plantas y suelos por defecto; encoger con
+  cosas fuera no toca nada y dice qué quedaría fuera) y *Copias de seguridad* (las últimas
+  versiones guardadas, la más nueva primero, con «Restaurar»). Lo que reabre el mapa desde el
+  disco pregunta antes si hay cambios sin guardar. Los detalles de la API: docs/HERRAMIENTAS.md §3.1.
 
 ---
 
@@ -347,7 +376,7 @@ El historial funciona **por diferencias**, no por comandos:
   objetos al azar).
 - **Puertas con llave, de misión y mágicas** (los tipos de puerta de RME). Antes hacen falta
   sus mecánicas en el motor.
-- **Ver plantas superiores e inferiores** en fantasma, y luces.
+- **Luces** en la vista del editor (las plantas de abajo y la de arriba en fantasma ya están: §4.7).
 - **Importar y exportar OTBM.** El formato interno ya tiene todo lo que hace falta: casillas,
   atributos, spawns, NPC, ciudades y casas.
 

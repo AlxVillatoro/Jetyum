@@ -14,3 +14,7 @@ config_local*
 *.db
 *.db-wal
 *.db-shm
+
+# Las copias de seguridad que hace el editor de mapas al guardar (editor/lib/mapfiles.js): son
+# historia local de quien edita, no contenido del datapack.
+data/world/backups/

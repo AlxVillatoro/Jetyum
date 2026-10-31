@@ -185,6 +185,8 @@ server's scripting API: see [docs/SCRIPTS.md](docs/SCRIPTS.md).
   tables; houses, towns and waypoints; respawns, monsters and NPCs; selection and clipboard, fill
   bucket, find and replace, undo and minimap. The shortcuts are RME's
   ([docs/MAPAS.md](docs/MAPAS.md#4-las-herramientas-de-rme)).
+  Also: lower floors (with shade) and the upper floor as a ghost, multi-floor selection, map
+  diagnostics (F7), and new map, save as, map properties and backups.
 - **Composites**: templates of whole objects spanning one or more tiles, with parameters.
 - **Sprites**, ObjectBuilder-style: things by category, animated preview, sprite library (import,
   replace, export), thing sheets, properties and flags of the 8.60 `.dat`, and a consistency check

@@ -38,8 +38,9 @@ import { MapCanvas } from './mapcanvas.js';
 import { PaletteView } from './palette.js';
 import { ItemsView } from './itemsview.js';
 import { SpritesView } from './spritesview.js';
-import { pintarIconos } from './iconos.js';
+import { pintarIconos, ponerIcono } from './iconos.js';
 import { Herramientas, HERRAMIENTAS_PROPIAS } from './herramientas.js';
+import { diagnosticar, resumen, construirPanel } from './diagnostico.js';
 import {
     CompuestosView,
     formularioDeValores,
@@ -983,6 +984,9 @@ async function openMap(name) {
     if (state.herramientas) {
         state.herramientas.alAbrirMapa();
     }
+
+    // La cuenta del diagnóstico, del mapa que se acaba de abrir (y el panel, si está abierto).
+    diagnosticarAlAbrir();
 }
 
 function refreshMapStatus() {
@@ -1061,6 +1065,805 @@ async function saveMap() {
     setMapStatus('guardado: ' + result.changed + ' celda(s), ' + result.spawnAreas +
         ' respawn(s) con ' + result.spawns + ' monstruo(s) y ' + result.npcs +
         ' npc en el archivo (' + result.bytes + ' bytes)');
+}
+
+// ---------------------------------------------------------------------------
+// Los diálogos de la esquina del mapa
+//
+// SON EL MISMO `#map-dialogo` QUE USAN BUSCAR, REEMPLAZAR Y ESTADÍSTICAS (`herramientas.js`): una
+// caja en la esquina de arriba a la derecha del lienzo, con su X. Abrir uno cierra el que hubiera,
+// que es lo que hacen todos, y así no hay dos diálogos tapándose ni un estilo nuevo que aprender.
+// ---------------------------------------------------------------------------
+
+/** Un elemento con su clase y su texto, como el `el` de `herramientas.js`. */
+function nodo(etiqueta, clase, texto) {
+    const elemento = document.createElement(etiqueta);
+    if (clase) {
+        elemento.className = clase;
+    }
+    if (texto !== undefined) {
+        elemento.textContent = texto;
+    }
+    return elemento;
+}
+
+/**
+ * Vacía el diálogo de la esquina, le pone título y su X, y lo devuelve abierto.
+ *
+ * `ancho` lo ensancha (el diagnóstico lleva filas largas). La marca se quita sola cuando otro
+ * diálogo —uno de `herramientas.js`, que no sabe de ella— se pinta encima: ver `wireDialogo`.
+ */
+function abrirDialogo(titulo, ancho) {
+    const dialogo = document.getElementById('map-dialogo');
+    dialogo.innerHTML = '';
+    dialogo.hidden = false;
+    dialogo.classList.toggle('ancho', !!ancho);
+    diagnostico.panel = null;
+
+    const cerrar = nodo('button', 'plain cerrar', '✕');
+    cerrar.type = 'button';
+    cerrar.title = 'Cerrar';
+    cerrar.dataset.dialogoPropio = '1';
+    cerrar.addEventListener('click', cerrarDialogo);
+    dialogo.appendChild(cerrar);
+
+    if (titulo) {
+        dialogo.appendChild(nodo('div', 'section-title', titulo));
+    }
+    return dialogo;
+}
+
+function cerrarDialogo() {
+    const dialogo = document.getElementById('map-dialogo');
+    dialogo.hidden = true;
+    dialogo.classList.remove('ancho');
+    diagnostico.panel = null;
+    ponerCuentaDeDiagnostico(diagnostico.ultimos);
+}
+
+/** Si el diálogo abierto es uno de este archivo (y no de `herramientas.js`). */
+function dialogoPropioAbierto() {
+    const dialogo = document.getElementById('map-dialogo');
+    return !dialogo.hidden && !!dialogo.querySelector('[data-dialogo-propio]');
+}
+
+function wireDialogo() {
+    const dialogo = document.getElementById('map-dialogo');
+    if (typeof MutationObserver !== 'function') {
+        return;
+    }
+    // Los diálogos de `herramientas.js` vacían la caja y la llenan sin tocar sus clases: si lo que
+    // queda dentro ya no es nuestro, la caja vuelve a su ancho de siempre.
+    new MutationObserver(() => {
+        if (!dialogo.querySelector('[data-dialogo-propio]') && dialogo.classList.contains('ancho')) {
+            dialogo.classList.remove('ancho');
+            diagnostico.panel = null;
+            ponerCuentaDeDiagnostico(diagnostico.ultimos);
+        }
+    }).observe(dialogo, { childList: true });
+}
+
+/** Un campo con su rótulo encima, como los de Buscar. */
+function campoDeDialogo(caja, etiqueta, tipo, valor, titulo) {
+    const entrada = nodo('input');
+    entrada.type = tipo;
+    if (valor !== undefined && valor !== null) {
+        entrada.value = String(valor);
+    }
+    if (titulo) {
+        entrada.title = titulo;
+    }
+    const rotulo = nodo('label', 'field');
+    rotulo.appendChild(nodo('span', '', etiqueta));
+    rotulo.appendChild(entrada);
+    caja.appendChild(rotulo);
+    return entrada;
+}
+
+/** Los suelos que se pueden elegir: lo que `items.xml` marca con `isGround`, por id. */
+function suelosConocidos() {
+    const lista = [];
+    if (state.itemTypes) {
+        state.itemTypes.forEach((definicion) => {
+            if (definicion.attributes && definicion.attributes.isGround) {
+                lista.push(definicion);
+            }
+        });
+    }
+    return lista.sort((a, b) => a.id - b.id);
+}
+
+/**
+ * EL CAMPO DE UN SUELO: un desplegable con los suelos de `items.xml` y, al lado, el número. Lo que
+ * vale es el número —el desplegable sólo lo escribe—, porque el servidor es quien decide si un
+ * suelo vale (existe, es suelo y, en la superficie, se pisa) y lo dice con su motivo.
+ *
+ * @returns {HTMLInputElement} el número; vacío = ninguno
+ */
+function campoDeSuelo(caja, etiqueta, valor, suelos) {
+    const rotulo = nodo('label', 'field');
+    rotulo.appendChild(nodo('span', '', etiqueta));
+
+    const fila = nodo('div', 'suelo-fila');
+    const lista = nodo('select');
+    lista.title = 'Los suelos de items.xml (isGround); también se puede escribir el número al lado';
+    const ninguno = nodo('option', '', '— elegir un suelo —');
+    ninguno.value = '';
+    lista.appendChild(ninguno);
+    suelos.forEach((definicion) => {
+        const opcion = nodo('option', '', definicion.id + ' — ' + (definicion.name || ''));
+        opcion.value = String(definicion.id);
+        lista.appendChild(opcion);
+    });
+
+    const numero = nodo('input');
+    numero.type = 'number';
+    numero.min = '1';
+    numero.placeholder = 'id';
+    numero.title = 'El id del suelo en items.xml; vacío, ninguno';
+    if (valor !== undefined && valor !== null) {
+        numero.value = String(valor);
+    }
+
+    const sincronizar = () => {
+        lista.value = suelos.some((d) => String(d.id) === numero.value) ? numero.value : '';
+    };
+    lista.addEventListener('change', () => {
+        if (lista.value) {
+            numero.value = lista.value;
+        }
+    });
+    numero.addEventListener('input', sincronizar);
+    sincronizar();
+
+    fila.appendChild(lista);
+    fila.appendChild(numero);
+    rotulo.appendChild(fila);
+    caja.appendChild(rotulo);
+    return numero;
+}
+
+/** Un número de un campo, o `undefined` si está vacío (para no mandar lo que no se ha escrito). */
+function numeroDe(entrada) {
+    const texto = entrada.value.trim();
+    return texto === '' ? undefined : Number(texto);
+}
+
+/** El error de una respuesta y sus problemas, una línea cada uno, en la zona de error del diálogo. */
+function mostrarErrorDeDialogo(zona, resultado) {
+    const lineas = [resultado.error];
+    const problemas = resultado.problems || [];
+    problemas.slice(0, 8).forEach((problema) => lineas.push(problema));
+    if (problemas.length > 8) {
+        lineas.push('y ' + (problemas.length - 8) + ' más');
+    }
+    // `fuera` (cuántas cosas de cada clase se quedarían fuera al encoger), si la respuesta lo trae.
+    if (resultado.fuera && typeof resultado.fuera === 'object') {
+        const clases = Object.keys(resultado.fuera).filter((clase) => resultado.fuera[clase] > 0)
+            .map((clase) => clase + ': ' + resultado.fuera[clase]);
+        if (clases.length) {
+            lineas.push('quedarían fuera: ' + clases.join(', '));
+        }
+    }
+    zona.textContent = lineas.join('\n');
+}
+
+/** Un formulario de diálogo: Intro lo envía, como en cualquier diálogo. */
+function formularioDeDialogo(dialogo, alEnviar) {
+    const formulario = nodo('form');
+    formulario.addEventListener('submit', (event) => {
+        event.preventDefault();
+        alEnviar();
+    });
+    dialogo.appendChild(formulario);
+    return formulario;
+}
+
+function botonDeDialogo(caja, texto, clase, tipo) {
+    const boton = nodo('button', clase || '', texto);
+    boton.type = tipo || 'button';
+    caja.appendChild(boton);
+    return boton;
+}
+
+/** El pie de un formulario de diálogo: la zona de error y el botón que lo envía. */
+function pieDeDialogo(formulario, texto) {
+    const error = nodo('div', 'dialogo-error');
+    formulario.appendChild(error);
+    const acciones = nodo('div', 'acciones-dialogo');
+    formulario.appendChild(acciones);
+    return { error: error, boton: botonDeDialogo(acciones, texto, '', 'submit') };
+}
+
+/** Cuántos cambios sin guardar tiene el mapa abierto. */
+function cambiosSinGuardar() {
+    return state.map ? state.map.stats().pending : 0;
+}
+
+/**
+ * Tras crear, copiar, renombrar o restaurar un mapa: la lista se vuelve a pedir (el archivo nuevo
+ * tiene que salir en ella), se elige y se abre. El mensaje va después de abrir, que pone el suyo.
+ */
+async function abrirMapaDeArchivo(nombre, mensaje, esAviso) {
+    await loadMapList();
+    document.getElementById('map-select').value = nombre;
+    await openMap(nombre);
+    if (mensaje) {
+        setMapStatus(mensaje, esAviso);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Los archivos de mapa: nuevo, guardar como, propiedades y copias de seguridad
+//
+// La API está en `apiclient.js` y lo que hace el servidor, en docs/HERRAMIENTAS.md §3.1. Aquí sólo
+// van los diálogos. NINGUNO PISA NADA: el servidor no deja crear ni copiar sobre un mapa que
+// exista, encoger con cosas fuera no toca el archivo, y cada sobrescritura deja una copia antes.
+// ---------------------------------------------------------------------------
+
+/** Nuevo mapa: nombre, tamaño, plantas, suelo de la superficie y descripción. */
+function dialogoNuevoMapa() {
+    const dialogo = abrirDialogo('Nuevo mapa');
+    const suelos = suelosConocidos();
+    const formulario = formularioDeDialogo(dialogo, () => crear());
+
+    const nombre = campoDeDialogo(formulario, 'Nombre del archivo', 'text', '',
+        'Se guarda como data/world/<nombre>.map.json');
+    nombre.placeholder = 'letras sin acentos, números, - y _';
+    const fila = nodo('div', 'row fila-campos');
+    formulario.appendChild(fila);
+    const ancho = campoDeDialogo(fila, 'Ancho (casillas)', 'number', 128);
+    const alto = campoDeDialogo(fila, 'Alto (casillas)', 'number', 128);
+    const plantas = campoDeDialogo(fila, 'Plantas', 'number', 16);
+    [ancho, alto].forEach((entrada) => {
+        entrada.min = '16';
+        entrada.max = '4096';
+    });
+    plantas.min = '8';
+    plantas.max = '16';
+    fila.querySelectorAll('label').forEach((rotulo) => rotulo.classList.add('mitad'));
+
+    // Se propone el suelo de la superficie del mapa abierto: lo normal es seguir con el mismo.
+    const sueloActual = state.map ? state.map.defaultGroundFor(7) : null;
+    const suelo = campoDeSuelo(formulario, 'Suelo por defecto (planta 7)', sueloActual, suelos);
+    const descripcion = campoDeDialogo(formulario, 'Descripción (opcional)', 'text', '');
+    formulario.appendChild(nodo('div', 'nota',
+        'El mapa se crea vacío, con una ciudad y su templo en el centro, y se abre.'));
+    const pie = pieDeDialogo(formulario, 'Crear y abrir');
+    nombre.focus();
+
+    async function crear() {
+        const pendientes = cambiosSinGuardar();
+        if (pendientes > 0 && !window.confirm('Hay ' + pendientes + ' cambio(s) sin guardar en el ' +
+            'mapa abierto. ¿Abrir el mapa nuevo y perderlos?')) {
+            return;
+        }
+
+        const datos = {
+            nombre: nombre.value.trim(),
+            ancho: numeroDe(ancho),
+            alto: numeroDe(alto),
+            plantas: numeroDe(plantas),
+            sueloPorDefecto: numeroDe(suelo)
+        };
+        if (descripcion.value.trim()) {
+            datos.descripcion = descripcion.value.trim();
+        }
+
+        pie.error.textContent = '';
+        pie.boton.disabled = true;
+        setMapStatus('creando el mapa ' + datos.nombre + '...');
+        const resultado = await api.crearMapa(datos);
+        pie.boton.disabled = false;
+
+        if (resultado.error) {
+            mostrarErrorDeDialogo(pie.error, resultado);
+            setMapStatus('no se creó el mapa: ' + resultado.error, true);
+            return;
+        }
+
+        cerrarDialogo();
+        const propiedades = resultado.propiedades || {};
+        await abrirMapaDeArchivo(resultado.nombre, 'mapa nuevo: ' + resultado.nombre + ' (' +
+            (propiedades.ancho || datos.ancho) + 'x' + (propiedades.alto || datos.alto) + ')');
+    }
+}
+
+/** Guardar como: el mapa abierto, con lo que no se haya guardado, en un archivo nuevo. */
+function dialogoGuardarComo() {
+    if (!state.map) {
+        setMapStatus('no hay ningún mapa abierto', true);
+        return;
+    }
+
+    const original = state.map.name;
+    const pendientes = cambiosSinGuardar();
+    const dialogo = abrirDialogo('Guardar como');
+    const formulario = formularioDeDialogo(dialogo, () => guardar());
+    const nombre = campoDeDialogo(formulario, 'Nombre del archivo nuevo', 'text', original + '-copia',
+        'Se guarda como data/world/<nombre>.map.json; no puede ser el de un mapa que ya exista');
+    formulario.appendChild(nodo('div', 'nota', pendientes > 0
+        ? 'Los ' + pendientes + ' cambio(s) sin guardar van a la copia; el original se queda como está en el disco.'
+        : 'Se copia el archivo tal y como está guardado; el original no se toca.'));
+    const pie = pieDeDialogo(formulario, 'Guardar como');
+    nombre.focus();
+    nombre.select();
+
+    async function guardar() {
+        const nuevo = nombre.value.trim();
+        // Lo que no se ha guardado va a la COPIA, con los mismos campos que «Guardar». Sin nada
+        // pendiente no se manda nada, y el servidor copia el archivo tal cual.
+        const pendiente = state.map.pendiente();
+        const hayCambios = pendiente.edits.length > 0 || ['spawns', 'npcs', 'composites',
+            'waypoints', 'towns', 'houses'].some((clave) => pendiente[clave] !== undefined);
+
+        pie.error.textContent = '';
+        pie.boton.disabled = true;
+        setMapStatus('guardando como ' + nuevo + '...');
+        const resultado = await api.guardarMapaComo(original, nuevo, hayCambios ? pendiente : undefined);
+        pie.boton.disabled = false;
+
+        if (resultado.error) {
+            mostrarErrorDeDialogo(pie.error, resultado);
+            setMapStatus('no se guardó como ' + nuevo + ': ' + resultado.error, true);
+            return;
+        }
+
+        cerrarDialogo();
+        await abrirMapaDeArchivo(resultado.nombre, 'guardado como ' + resultado.nombre +
+            ': el original ' + original + ' no se ha tocado');
+    }
+}
+
+/**
+ * Las propiedades del mapa: nombre, descripción, tamaño, plantas y suelos por defecto.
+ *
+ * SE MANDA SÓLO LO QUE CAMBIA, que es lo que pide la API: así cambiar la descripción no vuelve a
+ * comprobar el tamaño, y la respuesta dice exactamente qué se ha tocado.
+ */
+async function dialogoPropiedadesMapa() {
+    if (!state.map) {
+        setMapStatus('no hay ningún mapa abierto', true);
+        return;
+    }
+
+    const nombreMapa = state.map.name;
+    const dialogo = abrirDialogo('Propiedades del mapa');
+    const cargando = nodo('div', 'nota', 'cargando...');
+    dialogo.appendChild(cargando);
+
+    const leido = await api.getPropiedadesMapa(nombreMapa);
+    if (dialogo.hidden || !dialogo.contains(cargando)) {
+        return; // se cerró, o se abrió otro diálogo, mientras llegaba la respuesta
+    }
+    cargando.remove();
+
+    if (leido.error) {
+        dialogo.appendChild(nodo('div', 'dialogo-error',
+            'no se pudieron leer las propiedades: ' + leido.error));
+        return;
+    }
+
+    const antes = leido.propiedades;
+    const suelosDeAntes = antes.suelos || {};
+    const suelos = suelosConocidos();
+    const formulario = formularioDeDialogo(dialogo, () => aplicar());
+
+    const nombre = campoDeDialogo(formulario, 'Nombre (cambiarlo renombra el archivo y sus copias)',
+        'text', antes.nombre);
+    const descripcion = campoDeDialogo(formulario, 'Descripción', 'text', antes.descripcion);
+    const fila = nodo('div', 'row fila-campos');
+    formulario.appendChild(fila);
+    const ancho = campoDeDialogo(fila, 'Ancho (casillas)', 'number', antes.ancho);
+    const alto = campoDeDialogo(fila, 'Alto (casillas)', 'number', antes.alto);
+    const plantas = campoDeDialogo(fila, 'Plantas', 'number', antes.plantas);
+    fila.querySelectorAll('label').forEach((rotulo) => rotulo.classList.add('mitad'));
+    const limites = antes.limites || {};
+    if (limites.tamanoMinimo) {
+        formulario.appendChild(nodo('div', 'nota', 'Tamaño permitido: de ' + limites.tamanoMinimo +
+            ' a ' + limites.tamanoMaximo + ' casillas; plantas, hasta ' + limites.plantasMaximo + '.'));
+    }
+
+    // Un suelo por cada planta que ya lo tenga, y siempre el de la 7, que es la superficie.
+    const plantasConSuelo = Object.keys(suelosDeAntes).map(Number);
+    if (!plantasConSuelo.includes(7)) {
+        plantasConSuelo.push(7);
+    }
+    const camposDeSuelo = new Map();
+    plantasConSuelo.sort((a, b) => a - b).forEach((z) => {
+        camposDeSuelo.set(z, campoDeSuelo(formulario, 'Suelo por defecto de la planta ' + z,
+            suelosDeAntes[z], suelos));
+    });
+    const respaldo = campoDeSuelo(formulario, 'Suelo de respaldo: el de las plantas de la 7 hacia ' +
+        'abajo que no tienen suelo propio (vacío: ninguno)', antes.sueloDeRespaldo, suelos);
+
+    formulario.appendChild(nodo('div', 'nota', 'Encoger nunca borra: si algo quedara fuera, no se ' +
+        'cambia nada y se dice qué. Cambiar un suelo sólo cambia el terreno sin pintar.'));
+    const pie = pieDeDialogo(formulario, 'Aplicar');
+
+    /** Lo que se ha cambiado en el formulario, con las claves de la API. */
+    function cambiosDelFormulario() {
+        const cambios = {};
+        const oNulo = (valor) => (valor === undefined ? null : valor);
+
+        if (nombre.value.trim() !== antes.nombre) {
+            cambios.nombre = nombre.value.trim();
+        }
+        if (descripcion.value !== antes.descripcion) {
+            cambios.descripcion = descripcion.value;
+        }
+        [['ancho', ancho], ['alto', alto], ['plantas', plantas]].forEach(([clave, entrada]) => {
+            const valor = numeroDe(entrada);
+            if (valor !== antes[clave]) {
+                cambios[clave] = oNulo(valor);
+            }
+        });
+
+        const suelosNuevos = {};
+        camposDeSuelo.forEach((entrada, z) => {
+            const valor = oNulo(numeroDe(entrada));
+            const era = suelosDeAntes[z] === undefined ? null : suelosDeAntes[z];
+            if (valor !== era) {
+                suelosNuevos[z] = valor;
+            }
+        });
+        if (Object.keys(suelosNuevos).length) {
+            cambios.suelos = suelosNuevos;
+        }
+
+        const respaldoNuevo = oNulo(numeroDe(respaldo));
+        if (respaldoNuevo !== antes.sueloDeRespaldo) {
+            cambios.sueloDeRespaldo = respaldoNuevo;
+        }
+        return cambios;
+    }
+
+    async function aplicar() {
+        const cambios = cambiosDelFormulario();
+        if (Object.keys(cambios).length === 0) {
+            pie.error.textContent = 'no has cambiado nada';
+            return;
+        }
+
+        // Cambiar las propiedades reescribe el archivo desde el disco y el mapa se vuelve a abrir:
+        // lo pintado y sin guardar se perdería, y eso no puede pasar sin preguntar.
+        const pendientes = cambiosSinGuardar();
+        if (pendientes > 0 && !window.confirm('Hay ' + pendientes + ' cambio(s) sin guardar. ' +
+            'Cambiar las propiedades vuelve a abrir el mapa desde el disco y se perderían. ¿Seguir?')) {
+            return;
+        }
+
+        pie.error.textContent = '';
+        pie.boton.disabled = true;
+        const resultado = await api.savePropiedadesMapa(nombreMapa, cambios);
+        pie.boton.disabled = false;
+
+        if (resultado.error) {
+            mostrarErrorDeDialogo(pie.error, resultado);
+            setMapStatus('no se cambiaron las propiedades: ' + resultado.error, true);
+            return;
+        }
+
+        cerrarDialogo();
+        // Al renombrar, la respuesta trae el nombre nuevo, y quizá un aviso (config.js arranca el
+        // motor con el nombre de antes): se dice en rojo para que no pase desapercibido.
+        const hecho = (resultado.cambios && resultado.cambios.length ? resultado.cambios : Object.keys(cambios));
+        await abrirMapaDeArchivo(resultado.nombre || nombreMapa, 'propiedades guardadas: ' +
+            hecho.join(', ') + (resultado.aviso ? ' — ' + resultado.aviso : ''), !!resultado.aviso);
+    }
+}
+
+/** El tamaño de un archivo, para la lista de copias. */
+function tamanoDeArchivo(bytes) {
+    if (bytes < 1024) {
+        return bytes + ' B';
+    }
+    if (bytes < 1024 * 1024) {
+        return (bytes / 1024).toFixed(1) + ' KB';
+    }
+    return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+/** La fecha de una copia, en el idioma puesto. */
+function fechaDeCopia(fecha) {
+    const momento = new Date(fecha);
+    return Number.isNaN(momento.getTime())
+        ? String(fecha)
+        : momento.toLocaleString(idioma() === 'en' ? 'en-US' : 'es-ES');
+}
+
+/** Las copias de seguridad del mapa, de la más nueva a la más vieja, con «Restaurar». */
+async function dialogoCopiasMapa() {
+    if (!state.map) {
+        setMapStatus('no hay ningún mapa abierto', true);
+        return;
+    }
+
+    const nombreMapa = state.map.name;
+    const dialogo = abrirDialogo('Copias de seguridad');
+    const cargando = nodo('div', 'nota', 'cargando...');
+    dialogo.appendChild(cargando);
+
+    const leido = await api.listarCopiasMapa(nombreMapa);
+    if (dialogo.hidden || !dialogo.contains(cargando)) {
+        return;
+    }
+    cargando.remove();
+
+    if (leido.error) {
+        dialogo.appendChild(nodo('div', 'dialogo-error', 'no se pudieron listar las copias: ' + leido.error));
+        return;
+    }
+
+    dialogo.appendChild(nodo('div', 'nota', 'Antes de cada guardado se copia el archivo de antes; ' +
+        'se quedan las ' + leido.maximo + ' últimas.'));
+
+    // El servidor ya las da de la más nueva a la más vieja; se ordena igual por si acaso.
+    const copias = (leido.copias || []).slice()
+        .sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)));
+    if (copias.length === 0) {
+        dialogo.appendChild(nodo('div', 'nota', 'Todavía no hay ninguna copia: se hace una cada vez que se guarda.'));
+        return;
+    }
+
+    const error = nodo('div', 'dialogo-error');
+    copias.forEach((copia) => {
+        const fila = nodo('div', 'copia-fila');
+        fila.title = copia.archivo;
+        fila.appendChild(nodo('span', '', fechaDeCopia(copia.fecha)));
+        fila.appendChild(nodo('em', '', tamanoDeArchivo(copia.bytes)));
+        const boton = botonDeDialogo(fila, 'Restaurar', 'plain');
+        boton.title = 'Volver el mapa a esta copia (antes se copia cómo está ahora, así que también se puede deshacer)';
+        boton.addEventListener('click', () => restaurar(copia, boton));
+        dialogo.appendChild(fila);
+    });
+    dialogo.appendChild(error);
+
+    async function restaurar(copia, boton) {
+        const pendientes = cambiosSinGuardar();
+        const pregunta = '¿Volver el mapa ' + nombreMapa + ' a la copia del ' + fechaDeCopia(copia.fecha) +
+            '? Antes se guarda una copia de cómo está ahora.' +
+            (pendientes > 0 ? ' Los ' + pendientes + ' cambio(s) sin guardar se perderán.' : '');
+        if (!window.confirm(pregunta)) {
+            return;
+        }
+
+        error.textContent = '';
+        boton.disabled = true;
+        setMapStatus('restaurando la copia ' + copia.archivo + '...');
+        const resultado = await api.restaurarCopiaMapa(nombreMapa, copia.archivo);
+        boton.disabled = false;
+
+        if (resultado.error) {
+            mostrarErrorDeDialogo(error, resultado);
+            setMapStatus('no se restauró la copia: ' + resultado.error, true);
+            return;
+        }
+
+        // Lo que hay en el editor ya no es lo guardado: se vuelve a abrir desde el disco.
+        cerrarDialogo();
+        await abrirMapaDeArchivo(nombreMapa, 'mapa ' + nombreMapa + ' restaurado a la copia ' + copia.archivo);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// El diagnóstico del mapa (F7)
+//
+// La lógica y el panel están en `diagnostico.js`; aquí se le dice cómo ir a una casilla y se pone
+// la cuenta del último análisis en su botón. Se analiza al abrir el panel, con «Volver a analizar»
+// y al abrir un mapa: analizar en cada pincelada sería trabajo tirado, y la cifra del botón dice
+// lo que había la última vez que se miró.
+// ---------------------------------------------------------------------------
+
+const diagnostico = {
+    /** El panel abierto (`{actualizar, problemas}`), o null. */
+    panel: null,
+    /** Los problemas del último análisis, para la cifra del botón. */
+    ultimos: []
+};
+
+/** Analiza el mapa abierto y pone la cuenta en el botón. */
+function analizarMapa() {
+    if (!state.map) {
+        return [];
+    }
+    const problemas = diagnosticar(state.map, { monstruos: state.monsters });
+    ponerCuentaDeDiagnostico(problemas);
+    return problemas;
+}
+
+function ponerCuentaDeDiagnostico(problemas) {
+    diagnostico.ultimos = problemas || [];
+    const boton = document.getElementById('rme-diagnostico');
+    if (!boton) {
+        return;
+    }
+    const cuenta = resumen(diagnostico.ultimos);
+    if (cuenta.total === 0) {
+        delete boton.dataset.cuenta;
+        delete boton.dataset.gravedad;
+    } else {
+        boton.dataset.cuenta = cuenta.total > 999 ? '999+' : String(cuenta.total);
+        boton.dataset.gravedad = cuenta.errores > 0 ? 'error' : 'aviso';
+    }
+    boton.classList.toggle('active', !!diagnostico.panel);
+}
+
+/** Va a la casilla de un problema: cambia de planta como el selector y centra la vista. */
+function irAProblema(x, y, z) {
+    if (z !== undefined && z !== state.canvas.z) {
+        state.canvas.setFloor(Number(z));
+        document.getElementById('floor-select').value = String(z);
+    }
+    state.canvas.centerOn(x, y);
+    // La casilla queda marcada como si el ratón estuviera encima, con su planta: el rótulo del
+    // lienzo la describe entera.
+    state.canvas.hover = { x: x, y: y, z: state.canvas.z };
+    pedirDibujo();
+}
+
+function abrirDiagnostico() {
+    if (!state.map) {
+        setMapStatus('no hay ningún mapa abierto', true);
+        return;
+    }
+
+    const dialogo = abrirDialogo(null, true);
+    const contenedor = nodo('div');
+    // La X va en el diálogo y el título lo pone el panel, con la cuenta al lado.
+    dialogo.appendChild(contenedor);
+
+    const problemas = diagnosticar(state.map, { monstruos: state.monsters });
+    diagnostico.panel = construirPanel(contenedor, problemas, irAProblema, { reanalizar: analizarMapa });
+    ponerCuentaDeDiagnostico(problemas);
+
+    const cuenta = resumen(problemas);
+    setMapStatus(cuenta.total === 0
+        ? 'diagnóstico: ningún problema'
+        : 'diagnóstico: ' + cuenta.errores + ' error(es) y ' + cuenta.avisos + ' aviso(s)',
+    cuenta.errores > 0);
+}
+
+/** Al abrir un mapa: la cuenta del botón es la del mapa nuevo, y el panel abierto también. */
+function diagnosticarAlAbrir() {
+    const problemas = analizarMapa();
+    if (diagnostico.panel && dialogoPropioAbierto()) {
+        diagnostico.panel.actualizar(problemas);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Las plantas a la vista: las de abajo (P), su sombra (Q) y la de arriba en fantasma (Ctrl+L)
+//
+// El lienzo decide qué se dibuja (`setVistaDePlantas`, con la regla en `plantas.js`); aquí están
+// los botones, los atajos y el recuerdo de lo elegido, que se guarda en el navegador como el
+// idioma: quien trabaja con las plantas de abajo no quiere encenderlas cada vez que abre.
+// ---------------------------------------------------------------------------
+
+const CLAVE_VISTA_DE_PLANTAS = 'jetyum.editor.vistaDePlantas';
+
+const BOTONES_DE_PLANTAS = {
+    inferiores: 'rme-plantas-abajo',
+    sombra: 'rme-sombra',
+    fantasmaSuperior: 'rme-plantas-arriba'
+};
+
+function refrescarBotonesDePlantas() {
+    const vista = state.canvas.getVistaDePlantas();
+    Object.keys(BOTONES_DE_PLANTAS).forEach((modo) => {
+        const boton = document.getElementById(BOTONES_DE_PLANTAS[modo]);
+        if (boton) {
+            boton.classList.toggle('active', !!vista[modo]);
+        }
+    });
+}
+
+/** Cambia la vista (sólo lo que se pasa), lo recuerda y pide el dibujo. */
+function ponerVistaDePlantas(cambios) {
+    if (!state.canvas.setVistaDePlantas(cambios)) {
+        return false;
+    }
+    refrescarBotonesDePlantas();
+    try {
+        window.localStorage.setItem(CLAVE_VISTA_DE_PLANTAS,
+            JSON.stringify(state.canvas.getVistaDePlantas()));
+    } catch (error) {
+        // Sin almacenamiento (una ventana privada, un navegador que lo bloquea) la vista vale
+        // igual: sólo no se recuerda para la próxima vez.
+    }
+    pedirDibujo();
+    return true;
+}
+
+/** Enciende o apaga uno de los tres modos y dice en el estado cómo queda. */
+function alternarVistaDePlantas(modo) {
+    if (!state.canvas) {
+        return;
+    }
+    const encendido = !state.canvas.getVistaDePlantas()[modo];
+    ponerVistaDePlantas({ [modo]: encendido });
+    const vista = state.canvas.getVistaDePlantas();
+
+    if (modo === 'inferiores') {
+        // En la 7 no hay nada debajo que enseñar: es lo que hace el juego, no un fallo, y se dice
+        // para que nadie piense que el botón no funciona.
+        setMapStatus(!encendido ? 'plantas de abajo: no se ven'
+            : (state.canvas.z === 7
+                ? 'plantas de abajo: se ven (desde la planta 7 no hay nada debajo que ver, como en el juego)'
+                : 'plantas de abajo: se ven'));
+    } else if (modo === 'sombra') {
+        setMapStatus(!encendido ? 'sombra de las plantas de abajo: quitada'
+            : (vista.inferiores ? 'sombra de las plantas de abajo: puesta'
+                : 'sombra de las plantas de abajo: puesta (sólo se nota con «Plantas de abajo» encendido)'));
+    } else {
+        setMapStatus(encendido ? 'planta de arriba: se ve en fantasma' : 'planta de arriba: no se ve');
+    }
+}
+
+/** Al arrancar: la vista que se eligió la última vez, si se guardó. */
+function restaurarVistaDePlantas() {
+    let guardada = null;
+    try {
+        guardada = JSON.parse(window.localStorage.getItem(CLAVE_VISTA_DE_PLANTAS) || 'null');
+    } catch (error) {
+        guardada = null;
+    }
+    if (guardada && typeof guardada === 'object') {
+        state.canvas.setVistaDePlantas({
+            inferiores: !!guardada.inferiores,
+            sombra: !!guardada.sombra,
+            fantasmaSuperior: !!guardada.fantasmaSuperior
+        });
+    }
+    refrescarBotonesDePlantas();
+}
+
+function wireArchivosYVistas() {
+    wireDialogo();
+
+    document.getElementById('btn-mapa-nuevo').addEventListener('click', dialogoNuevoMapa);
+    document.getElementById('btn-mapa-guardar-como').addEventListener('click', dialogoGuardarComo);
+    document.getElementById('btn-mapa-propiedades').addEventListener('click', dialogoPropiedadesMapa);
+    document.getElementById('btn-mapa-copias').addEventListener('click', dialogoCopiasMapa);
+    document.getElementById('rme-diagnostico').addEventListener('click', abrirDiagnostico);
+
+    Object.keys(BOTONES_DE_PLANTAS).forEach((modo) => {
+        document.getElementById(BOTONES_DE_PLANTAS[modo]).addEventListener('click',
+            () => alternarVistaDePlantas(modo));
+    });
+    restaurarVistaDePlantas();
+
+    // El modo de selección de RME: cada clic pasa al siguiente (actual → las de abajo → las
+    // visibles → actual), y el botón enseña siempre el que dice `herramientas.js`.
+    document.getElementById('sel-modo').addEventListener('click', () => {
+        state.herramientas.siguienteModoSeleccion();
+        refrescarModoDeSeleccion();
+    });
+    refrescarModoDeSeleccion();
+}
+
+/**
+ * LOS GLOBOS DEL MODO DE SELECCIÓN: la primera línea dice cuál está puesto y las otras tres
+ * explican los tres, para que se sepa a qué se pasa con el clic sin tener que probarlo.
+ */
+const EXPLICACION_DE_MODOS = '\nPlanta actual — sólo la planta que se ve' +
+    '\nY las de abajo — esta planta y las de debajo (al aire libre, hasta la 7)' +
+    '\nPlantas visibles — las que se ven desde aquí (al aire libre, hasta la 7; bajo tierra, esta y dos más)';
+
+const BOTON_DE_MODO = {
+    actual: { icono: 'sel-actual', titulo: 'Modo de selección: sólo la planta actual (clic para cambiar)' },
+    inferiores: { icono: 'sel-inferiores', titulo: 'Modo de selección: esta planta y las de abajo (clic para cambiar)' },
+    visibles: { icono: 'sel-visibles', titulo: 'Modo de selección: las plantas visibles (clic para cambiar)' }
+};
+
+function refrescarModoDeSeleccion() {
+    const boton = document.getElementById('sel-modo');
+    const modo = BOTON_DE_MODO[state.herramientas.modoSeleccion] || BOTON_DE_MODO.actual;
+    boton.title = modo.titulo + EXPLICACION_DE_MODOS;
+    // El nombre accesible es la primera línea (`ponerIcono` sólo lo pone si no lo había).
+    boton.setAttribute('aria-label', modo.titulo);
+    ponerIcono(boton, modo.icono);
+    boton.classList.toggle('active', state.herramientas.modoSeleccion !== 'actual');
 }
 
 // ---------------------------------------------------------------------------
@@ -2184,6 +2987,13 @@ function wireTeclado() {
          * pintar hay que elegir otra vez.
          */
         if (event.key === 'Escape') {
+            // Primero, el gesto de la selección a medias (trazar un rectángulo o moverla): Escape
+            // lo cancela sin tocar el mapa y SIN soltar la herramienta, que es lo que se espera
+            // en mitad de un arrastre. Sólo si no había nada a medias se suelta la mano.
+            if (state.herramientas && state.herramientas.cancelarArrastre()) {
+                event.preventDefault();
+                return;
+            }
             soltarMano('nada en la mano: el clic izquierdo elige lo que hay en la casilla y el ' +
                 'derecho ensena sus detalles');
             event.preventDefault();
@@ -2239,6 +3049,43 @@ function wireTeclado() {
 
         if (event.key === 'PageDown') {
             cambiarPlanta(1);
+            event.preventDefault();
+            return;
+        }
+
+        if (!mapaALaVista()) {
+            return;
+        }
+
+        /*
+         * LAS PLANTAS A LA VISTA Y EL DIAGNÓSTICO. Los de RME son Ctrl+W, Ctrl+L y Q, pero Ctrl+W
+         * cierra la pestaña del navegador y una página no se lo puede quitar: las plantas de abajo
+         * van en la P. Ctrl+L (que en el navegador va a la barra de direcciones) sí se deja.
+         */
+        const ctrl = event.ctrlKey || event.metaKey;
+        const tecla = event.key.toLowerCase();
+        const sinNada = !ctrl && !event.altKey && !event.shiftKey;
+
+        if (sinNada && tecla === 'p') {
+            alternarVistaDePlantas('inferiores');
+            event.preventDefault();
+            return;
+        }
+
+        if (sinNada && tecla === 'q') {
+            alternarVistaDePlantas('sombra');
+            event.preventDefault();
+            return;
+        }
+
+        if (ctrl && !event.altKey && !event.shiftKey && tecla === 'l') {
+            alternarVistaDePlantas('fantasmaSuperior');
+            event.preventDefault();
+            return;
+        }
+
+        if (sinNada && event.key === 'F7') {
+            abrirDiagnostico();
             event.preventDefault();
         }
     });
@@ -2311,8 +3158,11 @@ function firmaDelLienzo() {
     const camara = lienzo.camera;
     const proveedor = lienzo.provider;
 
+    // `versionDeVista` sube al encender o apagar una vista de plantas (las de abajo, la sombra, la
+    // de arriba): cambia lo que se dibuja sin mover la cámara ni cambiar de planta.
     return [lienzo.canvas.width, lienzo.canvas.height, camara.centerX, camara.centerY,
-        camara.tileSize, lienzo.z, lienzo.modo, proveedor && proveedor.version].join('|');
+        camara.tileSize, lienzo.z, lienzo.modo, proveedor && proveedor.version,
+        lienzo.versionDeVista].join('|');
 }
 
 function mapaALaVista() {
@@ -2434,6 +3284,9 @@ async function boot() {
         modoDePaleta: (modo) => modoDePaleta(modo)
     });
     await state.herramientas.iniciar();
+
+    // --- Los archivos de mapa, el diagnóstico, las plantas a la vista y el modo de selección ---
+    wireArchivosYVistas();
 
     /*
      * La paleta se ata al proveedor de sprites DEL LIENZO, el de los assets
@@ -2748,6 +3601,16 @@ async function boot() {
     showTab('map');
     openMap(document.getElementById('map-select').value);
     escucharCambiosDelLienzo();
+
+    // CERRAR LA PESTAÑA CON EL MAPA SIN GUARDAR pide confirmación, como ya hacía la de Sprites: el
+    // navegador no deja escribir el aviso, pero sí preguntar. Sin esto, una recarga sin querer se
+    // llevaba una tarde de mapeo.
+    window.addEventListener('beforeunload', (evento) => {
+        if (state.map && state.map.stats().pending > 0) {
+            evento.preventDefault();
+            evento.returnValue = '';
+        }
+    });
     loop();
 }
 

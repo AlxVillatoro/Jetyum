@@ -13,7 +13,10 @@
  * sus cargas; gasta maná y almas.
  *
  * Los objetos (runas en blanco, runas y campos) son los 21000-21025 de items.xml
- * (tools/generar-runas.mjs). Las fórmulas son las de TFS: nivel / 5 + nivel mágico × a + b.
+ * (tools/generar-runas.mjs). Las fórmulas de daño son las de TFS: nivel / 5 + nivel mágico × a + b.
+ *
+ * LOS NIVELES SON MÁS BAJOS QUE EN TIBIA (más o menos la mitad, y el maná de los conjuros también):
+ * este mundo es pequeño y con los de Tibia casi nadie llegaría a usarlas. Se suben aquí mismo.
  */
 
 const RUNA = {
@@ -118,21 +121,21 @@ function conjuro(words, name, level, mana, soul, vocations, runa, cargas) {
 
 module.exports = [
     // --- Las runas ---
-    proyectil(RUNA.SUDDEN_DEATH, 'Sudden Death', 45, 15, 'death', PROYECTIL.FUEGO, 4.3, 32, 7.4, 48),
-    proyectil(RUNA.HEAVY_MAGIC_MISSILE, 'Heavy Magic Missile', 25, 3, 'energy', PROYECTIL.FLECHA_LIGERA, 0.81, 4, 1.59, 10),
-    proyectil(RUNA.LIGHT_MAGIC_MISSILE, 'Light Magic Missile', 15, 0, 'energy', PROYECTIL.FLECHA_LIGERA, 0.4, 2, 0.81, 4),
-    curacion(RUNA.ULTIMATE_HEALING, 'Ultimate Healing', 24, 4, 7.3, 42, 12.4, 90),
-    curacion(RUNA.INTENSE_HEALING, 'Intense Healing', 15, 1, 3.2, 20, 5.4, 40),
-    area(RUNA.GREAT_FIREBALL, 'Great Fireball', 30, 4, 'fire', () => Game.area.circulo(3), PROYECTIL.BOLA_FUEGO, 1.2, 7, 2.85, 16),
-    area(RUNA.EXPLOSION, 'Explosion', 31, 6, 'physical', () => Game.area.desdeMatriz(['010', '131', '010']),
+    proyectil(RUNA.SUDDEN_DEATH, 'Sudden Death', 20, 5, 'death', PROYECTIL.FUEGO, 4.3, 32, 7.4, 48),
+    proyectil(RUNA.HEAVY_MAGIC_MISSILE, 'Heavy Magic Missile', 10, 1, 'energy', PROYECTIL.FLECHA_LIGERA, 0.81, 4, 1.59, 10),
+    proyectil(RUNA.LIGHT_MAGIC_MISSILE, 'Light Magic Missile', 5, 0, 'energy', PROYECTIL.FLECHA_LIGERA, 0.4, 2, 0.81, 4),
+    curacion(RUNA.ULTIMATE_HEALING, 'Ultimate Healing', 12, 2, 7.3, 42, 12.4, 90),
+    curacion(RUNA.INTENSE_HEALING, 'Intense Healing', 5, 0, 3.2, 20, 5.4, 40),
+    area(RUNA.GREAT_FIREBALL, 'Great Fireball', 15, 2, 'fire', () => Game.area.circulo(3), PROYECTIL.BOLA_FUEGO, 1.2, 7, 2.85, 16),
+    area(RUNA.EXPLOSION, 'Explosion', 15, 3, 'physical', () => Game.area.desdeMatriz(['010', '131', '010']),
         PROYECTIL.BOLA_FUEGO, 1.6, 9, 3.2, 19),
-    campo(RUNA.FIRE_FIELD, 'Fire Field', 15, 1, CAMPO.FUEGO),
-    campo(RUNA.FIRE_BOMB, 'Fire Bomb', 27, 5, CAMPO.FUEGO, () => Game.area.cuadrado(1)),
-    campo(RUNA.ENERGY_FIELD, 'Energy Field', 18, 3, CAMPO.ENERGIA),
-    campo(RUNA.POISON_FIELD, 'Poison Field', 14, 0, CAMPO.VENENO),
+    campo(RUNA.FIRE_FIELD, 'Fire Field', 5, 0, CAMPO.FUEGO),
+    campo(RUNA.FIRE_BOMB, 'Fire Bomb', 12, 2, CAMPO.FUEGO, () => Game.area.cuadrado(1)),
+    campo(RUNA.ENERGY_FIELD, 'Energy Field', 8, 1, CAMPO.ENERGIA),
+    campo(RUNA.POISON_FIELD, 'Poison Field', 5, 0, CAMPO.VENENO),
     {
         // El muro mágico: no se pasa ni se dispara a través, y sólo en una casilla libre.
-        type: 'rune', id: RUNA.MAGIC_WALL, name: 'Magic Wall', level: 32, magicLevel: 9, aggressive: false,
+        type: 'rune', id: RUNA.MAGIC_WALL, name: 'Magic Wall', level: 16, magicLevel: 4, aggressive: false,
         onCastSpell(player, variant) {
             if (variant.creature) {
                 player.sendCancelMessage('Hay alguien ahí.');
@@ -147,7 +150,7 @@ module.exports = [
     },
     {
         // Quita los campos de fuego, energía y veneno de una casilla.
-        type: 'rune', id: RUNA.DESTROY_FIELD, name: 'Destroy Field', level: 17, magicLevel: 3, aggressive: false,
+        type: 'rune', id: RUNA.DESTROY_FIELD, name: 'Destroy Field', level: 8, magicLevel: 1, aggressive: false,
         onCastSpell(player, variant) {
             if (Game.removeFields(variant.position) === 0) {
                 player.sendCancelMessage('Ahí no hay ningún campo.');
@@ -159,7 +162,7 @@ module.exports = [
     },
     {
         // Paraliza a la criatura: anda muchísimo más despacio durante 20 s.
-        type: 'rune', id: RUNA.PARALYZE, name: 'Paralyze', level: 54, magicLevel: 18, needTarget: true, aggressive: true,
+        type: 'rune', id: RUNA.PARALYZE, name: 'Paralyze', level: 25, magicLevel: 8, needTarget: true, aggressive: true,
         onCastSpell(player, variant) {
             const c = variant.creature;
             c.addCondition({ type: 'paralisis', duration: 20000, value: Math.floor(c.getSpeed() * 0.6) });
@@ -169,18 +172,18 @@ module.exports = [
     },
 
     // --- Los conjuros: palabras, nivel, maná, almas, quién puede, la runa y sus cargas ---
-    conjuro('adori vita vis', 'Sudden Death', 45, 985, 5, HECHICEROS, RUNA.SUDDEN_DEATH, 3),
-    conjuro('adura vita', 'Ultimate Healing Rune', 24, 400, 3, DRUIDAS, RUNA.ULTIMATE_HEALING, 1),
-    conjuro('adura gran', 'Intense Healing Rune', 15, 120, 2, DRUIDAS, RUNA.INTENSE_HEALING, 1),
-    conjuro('adori gran', 'Heavy Magic Missile', 25, 350, 2, MAGOS, RUNA.HEAVY_MAGIC_MISSILE, 10),
-    conjuro('adori', 'Light Magic Missile', 15, 120, 1, MAGOS, RUNA.LIGHT_MAGIC_MISSILE, 10),
-    conjuro('adori gran flam', 'Great Fireball', 30, 530, 3, MAGOS, RUNA.GREAT_FIREBALL, 4),
-    conjuro('adevo mas hur', 'Explosion', 31, 570, 4, MAGOS, RUNA.EXPLOSION, 6),
-    conjuro('adevo grav flam', 'Fire Field', 15, 240, 1, MAGOS, RUNA.FIRE_FIELD, 3),
-    conjuro('adevo mas flam', 'Fire Bomb', 27, 600, 4, MAGOS, RUNA.FIRE_BOMB, 2),
-    conjuro('adevo grav vis', 'Energy Field', 18, 320, 2, MAGOS, RUNA.ENERGY_FIELD, 3),
-    conjuro('adevo grav pox', 'Poison Field', 14, 200, 1, MAGOS, RUNA.POISON_FIELD, 3),
-    conjuro('adevo grav tera', 'Magic Wall', 32, 750, 5, HECHICEROS, RUNA.MAGIC_WALL, 3),
-    conjuro('adito grav', 'Destroy Field', 17, 120, 2, MAGOS.concat(PALADINES), RUNA.DESTROY_FIELD, 3),
-    conjuro('adana ani', 'Paralyze', 54, 1400, 3, DRUIDAS, RUNA.PARALYZE, 1)
+    conjuro('adori vita vis', 'Sudden Death', 20, 400, 5, HECHICEROS, RUNA.SUDDEN_DEATH, 3),
+    conjuro('adura vita', 'Ultimate Healing Rune', 12, 200, 3, DRUIDAS, RUNA.ULTIMATE_HEALING, 1),
+    conjuro('adura gran', 'Intense Healing Rune', 5, 60, 2, DRUIDAS, RUNA.INTENSE_HEALING, 1),
+    conjuro('adori gran', 'Heavy Magic Missile', 10, 150, 2, MAGOS, RUNA.HEAVY_MAGIC_MISSILE, 10),
+    conjuro('adori', 'Light Magic Missile', 5, 60, 1, MAGOS, RUNA.LIGHT_MAGIC_MISSILE, 10),
+    conjuro('adori gran flam', 'Great Fireball', 15, 250, 3, MAGOS, RUNA.GREAT_FIREBALL, 4),
+    conjuro('adevo mas hur', 'Explosion', 15, 280, 4, MAGOS, RUNA.EXPLOSION, 6),
+    conjuro('adevo grav flam', 'Fire Field', 5, 80, 1, MAGOS, RUNA.FIRE_FIELD, 3),
+    conjuro('adevo mas flam', 'Fire Bomb', 12, 250, 4, MAGOS, RUNA.FIRE_BOMB, 2),
+    conjuro('adevo grav vis', 'Energy Field', 8, 120, 2, MAGOS, RUNA.ENERGY_FIELD, 3),
+    conjuro('adevo grav pox', 'Poison Field', 5, 60, 1, MAGOS, RUNA.POISON_FIELD, 3),
+    conjuro('adevo grav tera', 'Magic Wall', 16, 350, 5, HECHICEROS, RUNA.MAGIC_WALL, 3),
+    conjuro('adito grav', 'Destroy Field', 8, 60, 2, MAGOS.concat(PALADINES), RUNA.DESTROY_FIELD, 3),
+    conjuro('adana ani', 'Paralyze', 25, 500, 3, DRUIDAS, RUNA.PARALYZE, 1)
 ];

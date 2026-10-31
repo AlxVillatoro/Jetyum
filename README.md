@@ -181,6 +181,8 @@ la API de scripts del servidor: ver [docs/SCRIPTS.md](docs/SCRIPTS.md).
   alfombras y mesas; casas, ciudades y waypoints; respawns, monstruos y NPC; selección y
   portapapeles, cubo de relleno, buscar y reemplazar, deshacer y minimapa. Los atajos son los de
   RME ([docs/MAPAS.md](docs/MAPAS.md#4-las-herramientas-de-rme)).
+  También: ver las plantas de abajo (con sombra) y la de arriba en fantasma, selección de varias
+  plantas, diagnóstico del mapa (F7) y nuevo mapa, guardar como, propiedades y copias de seguridad.
 - **Compuestos**: plantillas de objetos enteros de una o varias casillas, con parámetros.
 - **Sprites**, al estilo ObjectBuilder: cosas por categoría, vista previa animada, biblioteca de
   sprites (importar, reemplazar, exportar), hojas de cosa, propiedades y banderas del `.dat` 8.60,

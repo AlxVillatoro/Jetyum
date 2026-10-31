@@ -20,8 +20,355 @@ export function rectangulo(a, b, z) {
     };
 }
 
+/**
+ * ¿Está la casilla dentro? Vale para un RECTÁNGULO `{x0, y0, x1, y1, z}` y para una SELECCIÓN
+ * (el conjunto de casillas de más abajo, que se reconoce por llevar `claves`). Así buscar,
+ * reemplazar y quitar por id funcionan igual con la selección de un rectángulo que con la de
+ * varios sumados y restados, o con la de varias plantas.
+ */
 export function dentroDe(rect, x, y, z) {
+    if (rect && rect.claves) {
+        return enSeleccion(rect, x, y, z);
+    }
     return !!rect && z === rect.z && x >= rect.x0 && x <= rect.x1 && y >= rect.y0 && y <= rect.y1;
+}
+
+// ---------------------------------------------------------------------------
+// LA SELECCIÓN COMO CONJUNTO DE CASILLAS
+// ---------------------------------------------------------------------------
+//
+// En RME la selección no es un rectángulo: es un CONJUNTO de casillas. Se empieza con un
+// rectángulo, Mayús+arrastrar le SUMA otro, Ctrl+arrastrar le RESTA uno, y el resultado puede
+// tener cualquier forma —una L, un marco, dos islas— y abarcar varias plantas a la vez (el «modo
+// de selección»: la planta actual, las de debajo o las visibles). Todo lo que se hace con la
+// selección —copiar, cortar, borrar, mover, borderizar, reemplazar...— trabaja sobre ese conjunto.
+//
+// Se guarda como `{claves: Set<'x,y,z'>}`: las mismas claves que usa `EditorMap.tiles`, así que
+// preguntar si una casilla está dentro es un `has` y no un recorrido. Un objeto y no un `Set` a
+// secas para que `dentroDe` la distinga de un rectángulo y para poder añadirle datos sin
+// cambiar a quien la recibe.
+
+/** La planta del suelo: por encima de ella (z < 7) se está al aire libre, por debajo bajo tierra. */
+export const PLANTA_DEL_SUELO = 7;
+
+/** Los modos de selección de RME (Selection mode): planta actual, inferiores y visibles. */
+export const MODOS_DE_SELECCION = ['actual', 'inferiores', 'visibles'];
+
+function claveDe(x, y, z) {
+    return x + ',' + y + ',' + z;
+}
+
+function deClave(clave) {
+    const [x, y, z] = clave.split(',').map(Number);
+    return { x, y, z };
+}
+
+/**
+ * Las plantas que coge un rectángulo trazado en la planta `z`, según el modo:
+ *
+ *   - `actual`: sólo esa.
+ *   - `inferiores`: esa y las de debajo (z mayor). Al aire libre baja HASTA EL SUELO (la 7) y no
+ *     más, que es lo que se quiere al copiar un edificio con sus pisos: las cuevas de debajo no
+ *     son parte de él. Bajo tierra baja hasta la última planta del mapa.
+ *   - `visibles`: las que el cliente de Tibia enseña desde ahí, que es la regla de RME: al aire
+ *     libre, de la actual al suelo (igual que `inferiores`); bajo tierra, la actual y dos más
+ *     hacia abajo, que es lo que se ve por los agujeros.
+ *
+ * @param {string} modo uno de `MODOS_DE_SELECCION`
+ * @param {number} z la planta donde se traza
+ * @param {number} [plantas] cuántas plantas tiene el mapa (16 en Tibia)
+ * @returns {number[]} de la de arriba a la de abajo
+ */
+export function plantasDeSeleccion(modo, z, plantas) {
+    const ultima = (Number(plantas) || 16) - 1;
+    let hasta = z;
+    if (modo === 'inferiores') {
+        hasta = z <= PLANTA_DEL_SUELO ? PLANTA_DEL_SUELO : ultima;
+    } else if (modo === 'visibles') {
+        hasta = z <= PLANTA_DEL_SUELO ? PLANTA_DEL_SUELO : Math.min(ultima, z + 2);
+    }
+    const lista = [];
+    for (let p = z; p <= Math.max(z, hasta); p += 1) {
+        lista.push(p);
+    }
+    return lista;
+}
+
+export function seleccionVacia() {
+    return { claves: new Set() };
+}
+
+export function clonarSeleccion(sel) {
+    return sel ? { claves: new Set(sel.claves) } : null;
+}
+
+export function enSeleccion(sel, x, y, z) {
+    return !!sel && sel.claves.has(claveDe(x, y, z));
+}
+
+export function tamanoDeSeleccion(sel) {
+    return sel ? sel.claves.size : 0;
+}
+
+/**
+ * Suma (o resta, con `quitar`) un rectángulo a la selección, en las plantas dadas. Cambia la
+ * selección que recibe y la devuelve, para poder encadenar.
+ *
+ * @param {{claves:Set}} sel
+ * @param {{x0,y0,x1,y1}} rect normalizado (ver `rectangulo`)
+ * @param {number[]} plantas las de `plantasDeSeleccion`
+ * @param {boolean} [quitar]
+ */
+export function marcarRectangulo(sel, rect, plantas, quitar) {
+    plantas.forEach((z) => {
+        for (let y = rect.y0; y <= rect.y1; y += 1) {
+            for (let x = rect.x0; x <= rect.x1; x += 1) {
+                if (quitar) {
+                    sel.claves.delete(claveDe(x, y, z));
+                } else {
+                    sel.claves.add(claveDe(x, y, z));
+                }
+            }
+        }
+    });
+    return sel;
+}
+
+/** Una selección nueva con un rectángulo en esas plantas. */
+export function seleccionDeRectangulo(rect, plantas) {
+    return marcarRectangulo(seleccionVacia(), rect, plantas || [rect.z]);
+}
+
+/** Las casillas de la selección, ordenadas por planta, fila y columna. */
+export function casillasDeSeleccion(sel) {
+    if (!sel) {
+        return [];
+    }
+    return Array.from(sel.claves, deClave).sort((a, b) => (a.z - b.z) || (a.y - b.y) || (a.x - b.x));
+}
+
+/**
+ * El recuadro que la envuelve, con sus plantas: `{x0, y0, x1, y1, z0, z1, plantas, total}`, o
+ * `null` si está vacía. `plantas` es la lista de plantas que tienen alguna casilla.
+ */
+export function limitesDeSeleccion(sel) {
+    if (!sel || sel.claves.size === 0) {
+        return null;
+    }
+    const l = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity, z0: Infinity, z1: -Infinity, total: sel.claves.size };
+    const plantas = new Set();
+    sel.claves.forEach((clave) => {
+        const c = deClave(clave);
+        l.x0 = Math.min(l.x0, c.x); l.x1 = Math.max(l.x1, c.x);
+        l.y0 = Math.min(l.y0, c.y); l.y1 = Math.max(l.y1, c.y);
+        l.z0 = Math.min(l.z0, c.z); l.z1 = Math.max(l.z1, c.z);
+        plantas.add(c.z);
+    });
+    l.plantas = Array.from(plantas).sort((a, b) => a - b);
+    return l;
+}
+
+/**
+ * COPIAR LA SELECCIÓN: como `copiarArea`, pero de un conjunto de casillas y de varias plantas.
+ *
+ * Cada celda lleva `dx`/`dy` desde la esquina de arriba a la izquierda del recuadro y `dz`
+ * desde la planta `zBase` —la que se está viendo al copiar—, así que al pegar en otra planta el
+ * edificio llega con sus pisos en el mismo orden. Además de las celdas con contenido lleva la
+ * `mascara`: TODAS las casillas seleccionadas, también las vacías, que es la forma que se
+ * enseña en el fantasma y la que queda seleccionada al pegar.
+ *
+ * @returns {{ancho, alto, celdas: Array, mascara: Array<{dx,dy,dz}>, plantas: number}}
+ */
+export function copiarSeleccion(mapa, sel, zBase) {
+    const l = limitesDeSeleccion(sel);
+    if (!l) {
+        return { ancho: 0, alto: 0, celdas: [], mascara: [], plantas: 0 };
+    }
+    const celdas = [];
+    const mascara = [];
+    casillasDeSeleccion(sel).forEach((c) => {
+        const d = { dx: c.x - l.x0, dy: c.y - l.y0, dz: c.z - zBase };
+        mascara.push(d);
+        const tile = mapa.tileAt(c.x, c.y, c.z);
+        if (tile && !mapa.isVoid(tile)) {
+            celdas.push({ ...d, ...copiaDeCasilla(tile) });
+        }
+    });
+    return { ancho: l.x1 - l.x0 + 1, alto: l.y1 - l.y0 + 1, celdas, mascara, plantas: l.plantas.length };
+}
+
+/** Borra todo lo explícito de las casillas seleccionadas. @returns {number} cuántas tenían algo */
+export function borrarCasillas(mapa, sel) {
+    let n = 0;
+    casillasDeSeleccion(sel).forEach((c) => {
+        if (mapa.tileAt(c.x, c.y, c.z)) {
+            mapa.erase(c.x, c.y, c.z);
+            n += 1;
+        }
+    });
+    return n;
+}
+
+/**
+ * La selección que queda tras pegar en (x, y, z): la forma de lo copiado (su `mascara`), o el
+ * rectángulo entero si el portapapeles es de los de `copiarArea`. Sin lo que cae fuera del mapa.
+ */
+export function seleccionDePegado(mapa, portapapeles, x, y, z) {
+    const sel = seleccionVacia();
+    const forma = portapapeles.mascara || [];
+    if (forma.length === 0) {
+        for (let dy = 0; dy < portapapeles.alto; dy += 1) {
+            for (let dx = 0; dx < portapapeles.ancho; dx += 1) {
+                forma.push({ dx, dy, dz: 0 });
+            }
+        }
+    }
+    forma.forEach((d) => {
+        const cx = x + d.dx;
+        const cy = y + d.dy;
+        const cz = z + (d.dz || 0);
+        if (mapa.inBounds(cx, cy, cz)) {
+            sel.claves.add(claveDe(cx, cy, cz));
+        }
+    });
+    return sel;
+}
+
+/**
+ * MOVER LA SELECCIÓN (arrastrarla con el ratón en RME): lleva su contenido (dx, dy, dz) casillas
+ * más allá, de una vez.
+ *
+ * QUÉ VIAJA, y por qué:
+ *   - LA CASILLA ENTERA: suelo, pila de objetos (con sus atributos), banderas (PZ, noPvp...) y
+ *     `houseId`. Es lo que hace RME —mueve el tile, no sólo lo de encima— y lo que espera quien
+ *     arrastra una habitación: que llegue igual, con su suelo y sus casillas de casa.
+ *   - Cada casilla movida SUSTITUYE a la de destino, igual que al pegar. Las casillas
+ *     seleccionadas SIN NADA PROPIO no viajan, así que lo que hubiera debajo de ellas en el
+ *     destino se queda (es lo mismo que pasa al copiar y pegar, y así una selección con huecos
+ *     no hace agujeros al soltarla).
+ *   - LOS COMPUESTOS que caen ENTEROS dentro de la selección se recolocan con ella: sus piezas
+ *     ya han viajado con las casillas, y si su ancla se quedara atrás, quitarlo o reconfigurarlo
+ *     iría a buscar las piezas al sitio viejo. Uno partido por el borde de la selección no se
+ *     toca (sus piezas se separan, como al cortar media mesa en RME).
+ *   - LOS NPC cuya casilla está seleccionada y LOS RESPAWNS cuyo centro está seleccionado se
+ *     mueven también, con sus monstruos —RME mueve criaturas y spawns con la selección—. Pasan
+ *     las mismas reglas que al arrastrarlos de uno en uno (`_problemaDeMoverArea`,
+ *     `_problemaDeMoverNpc` de `EditorMap`): el que no cabe se queda donde estaba y se avisa.
+ *   - Lo que NO viaja: los waypoints, los templos y las salidas de casa. Son puntos con nombre
+ *     de las listas del mapa que se colocan a propósito con su paleta, y moverlos sin querer al
+ *     arrastrar una calle sería peor que dejarlos.
+ *
+ * SI ALGUNA CASILLA CON CONTENIDO SE SALDRÍA DEL MAPA, NO SE MUEVE NADA: recortar dejaría media
+ * habitación en un sitio y la otra media perdida, que es lo que nadie quiere al mover.
+ *
+ * Todo pasa por `editableTile`/`erase`/`markDirty` y las listas del mapa, así que el historial lo
+ * recoge en UNA entrada si se confirma una vez al final.
+ *
+ * @returns {{ok:boolean, problema?:string, n?:number, seleccion?:Object, avisos?:string[],
+ *            marcadores?:number, origen?:Array, destino?:Array}}
+ */
+export function moverSeleccion(mapa, sel, dx, dy, dz) {
+    const mz = dz || 0;
+    const casillas = casillasDeSeleccion(sel);
+    if (casillas.length === 0) {
+        return { ok: false, problema: 'no hay selección que mover' };
+    }
+    if (!dx && !dy && !mz) {
+        return { ok: true, n: 0, seleccion: clonarSeleccion(sel), avisos: [], marcadores: 0, origen: [], destino: [] };
+    }
+    const llevar = [];
+    casillas.forEach((c) => {
+        const tile = mapa.tileAt(c.x, c.y, c.z);
+        if (tile && !mapa.isVoid(tile)) {
+            llevar.push({ x: c.x + dx, y: c.y + dy, z: c.z + mz, copia: copiaDeCasilla(tile) });
+        }
+    });
+    const fuera = llevar.find((c) => !mapa.inBounds(c.x, c.y, c.z));
+    if (fuera) {
+        return { ok: false, problema: 'no se puede mover ahí: la casilla (' + fuera.x + ',' + fuera.y + ',' + fuera.z +
+            ') quedaría fuera del mapa' };
+    }
+
+    // Lo que viaja con las casillas se decide ANTES de tocarlas: después ya no se sabría qué
+    // estaba dentro.
+    const compuestos = (mapa.compuestos || []).filter((c) => {
+        const piezas = mapa.casillasDeCompuesto ? mapa.casillasDeCompuesto(c) : [];
+        return piezas.length > 0 && piezas.every((k) => enSeleccion(sel, k.x, k.y, k.z));
+    });
+    const npcs = (mapa.npcs || []).filter((n) => enSeleccion(sel, n.x, n.y, n.z));
+    const respawns = (mapa.spawns || []).filter((s) => enSeleccion(sel, s.x, s.y, s.z));
+
+    casillas.forEach((c) => {
+        if (mapa.tileAt(c.x, c.y, c.z)) {
+            mapa.erase(c.x, c.y, c.z);
+        }
+    });
+    llevar.forEach((c) => {
+        const tile = mapa.editableTile(c.x, c.y, c.z);
+        tile.ground = c.copia.ground;
+        tile.items = c.copia.items;
+        tile.flags = c.copia.flags;
+        tile.houseId = c.copia.houseId || 0;
+        mapa.markDirty(c.x, c.y, c.z);
+    });
+
+    const avisos = [];
+    let marcadores = 0;
+    compuestos.forEach((c) => {
+        c.x += dx;
+        c.y += dy;
+        c.z += mz;
+        mapa.compuestosSucios = true;
+        marcadores += 1;
+    });
+    respawns.forEach((s) => {
+        const mover = (v, d) => (v === null || v === undefined ? v : v + d);
+        const candidata = {
+            x: s.x + dx, y: s.y + dy, z: s.z + mz,
+            monsters: s.monsters.map((m) => ({ ...m, x: mover(m.x, dx), y: mover(m.y, dy) }))
+        };
+        const problema = mapa._problemaDeMoverArea ? mapa._problemaDeMoverArea(s, candidata) : null;
+        if (problema) {
+            avisos.push('respawn de (' + s.x + ',' + s.y + ',' + s.z + '): ' + problema);
+            return;
+        }
+        s.x = candidata.x;
+        s.y = candidata.y;
+        s.z = candidata.z;
+        s.monsters.forEach((m, i) => {
+            m.x = candidata.monsters[i].x;
+            m.y = candidata.monsters[i].y;
+        });
+        mapa.spawnsSucios = true;
+        marcadores += 1;
+    });
+    npcs.forEach((n) => {
+        const problema = mapa._problemaDeMoverNpc ? mapa._problemaDeMoverNpc(n, n.x + dx, n.y + dy, n.z + mz) : null;
+        if (problema) {
+            avisos.push('NPC «' + n.name + '»: ' + problema);
+            return;
+        }
+        n.x += dx;
+        n.y += dy;
+        n.z += mz;
+        mapa.npcsSucios = true;
+        marcadores += 1;
+    });
+    if (marcadores > 0) {
+        // El marcador elegido se apuntaba por su casilla, que ya no es la misma.
+        mapa.seleccion = null;
+    }
+
+    const nueva = seleccionVacia();
+    casillas.forEach((c) => {
+        if (mapa.inBounds(c.x + dx, c.y + dy, c.z + mz)) {
+            nueva.claves.add(claveDe(c.x + dx, c.y + dy, c.z + mz));
+        }
+    });
+    return {
+        ok: true, n: llevar.length, seleccion: nueva, avisos, marcadores,
+        origen: casillas, destino: casillasDeSeleccion(nueva)
+    };
 }
 
 function copiaDeCasilla(tile) {
@@ -75,15 +422,18 @@ export function pegar(mapa, portapapeles, x, y, z) {
     portapapeles.celdas.forEach((c) => {
         const cx = x + c.dx;
         const cy = y + c.dy;
-        if (!mapa.inBounds(cx, cy, z)) {
+        // `dz`: lo copiado de varias plantas (`copiarSeleccion`) llega con sus pisos en el
+        // mismo orden, contados desde la planta donde se pega.
+        const cz = z + (c.dz || 0);
+        if (!mapa.inBounds(cx, cy, cz)) {
             return;
         }
-        const tile = mapa.editableTile(cx, cy, z);
+        const tile = mapa.editableTile(cx, cy, cz);
         tile.ground = c.ground;
         tile.items = JSON.parse(JSON.stringify(c.items));
         tile.flags = c.flags.slice();
         tile.houseId = c.houseId || 0;
-        mapa.markDirty(cx, cy, z);
+        mapa.markDirty(cx, cy, cz);
         n += 1;
     });
     return n;
@@ -224,22 +574,29 @@ export function quitarPorId(mapa, id, rect) {
  * probabilidades de su pincel de suelo, para que un prado no tenga siempre la misma variante.
  */
 export function aleatorizar(mapa, idx, rect, aleatorio) {
-    let n = 0;
-    for (let y = rect.y0; y <= rect.y1; y += 1) {
-        for (let x = rect.x0; x <= rect.x1; x += 1) {
-            const suelo = sueloEfectivo(mapa, x, y, rect.z);
-            const pincel = idx.sueloDeObjeto.get(Number(suelo));
-            if (!pincel || pincel.items.length < 2) {
-                continue;
-            }
-            const nuevo = elegirObjeto(pincel, aleatorio);
-            if (nuevo !== suelo) {
-                mapa.editableTile(x, y, rect.z).ground = nuevo;
-                mapa.markDirty(x, y, rect.z);
-                n += 1;
+    // Un rectángulo o una selección (conjunto de casillas, quizá de varias plantas).
+    const casillas = rect.claves ? casillasDeSeleccion(rect) : [];
+    if (!rect.claves) {
+        for (let y = rect.y0; y <= rect.y1; y += 1) {
+            for (let x = rect.x0; x <= rect.x1; x += 1) {
+                casillas.push({ x, y, z: rect.z });
             }
         }
     }
+    let n = 0;
+    casillas.forEach(({ x, y, z }) => {
+        const suelo = sueloEfectivo(mapa, x, y, z);
+        const pincel = idx.sueloDeObjeto.get(Number(suelo));
+        if (!pincel || pincel.items.length < 2) {
+            return;
+        }
+        const nuevo = elegirObjeto(pincel, aleatorio);
+        if (nuevo !== suelo) {
+            mapa.editableTile(x, y, z).ground = nuevo;
+            mapa.markDirty(x, y, z);
+            n += 1;
+        }
+    });
     return n;
 }
 

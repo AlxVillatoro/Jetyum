@@ -30,7 +30,10 @@ async function request(method, route, body) {
     }
 
     if (!response.ok) {
+        // Lo que el servidor añada al error (p. ej. `fuera`, cuánto se quedaría fuera al encoger
+        // un mapa) llega también: quien llama decide si lo enseña.
         return {
+            ...payload,
             error: payload.error || ('el servidor respondio ' + response.status),
             problems: payload.problems || [],
             status: response.status
@@ -93,6 +96,64 @@ export class ApiClient {
         });
 
         return request('POST', this.base + '/api/map', cuerpo);
+    }
+
+    // --- Archivos de mapa: nuevo, guardar como, propiedades y copias de seguridad ---
+
+    /**
+     * Crea un mapa nuevo con lo mínimo para que el motor lo arranque: el suelo de la superficie,
+     * una ciudad con su templo en el centro y el waypoint `temple`.
+     *
+     * @param {Object} datos `{nombre, ancho, alto, plantas?, sueloPorDefecto, sueloDeRespaldo?,
+     *        descripcion?, ciudad?, dryRun?}`. Responde 201 con `{nombre, propiedades, stats}`;
+     *        409 si ya existe, 400 si el nombre o el tamaño no valen, 422 si el suelo no vale.
+     */
+    crearMapa(datos) {
+        return request('POST', this.base + '/api/maps', datos || {});
+    }
+
+    /**
+     * Guardar como: escribe el mapa `nombre` con otro nombre SIN TOCAR EL ORIGINAL.
+     *
+     * @param {string} nombre el mapa abierto
+     * @param {string} nuevoNombre el archivo que se crea (nunca pisa uno que exista: 409)
+     * @param {Object} [cambios] lo que todavía no se ha guardado, con los mismos campos que
+     *        `saveMap` (`{edits, spawns, npcs, composites, waypoints, towns, houses}`): se aplica a
+     *        la copia y sólo a la copia. Sin cambios, se copia el archivo guardado.
+     */
+    guardarMapaComo(nombre, nuevoNombre, cambios) {
+        const cuerpo = Object.assign({}, cambios || {}, { nuevoNombre: nuevoNombre });
+        return request('POST', this.base + '/api/maps/' + encodeURIComponent(nombre) + '/copia', cuerpo);
+    }
+
+    /** `{propiedades: {nombre, descripcion, ancho, alto, plantas, suelos, sueloDeRespaldo, limites}}` */
+    getPropiedadesMapa(nombre) {
+        return request('GET', this.base + '/api/maps/' + encodeURIComponent(nombre) + '/propiedades');
+    }
+
+    /**
+     * Cambia las propiedades de un mapa. Sólo se manda lo que cambia: `{nombre?, descripcion?,
+     * ancho?, alto?, plantas?, suelos?: {planta: objeto|null}, sueloDeRespaldo?: objeto|null,
+     * dryRun?}`. Encoger con cosas fuera responde 422 con `problems` y `fuera` (cuántas de cada
+     * clase) y no toca nada. Al renombrar, la respuesta trae el `nombre` nuevo y quizá un `aviso`.
+     */
+    savePropiedadesMapa(nombre, propiedades) {
+        return request('PUT', this.base + '/api/maps/' + encodeURIComponent(nombre) + '/propiedades',
+            propiedades || {});
+    }
+
+    /** `{nombre, maximo, copias: [{archivo, fecha, bytes}]}`, de la más nueva a la más vieja. */
+    listarCopiasMapa(nombre) {
+        return request('GET', this.base + '/api/maps/' + encodeURIComponent(nombre) + '/copias');
+    }
+
+    /**
+     * Vuelve el mapa a una copia de seguridad (haciendo antes copia del estado actual). Después
+     * hay que volver a abrir el mapa con `getMap`: lo que hay en el editor ya no es lo guardado.
+     */
+    restaurarCopiaMapa(nombre, archivo, dryRun) {
+        return request('POST', this.base + '/api/maps/' + encodeURIComponent(nombre) + '/copias/' +
+            encodeURIComponent(archivo) + '/restaurar', { dryRun: dryRun === true });
     }
 
     /**

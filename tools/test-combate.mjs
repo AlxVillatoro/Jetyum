@@ -225,7 +225,7 @@ section('4. Las runas');
     const sd = pj.inventory.find((x) => x.typeId === 21001);
     check('«adori vita vis» convierte la runa en blanco en una sudden death de 3 cargas',
         sd && world.runeCharges(sd) === 3 && !pj.inventory.some((x) => x.typeId === 21000), textos(buzon).slice(-80));
-    check('y gasta maná y almas', pj.mana === 3000 - 985 && pj.soul === 95);
+    check('y gasta maná y almas', pj.mana === 3000 - 400 && pj.soul === 95);
 
     const rata = world.createMonster('Cyclops', en(3, 0));
     rata.maxHealth = rata.health = 100000;
@@ -238,7 +238,7 @@ section('4. Las runas');
     const otra = sesion.handle([P.CLIENT.USE_WITH, { inventario: i }, { criatura: rata.id }]);
     check('justo después: agotado', otra.used === false && otra.reason === 'exhausted');
 
-    pj.magicLevel = 5;
+    pj.magicLevel = 2;
     avanzar(2100);
     check('sin el nivel mágico no se puede', sesion.handle([P.CLIENT.USE_WITH, { inventario: i }, { criatura: rata.id }])
         .reason === 'magicLevel');

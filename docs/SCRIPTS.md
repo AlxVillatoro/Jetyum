@@ -352,7 +352,7 @@ caballeros); `utani hur` (correr), `utevo lux` (luz) y `exana pox` (quitar el ve
 lleves en la runa `a` con sus cargas:
 
 ```js
-{ type: 'spell', words: 'adori vita vis', name: 'Sudden Death', group: 'apoyo', level: 45, mana: 985, soul: 5,
+{ type: 'spell', words: 'adori vita vis', name: 'Sudden Death', group: 'apoyo', level: 20, mana: 400, soul: 5,
   vocations: ['Sorcerer', 'Master Sorcerer'], conjurar: { de: 21000, a: 21001, cargas: 3 } }
 ```
 
@@ -369,7 +369,7 @@ la runa desaparece):
 ```js
 // data/scripts/spells/runas.js (un trozo)
 module.exports = {
-    type: 'rune', id: 21001, name: 'Sudden Death', level: 45, magicLevel: 15,
+    type: 'rune', id: 21001, name: 'Sudden Death', level: 20, magicLevel: 5,
     needTarget: true,       // sólo sobre una criatura (si no, también sobre una casilla)
     aggressive: true,       // un ataque: grupo «ataque» y no desde una zona de protección
     onCastSpell(player, variant) {          // variant: { creature (o null), position }

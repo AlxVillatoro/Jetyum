@@ -613,6 +613,46 @@
     .lista-fila { display: flex; gap: 6px; align-items: center; padding: 2px 4px; font-size: 11px; cursor: pointer; border: 1px solid transparent; border-radius: 3px; }
     .lista-fila.selected { background: #2a3a56; border-color: #3a5a86; }
     .lista-fila em { margin-left: auto; color: #6a6a80; font-style: normal; font-size: 10px; }
+
+    /*
+     * EL DIAGNÓSTICO Y LOS ARCHIVOS DE MAPA usan el mismo diálogo de la esquina que Buscar o
+     * Estadísticas. El del diagnóstico es más ancho: sus filas llevan la casilla y una frase.
+     */
+    #map-dialogo.ancho { width: 480px; }
+    #map-dialogo.ancho .diag-lista { max-height: 60vh; }
+    #map-dialogo .fila-campos { align-items: flex-end; }
+    /* Las filas del diagnóstico son botones, y los botones del editor no parten el texto. */
+    #map-dialogo .diag-fila { white-space: normal; }
+    #map-dialogo .acciones-dialogo { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    #map-dialogo .dialogo-error { color: #e08080; font-size: 11px; white-space: pre-wrap; margin-top: 6px; }
+    #map-dialogo .dialogo-error:empty { display: none; }
+    #map-dialogo .suelo-fila { display: flex; gap: 4px; }
+    #map-dialogo .suelo-fila select { flex: 1 1 65%; }
+    #map-dialogo .suelo-fila input { flex: 1 1 35%; }
+    #map-dialogo .copia-fila { display: flex; gap: 6px; align-items: center; padding: 2px 4px; font-size: 11px;
+        border-bottom: 1px solid #1a1a24; }
+    #map-dialogo .copia-fila span { flex: 1; font-variant-numeric: tabular-nums; }
+    #map-dialogo .copia-fila em { color: #6a6a80; font-style: normal; font-variant-numeric: tabular-nums; }
+    #map-dialogo .copia-fila button { padding: 1px 8px; }
+
+    /* La cuenta del último diagnóstico, en un globito sobre su botón: rojo con errores, ámbar sin. */
+    #rme-diagnostico { position: relative; }
+    #rme-diagnostico[data-cuenta]::after {
+        content: attr(data-cuenta);
+        position: absolute;
+        top: -3px;
+        right: -5px;
+        min-width: 14px;
+        padding: 0 3px;
+        border-radius: 7px;
+        background: #7a6420;
+        color: #fff;
+        font-size: 9px;
+        line-height: 14px;
+        text-align: center;
+        pointer-events: none;
+    }
+    #rme-diagnostico[data-gravedad="error"]::after { background: #a03838; }
 </style>
 </head>
 <body>
@@ -655,6 +695,19 @@
                         title="Recargar: volver a leer el archivo del disco: se pierde lo que no se haya guardado">Recargar</button>
                 <button type="button" id="btn-save" data-icono="guardar"
                         title="Guardar: escribir en el archivo los cambios hechos en el mapa">Guardar</button>
+                <!--
+                    LOS ARCHIVOS DE MAPA, al lado del selector: crear uno, guardar el abierto con otro
+                    nombre, sus propiedades (nombre, tamaño, suelos) y sus copias de seguridad. Los
+                    cuatro abren su diálogo en la esquina del mapa, como Buscar o Estadísticas.
+                -->
+                <button type="button" id="btn-mapa-nuevo" class="plain" data-icono="nuevo-mapa"
+                        title="Nuevo mapa: crear un archivo de mapa vacío en data/world, con su tamaño y su suelo">Nuevo mapa</button>
+                <button type="button" id="btn-mapa-guardar-como" class="plain" data-icono="guardar-como"
+                        title="Guardar como: escribir el mapa, con lo que no se haya guardado, en un archivo nuevo; el original no se toca">Guardar como</button>
+                <button type="button" id="btn-mapa-propiedades" class="plain" data-icono="propiedades-mapa"
+                        title="Propiedades del mapa: nombre, descripción, tamaño y suelos por defecto">Propiedades del mapa</button>
+                <button type="button" id="btn-mapa-copias" class="plain" data-icono="copias"
+                        title="Copias de seguridad: las últimas versiones guardadas del mapa, para volver a una">Copias de seguridad</button>
             </div>
             <span class="sep"></span>
             <div class="grupo-barra">
@@ -664,6 +717,13 @@
             <span class="sep"></span>
             <div class="grupo-barra">
                 <button type="button" id="rme-seleccionar" class="plain tool" data-icono="seleccionar" title="Seleccionar un rectángulo arrastrando (S)">Seleccionar</button>
+                <!--
+                    El «Selection mode» de RME: qué plantas coge el rectángulo que se traza. Es un
+                    botón que pasa al modo siguiente en cada clic (su icono y su globo dicen cuál
+                    está puesto), y se enciende cuando la selección coge más de una planta.
+                -->
+                <button type="button" id="sel-modo" class="plain" data-icono="sel-actual"
+                        title="Modo de selección: sólo la planta actual (clic para cambiar)&#10;Planta actual — sólo la planta que se ve&#10;Y las de abajo — esta planta y las de debajo (al aire libre, hasta la 7)&#10;Plantas visibles — las que se ven desde aquí (al aire libre, hasta la 7; bajo tierra, esta y dos más)">Modo de selección</button>
                 <button type="button" id="rme-copiar" class="plain" data-icono="copiar" title="Copiar la selección (Ctrl+C)">Copiar</button>
                 <button type="button" id="rme-cortar" class="plain" data-icono="cortar" title="Cortar la selección (Ctrl+X)">Cortar</button>
                 <button type="button" id="rme-pegar" class="plain tool" data-icono="pegar" title="Pegar: el siguiente clic pega con la esquina de arriba a la izquierda en la casilla (Ctrl+V)">Pegar</button>
@@ -707,6 +767,9 @@
                 <button type="button" id="rme-reemplazar" class="plain" data-icono="reemplazar" title="Reemplazar un objeto por otro en la selección o en todo el mapa (Ctrl+Shift+F)">Reemplazar</button>
                 <button type="button" id="rme-ir" class="plain" data-icono="ir" title="Ir a una posición (Ctrl+G)">Ir a</button>
                 <button type="button" id="rme-estadisticas" class="plain" data-icono="estadisticas" title="Estadísticas del mapa (F8)">Estadísticas</button>
+                <!-- La cifra del globito es la del último análisis: el panel la rehace al abrirse. -->
+                <button type="button" id="rme-diagnostico" class="plain" data-icono="diagnostico"
+                        title="Diagnóstico del mapa (F7): teleports rotos, uniqueId repetidos, casillas sin suelo, objetos que ya no existen, casas sin salida... con un clic para ir a cada uno">Diagnóstico</button>
             </div>
             <span class="sep"></span>
             <div class="grupo-barra">
@@ -715,6 +778,20 @@
                 <button type="button" id="rme-ver-casas" class="plain active" data-icono="casas" title="Ver las casas y sus salidas">Casas</button>
                 <button type="button" id="rme-minimapa" class="plain active" data-icono="minimapa" title="Minimapa (M)">Minimapa</button>
                 <button type="button" id="btn-inspector" class="plain" data-icono="propiedades" title="Panel de propiedades: lo elegido en el mapa (se abre solo al elegir algo)">Propiedades</button>
+            </div>
+            <span class="sep"></span>
+            <!--
+                LAS PLANTAS A LA VISTA, como en RME: las de abajo (Ctrl+W en RME, aquí P: el navegador
+                no deja quitarle Ctrl+W, que cierra la pestaña), su sombra (Q) y la de arriba en
+                fantasma (Ctrl+L). Sólo se miran: se pinta siempre en la planta del selector.
+            -->
+            <div class="grupo-barra" role="group" aria-label="Las plantas a la vista">
+                <button type="button" id="rme-plantas-abajo" class="plain" data-icono="plantas-abajo"
+                        title="Plantas de abajo: ver bajo la que se edita las de debajo, como en el juego (P). Al aire libre se baja hasta la 7, y bajo tierra se ven dos más">Plantas de abajo</button>
+                <button type="button" id="rme-sombra" class="plain" data-icono="sombra"
+                        title="Sombra: oscurecer las plantas de abajo, más cuanto más hondas, para distinguirlas de la que se edita (Q)">Sombra</button>
+                <button type="button" id="rme-plantas-arriba" class="plain" data-icono="plantas-arriba"
+                        title="Planta de arriba: ver la de encima, transparente, sobre la que se edita (Ctrl+L)">Planta de arriba</button>
             </div>
 
         </div>
@@ -914,7 +991,7 @@
 
         <!-- ============ La barra de estado ============ -->
         <footer id="map-pie"
-            title="izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho enseña sus detalles · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo">
+            title="izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho enseña sus detalles · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo · P plantas de abajo · Q sombra · Ctrl+L planta de arriba · F7 diagnóstico">
             <span id="map-status">—</span>
             <span id="mano-info" class="nota">nada elegido</span>
             <span id="map-pos">—</span>

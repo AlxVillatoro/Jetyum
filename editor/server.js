@@ -32,6 +32,7 @@ const MapWriter = require('../engine/world/writer');
 const { Item } = require('../engine/world/item');
 const { FLAG_NAMES } = require('../engine/world/writer');
 const { AssetStore } = require('./lib/assetstore');
+const MapFiles = require('./lib/mapfiles');
 const Assets = require('../shared/js/assets.mjs');
 const Compuestos = require('../shared/js/compuestos.mjs');
 const Config = require('../engine/core/config');
@@ -707,6 +708,13 @@ function readMap(name) {
  * arrancar, y para entonces el mapa bueno ya se ha sobrescrito. Comprobando la ida y
  * vuelta antes de escribir, un fallo se convierte en un mensaje de error y el archivo
  * se queda como estaba.
+ *
+ * ANTES DE SOBRESCRIBIR SE HACE UNA COPIA del archivo que había, en
+ * `backups/<nombre>/` (ver `lib/mapfiles.js`). Sólo si el texto nuevo es distinto del que hay:
+ * pulsar «Guardar» diez veces sin tocar nada no debe empujar fuera las diez copias buenas.
+ *
+ * Con `options.nuevo` el archivo se CREA y no se sobrescribe: si ya existe, no se escribe nada
+ * y la respuesta lo dice con `existe: true`. Es lo que usan «nuevo mapa» y «guardar como».
  */
 function writeMap(name, loaded, options) {
     const opts = options || {};
@@ -733,16 +741,660 @@ function writeMap(name, loaded, options) {
     // deja el archivo original intacto en vez de uno truncado, y en un mapa truncado
     // se pierde el trabajo de semanas.
     const target = mapFilePath(name);
-    const temporary = target + '.tmp';
 
     if (opts.dryRun) {
         return { ok: true, dryRun: true, bytes: text.length, text: text };
     }
 
-    fs.writeFileSync(temporary, text, 'utf8');
-    fs.renameSync(temporary, target);
+    if (opts.nuevo) {
+        fs.mkdirSync(mapsDirectory(), { recursive: true });
+        if (MapFiles.mapaExistente(mapsDirectory(), name) || !MapFiles.crearExclusivo(target, text)) {
+            return { ok: false, existe: true, problems: ['ya existe un mapa llamado ' + name] };
+        }
+        return { ok: true, bytes: text.length, text: text, copia: null };
+    }
 
-    return { ok: true, bytes: text.length, text: text };
+    const actual = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+    const copia = actual !== null && actual !== text
+        ? MapFiles.respaldar(mapsDirectory(), name) : null;
+
+    MapFiles.escribirAtomico(target, text);
+
+    return { ok: true, bytes: text.length, text: text, copia: copia };
+}
+
+/** Lo que el motor necesita para validar un mapa en bruto que no viene de un archivo. */
+function tiposParaValidar() {
+    return {
+        itemTypes: loadItemTypes(),
+        monsterTypes: loadMonsterTypes(),
+        npcTypes: loadNpcTypes()
+    };
+}
+
+/** Los errores de un informe del cargador como lista de textos. */
+function erroresDelInforme(report) {
+    return report.errors.map((entry) => (entry.where ? entry.where + ': ' : '') + entry.message);
+}
+
+/**
+ * El `mapName` de `config.js`, el mapa con el que arranca el motor, o null. Se lee en cada
+ * petición, igual que el idioma; sirve para avisar al renombrar ese mapa.
+ */
+function mapaDelMotor() {
+    try {
+        const archivo = path.join(ROOT, 'config.js');
+        delete require.cache[require.resolve(archivo)];
+        return require(archivo).mapName || Config.DEFAULTS.mapName || null;
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
+ * Aplica a un mapa cargado lo que manda un guardado: las casillas, y las listas que vengan.
+ *
+ * Es el cuerpo de `POST /api/map`, sacado a una función para que «guardar como» con cambios sin
+ * guardar (`POST /api/maps/<nombre>/copia` con `edits`) pase EXACTAMENTE por el mismo camino y
+ * valide lo mismo: dos caminos de guardado que validan distinto acaban dejando pasar por uno lo
+ * que el otro rechaza.
+ *
+ * @returns {{ok: true, changed: number}|{ok: false, error: string, problems: Array<string>}}
+ */
+function aplicarGuardado(loaded, body) {
+    const applied = applyEdits(loaded.map, body.edits || [], loaded.itemTypes);
+    if (applied.problems.length > 0) {
+        return { ok: false, error: 'algunas ediciones no se pudieron aplicar', problems: applied.problems };
+    }
+
+    /*
+     * LOS RESPAWNS Y LOS NPC SE APLICAN DESPUÉS DE LAS CASILLAS Y ANTES DE ESCRIBIR.
+     *
+     * Van en su propio camino porque no son estados de casilla: un respawn es un área con
+     * monstruos dentro y un NPC es una colocación, y meterlos en `edits` habría hecho que
+     * guardar uno borrara el suelo de su casilla.
+     *
+     * SÓLO SE TOCAN SI VIENEN. Es lo que permite que un guardado que únicamente pinta un
+     * muro —o una herramienta antigua que no manda estas listas— no borre los respawns del
+     * mapa por omisión, que es la clase de fallo que no se descubre hasta que faltan los
+     * monstruos.
+     */
+    let respawns = null;
+    let npcs = null;
+
+    if (body.spawns !== undefined) {
+        const resultado = applySpawns(loaded.map, body.spawns, loaded.monsterTypes);
+        if (resultado.problems.length > 0) {
+            return { ok: false, error: 'algunos respawns no se pudieron aplicar', problems: resultado.problems };
+        }
+        respawns = resultado.spawns;
+    }
+
+    if (body.npcs !== undefined) {
+        const resultado = applyNpcs(loaded.map, body.npcs, loaded.npcTypes);
+        if (resultado.problems.length > 0) {
+            return { ok: false, error: 'algunos npc no se pudieron aplicar', problems: resultado.problems };
+        }
+        npcs = resultado.npcs;
+    }
+
+    if (body.composites !== undefined) {
+        const plantillas = Compuestos.normalizarCompuestos(leerCompuestos()).data.compuestos;
+        const resultado = applyComposites(loaded.map, body.composites, plantillas);
+        if (resultado.problems.length > 0) {
+            return {
+                ok: false,
+                error: 'algunos objetos compuestos no se pudieron aplicar',
+                problems: resultado.problems
+            };
+        }
+        loaded.map.composites = resultado.composites;
+    }
+
+    /*
+     * WAYPOINTS, CIUDADES Y CASAS: listas enteras, igual que los respawns, y solo si vienen.
+     * La validación de verdad (dentro del mapa, ids únicos, ciudad existente) la hace el
+     * cargador en la comprobación de ida y vuelta, antes de escribir nada.
+     */
+    if (body.waypoints !== undefined) {
+        loaded.map.waypoints.clear();
+        Object.keys(body.waypoints || {}).forEach((nombre) => {
+            loaded.map.setWaypoint(String(nombre), body.waypoints[nombre]);
+        });
+    }
+    if (body.towns !== undefined) {
+        loaded.map.towns = (body.towns || []).map((t) => ({
+            id: Number(t.id), name: String(t.name || ''),
+            temple: Array.isArray(t.temple) ? { x: t.temple[0], y: t.temple[1], z: t.temple[2] } : t.temple
+        }));
+    }
+    if (body.houses !== undefined) {
+        loaded.map.houses = (body.houses || []).map((h) => ({
+            id: Number(h.id), name: String(h.name || ''), townId: Number(h.townId) || 0,
+            rent: Number(h.rent) || 0,
+            exit: !h.exit ? null : (Array.isArray(h.exit) ? { x: h.exit[0], y: h.exit[1], z: h.exit[2] } : h.exit)
+        }));
+    }
+
+    if (respawns !== null) {
+        loaded.map.spawns = respawns;
+    }
+    if (npcs !== null) {
+        loaded.map.npcPlacements = npcs;
+    }
+
+    return { ok: true, changed: applied.changed };
+}
+
+// ---------------------------------------------------------------------------
+// Archivos de mapa: nuevo, guardar como, propiedades y copias de seguridad
+// ---------------------------------------------------------------------------
+//
+// Cada operación devuelve `{status, payload}` en vez de escribir la respuesta: así se leen de
+// arriba abajo como la regla que son, y el enrutado de `handleApi` se queda en una línea.
+
+const LARGO_MAXIMO_DESCRIPCION = 2000;
+
+/** Un error con su lista de problemas, que es la forma de todos los errores del API. */
+function fallo(status, error, problems) {
+    return { status: status, payload: { error: error, problems: problems || [error] } };
+}
+
+/** La descripción de un mapa: la clave de documentación `_descripcion`, si la tiene. */
+function problemaDeDescripcion(valor) {
+    if (typeof valor !== 'string') {
+        return 'la descripcion tiene que ser un texto';
+    }
+    if (valor.length > LARGO_MAXIMO_DESCRIPCION) {
+        return 'la descripcion pasa de ' + LARGO_MAXIMO_DESCRIPCION + ' letras';
+    }
+    return null;
+}
+
+/**
+ * Las propiedades de un mapa cargado, como las enseña el diálogo de propiedades.
+ *
+ * LA DESCRIPCIÓN VA EN `_descripcion`, una clave de documentación: el formato no tiene campo de
+ * descripción, el motor no la necesita, y las claves que empiezan por `_` ya se conservan en
+ * cada guardado (ver `documentationKeys`). Así no hace falta tocar el formato para tenerla.
+ */
+function propiedadesDe(nombre, loaded) {
+    const suelos = {};
+    loaded.map.defaultGround.forEach((item, z) => {
+        suelos[z] = item.typeId;
+    });
+
+    return {
+        nombre: nombre,
+        descripcion: typeof loaded.extras._descripcion === 'string' ? loaded.extras._descripcion : '',
+        ancho: loaded.map.width,
+        alto: loaded.map.height,
+        plantas: loaded.map.floors,
+        suelos: suelos,
+        sueloDeRespaldo: loaded.map.fallbackGround ? loaded.map.fallbackGround.typeId : null,
+        limites: {
+            tamanoMinimo: MapFiles.TAMANO_MINIMO,
+            tamanoMaximo: MapFiles.TAMANO_MAXIMO,
+            plantasMaximo: MapFiles.PLANTAS_MAXIMO
+        }
+    };
+}
+
+/**
+ * NUEVO MAPA: crea `data/world/<nombre>.map.json` con lo mínimo para que el motor lo arranque.
+ *
+ * Se valida en este orden, y cada paso con su estado: el nombre y el tamaño (400, la petición
+ * está mal), que no exista ya (409), el suelo (422, no existe o no es suelo) y, por último, lo que
+ * se valida en todo guardado: que el CARGADOR DEL MOTOR lo acepte y que la ida y vuelta cuadre.
+ * El mapa nuevo no se escribe a mano: pasa por el mismo escritor que un mapa editado.
+ */
+function crearMapa(body) {
+    const validado = MapFiles.validarNombreNuevo(body.nombre);
+    if (validado.error) {
+        return fallo(400, validado.error);
+    }
+    const nombre = validado.nombre;
+
+    const plantas = body.plantas === undefined || body.plantas === null || body.plantas === ''
+        ? MapFiles.PLANTAS_POR_DEFECTO : body.plantas;
+    const mal = [
+        MapFiles.problemaDeTamano(body.ancho, 'ancho'),
+        MapFiles.problemaDeTamano(body.alto, 'alto'),
+        // Al menos hasta la superficie: el templo va en la planta 7.
+        MapFiles.problemaDePlantas(plantas, MapFiles.PLANTA_SUPERFICIE + 1)
+    ].filter(Boolean);
+    if (body.descripcion !== undefined && body.descripcion !== null) {
+        const problema = problemaDeDescripcion(body.descripcion);
+        if (problema) {
+            mal.push(problema);
+        }
+    }
+    if (mal.length > 0) {
+        return fallo(400, 'el mapa nuevo no es valido', mal);
+    }
+
+    const existente = MapFiles.mapaExistente(mapsDirectory(), nombre);
+    if (existente) {
+        return fallo(409, 'ya existe un mapa llamado ' + existente);
+    }
+
+    const tipos = tiposParaValidar();
+    const suelos = [MapFiles.problemaDeSuelo(tipos.itemTypes, body.sueloPorDefecto, 'el suelo por defecto', true)];
+    const conRespaldo = body.sueloDeRespaldo !== undefined && body.sueloDeRespaldo !== null &&
+        body.sueloDeRespaldo !== '';
+    if (conRespaldo) {
+        suelos.push(MapFiles.problemaDeSuelo(tipos.itemTypes, body.sueloDeRespaldo, 'el suelo de respaldo', false));
+    }
+    if (suelos.some(Boolean)) {
+        return fallo(422, 'el suelo del mapa no es valido', suelos.filter(Boolean));
+    }
+
+    const raw = MapFiles.mapaMinimo({
+        nombre: nombre,
+        ancho: Number(body.ancho),
+        alto: Number(body.alto),
+        plantas: Number(plantas),
+        suelo: Number(body.sueloPorDefecto),
+        respaldo: conRespaldo ? Number(body.sueloDeRespaldo) : null,
+        descripcion: body.descripcion ? String(body.descripcion) : '',
+        ciudad: body.ciudad
+    });
+
+    const construido = MapLoader.buildMap(raw, tipos);
+    if (!construido.report.ok) {
+        return fallo(422, 'el mapa nuevo no se puede cargar', erroresDelInforme(construido.report));
+    }
+
+    const loaded = Object.assign({ name: nombre, raw: raw, map: construido.map,
+        extras: documentationKeys(raw) }, tipos);
+    const written = writeMap(nombre, loaded, { nuevo: true, dryRun: body.dryRun === true });
+    if (!written.ok) {
+        return written.existe
+            ? fallo(409, 'ya existe un mapa llamado ' + nombre)
+            : fallo(422, 'el mapa no se pudo guardar: no se puede volver a leer', written.problems);
+    }
+
+    return {
+        status: 201,
+        payload: {
+            ok: true,
+            nombre: nombre,
+            dryRun: written.dryRun === true,
+            bytes: written.bytes,
+            propiedades: propiedadesDe(nombre, loaded),
+            stats: construido.map.stats()
+        }
+    };
+}
+
+/** ¿Trae el cuerpo de un «guardar como» cambios sin guardar? */
+function traeCambios(body) {
+    return ['edits', 'spawns', 'npcs', 'composites', 'waypoints', 'towns', 'houses']
+        .some((clave) => body[clave] !== undefined);
+}
+
+/**
+ * GUARDAR COMO: escribe el mapa `origen` con otro nombre, SIN TOCAR EL ORIGINAL.
+ *
+ * Si el cuerpo trae cambios sin guardar (los mismos campos que `POST /api/map`), se aplican a la
+ * copia y sólo a la copia, por el mismo camino y con la misma validación que un guardado. Sin
+ * cambios, es una copia del archivo guardado. En los dos casos el archivo nuevo sale del escritor
+ * —con su `name` nuevo y la ida y vuelta comprobada— y NUNCA pisa un mapa que ya exista.
+ */
+function copiarMapa(origen, body) {
+    const nombreOrigen = safeMapName(origen);
+    if (!nombreOrigen) {
+        return fallo(400, 'nombre de mapa invalido');
+    }
+    const validado = MapFiles.validarNombreNuevo(body.nuevoNombre);
+    if (validado.error) {
+        return fallo(400, validado.error);
+    }
+    const nuevo = validado.nombre;
+
+    const existente = MapFiles.mapaExistente(mapsDirectory(), nuevo);
+    if (existente) {
+        return fallo(409, 'ya existe un mapa llamado ' + existente);
+    }
+
+    const loaded = readMap(nombreOrigen);
+    if (!loaded) {
+        return fallo(404, 'no existe el mapa ' + nombreOrigen);
+    }
+    if (loaded.error) {
+        return { status: 422, payload: loaded };
+    }
+
+    let changed = 0;
+    if (traeCambios(body)) {
+        const aplicado = aplicarGuardado(loaded, body);
+        if (!aplicado.ok) {
+            return fallo(422, aplicado.error, aplicado.problems);
+        }
+        changed = aplicado.changed;
+    }
+
+    const written = writeMap(nuevo, loaded, { nuevo: true, dryRun: body.dryRun === true });
+    if (!written.ok) {
+        return written.existe
+            ? fallo(409, 'ya existe un mapa llamado ' + nuevo)
+            : fallo(422, 'el mapa no se pudo guardar: no se puede volver a leer', written.problems);
+    }
+
+    return {
+        status: 201,
+        payload: {
+            ok: true,
+            nombre: nuevo,
+            origen: nombreOrigen,
+            changed: changed,
+            dryRun: written.dryRun === true,
+            bytes: written.bytes,
+            stats: loaded.map.stats()
+        }
+    };
+}
+
+/**
+ * CAMBIAR LAS PROPIEDADES de un mapa: nombre, descripción, tamaño, plantas y suelos.
+ *
+ * Todo es opcional; lo que no viene, se queda como está. `suelos` es PARCIAL: `{"8": 104}` pone
+ * el suelo de la planta 8 y deja las demás, y `{"8": null}` se lo quita.
+ *
+ * ENCOGER NUNCA BORRA. Si con el tamaño nuevo quedaría fuera alguna casilla escrita, respawn,
+ * monstruo, NPC, waypoint, templo, salida de casa, objeto compuesto o suelo de planta, se responde
+ * 422 con la lista de lo que se perdería y no se toca nada: quien edita decide qué hacer con ello
+ * antes de encoger.
+ *
+ * CAMBIAR UN SUELO POR DEFECTO SÓLO CAMBIA EL TERRENO SIN PINTAR. Las casillas escritas que
+ * usaban el suelo de su planta se quedan con el que tenían: cambiar el fondo de un mapa no debe
+ * convertir en piedra la hierba de debajo de cada muro.
+ *
+ * Y CAMBIAR EL NOMBRE es renombrar el archivo: se crea el nuevo (sin pisar otro), se hace copia
+ * del viejo, sus copias se mudan a la carpeta del nombre nuevo y el viejo se borra.
+ */
+function actualizarPropiedades(nombreActual, body) {
+    const nombre = safeMapName(nombreActual);
+    if (!nombre) {
+        return fallo(400, 'nombre de mapa invalido');
+    }
+
+    const loaded = readMap(nombre);
+    if (!loaded) {
+        return fallo(404, 'no existe el mapa ' + nombre);
+    }
+    if (loaded.error) {
+        return { status: 422, payload: loaded };
+    }
+
+    const antes = propiedadesDe(nombre, loaded);
+    const cambios = [];
+    const mal = [];
+
+    // --- El nombre ---
+    let nuevoNombre = nombre;
+    if (body.nombre !== undefined && body.nombre !== null && String(body.nombre).trim() !== nombre) {
+        const validado = MapFiles.validarNombreNuevo(body.nombre);
+        if (validado.error) {
+            return fallo(400, validado.error);
+        }
+        const existente = MapFiles.mapaExistente(mapsDirectory(), validado.nombre);
+        if (existente) {
+            return fallo(409, 'ya existe un mapa llamado ' + existente);
+        }
+        nuevoNombre = validado.nombre;
+        cambios.push('nombre');
+    }
+
+    // --- El tamaño ---
+    const medida = (clave, etiqueta, problema) => {
+        if (body[clave] === undefined || body[clave] === null || Number(body[clave]) === antes[clave]) {
+            return antes[clave];
+        }
+        const texto = problema(body[clave], etiqueta);
+        if (texto) {
+            mal.push(texto);
+            return antes[clave];
+        }
+        cambios.push(clave);
+        return Number(body[clave]);
+    };
+    const ancho = medida('ancho', 'ancho', MapFiles.problemaDeTamano);
+    const alto = medida('alto', 'alto', MapFiles.problemaDeTamano);
+    const plantas = medida('plantas', 'plantas', (valor) => MapFiles.problemaDePlantas(valor, 1));
+
+    // --- La descripción ---
+    const extras = Object.assign({}, loaded.extras);
+    if (body.descripcion !== undefined && body.descripcion !== null && body.descripcion !== antes.descripcion) {
+        const problema = problemaDeDescripcion(body.descripcion);
+        if (problema) {
+            mal.push(problema);
+        } else {
+            if (body.descripcion === '') {
+                delete extras._descripcion;
+            } else {
+                extras._descripcion = body.descripcion;
+            }
+            cambios.push('descripcion');
+        }
+    }
+
+    // --- Los suelos (se comprueban contra items.xml más abajo) ---
+    const suelos = Object.assign({}, antes.suelos);
+    const pedidos = [];
+    if (body.suelos !== undefined && body.suelos !== null) {
+        if (typeof body.suelos !== 'object' || Array.isArray(body.suelos)) {
+            mal.push('los suelos tienen que ser un objeto con un objeto de items.xml por planta');
+        } else {
+            Object.keys(body.suelos).forEach((clave) => {
+                const z = Number(clave);
+                const valor = body.suelos[clave];
+                if (!Number.isInteger(z) || z < 0 || z >= MapFiles.PLANTAS_MAXIMO) {
+                    mal.push('la planta ' + JSON.stringify(clave) + ' no existe');
+                    return;
+                }
+                const quitar = valor === null || valor === '' || valor === 0;
+                if (quitar ? suelos[z] === undefined : Number(valor) === suelos[z]) {
+                    return;
+                }
+                if (quitar) {
+                    delete suelos[z];
+                } else {
+                    suelos[z] = Number(valor);
+                    pedidos.push(['el suelo de la planta ' + z, valor]);
+                }
+                if (cambios.indexOf('suelos') === -1) {
+                    cambios.push('suelos');
+                }
+            });
+        }
+    }
+
+    let respaldo = antes.sueloDeRespaldo;
+    if (body.sueloDeRespaldo !== undefined) {
+        const quitar = body.sueloDeRespaldo === null || body.sueloDeRespaldo === '' || body.sueloDeRespaldo === 0;
+        const nuevo = quitar ? null : Number(body.sueloDeRespaldo);
+        if (nuevo !== respaldo) {
+            respaldo = nuevo;
+            if (!quitar) {
+                pedidos.push(['el suelo de respaldo', body.sueloDeRespaldo]);
+            }
+            cambios.push('sueloDeRespaldo');
+        }
+    }
+
+    if (mal.length > 0) {
+        return fallo(400, 'las propiedades del mapa no son validas', mal);
+    }
+
+    const problemasDeSuelo = pedidos
+        .map(([etiqueta, valor]) => MapFiles.problemaDeSuelo(loaded.itemTypes, valor, etiqueta, false))
+        .filter(Boolean);
+    if (problemasDeSuelo.length > 0) {
+        return fallo(422, 'el suelo del mapa no es valido', problemasDeSuelo);
+    }
+
+    if (cambios.length === 0) {
+        return { status: 200, payload: { ok: true, nombre: nombre, cambios: [], copia: null,
+            propiedades: antes, stats: loaded.map.stats() } };
+    }
+
+    // --- El mapa con las propiedades nuevas, en la forma del archivo ---
+    const data = MapWriter.serializeMap(loaded.map, { name: nuevoNombre });
+
+    if (cambios.indexOf('suelos') !== -1 || cambios.indexOf('sueloDeRespaldo') !== -1) {
+        // Las casillas escritas sin `ground` usaban el suelo de su planta: se les escribe el que
+        // tenían, para que el cambio sólo alcance al terreno sin pintar.
+        data.tiles.forEach((tile) => {
+            if (tile.ground === undefined) {
+                const suelo = loaded.map.groundFor(tile.z);
+                if (suelo) {
+                    tile.ground = suelo.typeId;
+                }
+            }
+        });
+    }
+
+    data.width = ancho;
+    data.height = alto;
+    data.floors = plantas;
+    data.defaultGround = suelos;
+    if (respaldo === null) {
+        delete data.fallbackGround;
+    } else {
+        data.fallbackGround = respaldo;
+    }
+
+    const fuera = MapFiles.fueraDeLimites(data, ancho, alto, plantas);
+    if (fuera.total > 0) {
+        return {
+            status: 422,
+            payload: {
+                error: 'el mapa no se puede encoger: quedarian ' + fuera.total + ' cosas fuera',
+                problems: fuera.problemas,
+                fuera: fuera.porClase
+            }
+        };
+    }
+
+    const construido = MapLoader.buildMap(data, {
+        itemTypes: loaded.itemTypes,
+        monsterTypes: loaded.monsterTypes,
+        npcTypes: loaded.npcTypes
+    });
+    if (!construido.report.ok) {
+        return fallo(422, 'con estas propiedades el mapa no se puede cargar',
+            erroresDelInforme(construido.report));
+    }
+
+    const nuevoLoaded = Object.assign({}, loaded, { name: nuevoNombre, map: construido.map, extras: extras });
+    const renombrar = nuevoNombre !== nombre;
+    const dryRun = body.dryRun === true;
+    const written = writeMap(nuevoNombre, nuevoLoaded, { nuevo: renombrar, dryRun: dryRun });
+    if (!written.ok) {
+        return written.existe
+            ? fallo(409, 'ya existe un mapa llamado ' + nuevoNombre)
+            : fallo(422, 'el mapa no se pudo guardar: no se puede volver a leer', written.problems);
+    }
+
+    let copia = written.copia || null;
+    let aviso = null;
+    if (renombrar && !dryRun) {
+        // El viejo se guarda en sus copias, que se mudan con él, y después se borra.
+        copia = MapFiles.respaldar(mapsDirectory(), nombre);
+        MapFiles.moverCopias(mapsDirectory(), nombre, nuevoNombre);
+        if (copia) {
+            copia = nuevoNombre + copia.slice(nombre.length);
+        }
+        fs.unlinkSync(mapFilePath(nombre));
+        if (mapaDelMotor() === nombre) {
+            aviso = 'config.js arranca el motor con el mapa ' + nombre + ': cambia mapName a ' +
+                nuevoNombre + ' o el servidor no lo encontrara';
+        }
+    }
+
+    return {
+        status: 200,
+        payload: {
+            ok: true,
+            nombre: nuevoNombre,
+            cambios: cambios,
+            dryRun: dryRun,
+            copia: copia,
+            aviso: aviso,
+            propiedades: propiedadesDe(nuevoNombre, nuevoLoaded),
+            stats: construido.map.stats()
+        }
+    };
+}
+
+/** Las copias de seguridad de un mapa, de la más nueva a la más vieja. */
+function copiasDe(nombreMapa) {
+    const nombre = safeMapName(nombreMapa);
+    if (!nombre) {
+        return fallo(400, 'nombre de mapa invalido');
+    }
+    return {
+        status: 200,
+        payload: {
+            nombre: nombre,
+            maximo: MapFiles.COPIAS_POR_MAPA,
+            copias: MapFiles.listarCopias(mapsDirectory(), nombre)
+        }
+    };
+}
+
+/**
+ * RESTAURAR una copia: el mapa vuelve a ser EXACTAMENTE ese archivo, byte a byte.
+ *
+ * Antes se comprueba que la copia se puede cargar CON LOS DATOS DE AHORA —un objeto que se borró
+ * de items.xml después de hacerla dejaría un mapa que el motor no arranca— y se hace copia del
+ * estado actual, así que restaurar también se puede deshacer restaurando la copia de antes.
+ */
+function restaurarCopia(nombreMapa, archivo, body) {
+    const nombre = safeMapName(nombreMapa);
+    if (!nombre) {
+        return fallo(400, 'nombre de mapa invalido');
+    }
+    const ruta = MapFiles.rutaDeCopia(mapsDirectory(), nombre, archivo);
+    if (!ruta) {
+        return fallo(400, archivo + ' no es una copia del mapa ' + nombre);
+    }
+    if (!fs.existsSync(ruta)) {
+        return fallo(404, 'no existe la copia ' + archivo);
+    }
+
+    const texto = fs.readFileSync(ruta, 'utf8');
+    let raw;
+    try {
+        raw = JSON.parse(texto);
+    } catch (error) {
+        return fallo(422, 'la copia ' + archivo + ' no es JSON valido', [error.message]);
+    }
+
+    const construido = MapLoader.buildMap(raw, tiposParaValidar());
+    if (!construido.report.ok) {
+        return fallo(422, 'la copia ' + archivo + ' no se puede cargar con los datos de ahora',
+            erroresDelInforme(construido.report));
+    }
+
+    if (body.dryRun === true) {
+        return { status: 200, payload: { ok: true, dryRun: true, nombre: nombre, restaurada: archivo,
+            copia: null, stats: construido.map.stats() } };
+    }
+
+    // El texto ya está en memoria: si al podar se borra justo la copia que se restaura (era la
+    // más vieja y la lista estaba llena), no se pierde nada, porque pasa a ser el mapa.
+    const destino = mapFilePath(nombre);
+    const actual = fs.existsSync(destino) ? fs.readFileSync(destino, 'utf8') : null;
+    const copia = actual !== null && actual !== texto ? MapFiles.respaldar(mapsDirectory(), nombre) : null;
+    fs.mkdirSync(mapsDirectory(), { recursive: true });
+    MapFiles.escribirAtomico(destino, texto);
+
+    return {
+        status: 200,
+        payload: { ok: true, nombre: nombre, restaurada: archivo, copia: copia, stats: construido.map.stats() }
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -756,6 +1408,11 @@ function sendJson(response, status, payload) {
         'Cache-Control': 'no-store'
     });
     response.end(body);
+}
+
+/** Escribe la respuesta de una operación que devolvió `{status, payload}`. */
+function responder(response, resultado) {
+    sendJson(response, resultado.status, resultado.payload);
 }
 
 function readBody(request) {
@@ -868,6 +1525,52 @@ async function handleApi(request, response, pathname, query) {
         return;
     }
 
+    // --- Archivos de mapa: nuevo, guardar como, propiedades y copias de seguridad ---
+    //
+    // Las rutas llevan el nombre del mapa en el camino (`/api/maps/<nombre>/...`) porque actúan
+    // sobre EL ARCHIVO; `/api/map` actúa sobre su contenido y lo lleva en la consulta o el cuerpo.
+    if (pathname === '/api/maps' && method === 'POST') {
+        responder(response, crearMapa(await readBody(request)));
+        return;
+    }
+
+    const sobreArchivo = /^\/api\/maps\/([^/]+)\/(copia|propiedades|copias)(?:\/([^/]+)\/(restaurar))?$/
+        .exec(pathname);
+    if (sobreArchivo) {
+        const [, nombreMapa, que, archivoCopia, accion] = sobreArchivo;
+
+        if (que === 'copia' && !accion && method === 'POST') {
+            responder(response, copiarMapa(nombreMapa, await readBody(request)));
+            return;
+        }
+        if (que === 'propiedades' && !accion && method === 'GET') {
+            const nombre = safeMapName(nombreMapa);
+            const loaded = nombre ? readMap(nombre) : null;
+            if (!nombre) {
+                responder(response, fallo(400, 'nombre de mapa invalido'));
+            } else if (!loaded) {
+                responder(response, fallo(404, 'no existe el mapa ' + nombre));
+            } else if (loaded.error) {
+                sendJson(response, 422, loaded);
+            } else {
+                sendJson(response, 200, { propiedades: propiedadesDe(nombre, loaded), stats: loaded.map.stats() });
+            }
+            return;
+        }
+        if (que === 'propiedades' && !accion && method === 'PUT') {
+            responder(response, actualizarPropiedades(nombreMapa, await readBody(request)));
+            return;
+        }
+        if (que === 'copias' && !accion && method === 'GET') {
+            responder(response, copiasDe(nombreMapa));
+            return;
+        }
+        if (que === 'copias' && accion === 'restaurar' && method === 'POST') {
+            responder(response, restaurarCopia(nombreMapa, archivoCopia, await readBody(request)));
+            return;
+        }
+    }
+
     // --- Leer un mapa ---
     if (pathname === '/api/map' && method === 'GET') {
         const name = safeMapName(queryOf('name'));
@@ -909,99 +1612,10 @@ async function handleApi(request, response, pathname, query) {
             return;
         }
 
-        const applied = applyEdits(loaded.map, body.edits || [], loaded.itemTypes);
-        if (applied.problems.length > 0) {
-            sendJson(response, 422, {
-                error: 'algunas ediciones no se pudieron aplicar',
-                problems: applied.problems
-            });
+        const aplicado = aplicarGuardado(loaded, body);
+        if (!aplicado.ok) {
+            sendJson(response, 422, { error: aplicado.error, problems: aplicado.problems });
             return;
-        }
-
-        /*
-         * LOS RESPAWNS Y LOS NPC SE APLICAN DESPUÉS DE LAS CASILLAS Y ANTES DE ESCRIBIR.
-         *
-         * Van en su propio camino porque no son estados de casilla: un respawn es un área con
-         * monstruos dentro y un NPC es una colocación, y meterlos en `edits` habría hecho que
-         * guardar uno borrara el suelo de su casilla.
-         *
-         * SÓLO SE TOCAN SI VIENEN. Es lo que permite que un guardado que únicamente pinta un
-         * muro —o una herramienta antigua que no manda estas listas— no borre los respawns del
-         * mapa por omisión, que es la clase de fallo que no se descubre hasta que faltan los
-         * monstruos.
-         */
-        let respawns = null;
-        let npcs = null;
-
-        if (body.spawns !== undefined) {
-            const resultado = applySpawns(loaded.map, body.spawns, loaded.monsterTypes);
-
-            if (resultado.problems.length > 0) {
-                sendJson(response, 422, {
-                    error: 'algunos respawns no se pudieron aplicar',
-                    problems: resultado.problems
-                });
-                return;
-            }
-            respawns = resultado.spawns;
-        }
-
-        if (body.npcs !== undefined) {
-            const resultado = applyNpcs(loaded.map, body.npcs, loaded.npcTypes);
-
-            if (resultado.problems.length > 0) {
-                sendJson(response, 422, {
-                    error: 'algunos npc no se pudieron aplicar',
-                    problems: resultado.problems
-                });
-                return;
-            }
-            npcs = resultado.npcs;
-        }
-
-        if (body.composites !== undefined) {
-            const plantillas = Compuestos.normalizarCompuestos(leerCompuestos()).data.compuestos;
-            const resultado = applyComposites(loaded.map, body.composites, plantillas);
-            if (resultado.problems.length > 0) {
-                sendJson(response, 422, {
-                    error: 'algunos objetos compuestos no se pudieron aplicar',
-                    problems: resultado.problems
-                });
-                return;
-            }
-            loaded.map.composites = resultado.composites;
-        }
-
-        /*
-         * WAYPOINTS, CIUDADES Y CASAS: listas enteras, igual que los respawns, y solo si vienen.
-         * La validación de verdad (dentro del mapa, ids únicos, ciudad existente) la hace el
-         * cargador en la comprobación de ida y vuelta, antes de escribir nada.
-         */
-        if (body.waypoints !== undefined) {
-            loaded.map.waypoints.clear();
-            Object.keys(body.waypoints || {}).forEach((nombre) => {
-                loaded.map.setWaypoint(String(nombre), body.waypoints[nombre]);
-            });
-        }
-        if (body.towns !== undefined) {
-            loaded.map.towns = (body.towns || []).map((t) => ({
-                id: Number(t.id), name: String(t.name || ''),
-                temple: Array.isArray(t.temple) ? { x: t.temple[0], y: t.temple[1], z: t.temple[2] } : t.temple
-            }));
-        }
-        if (body.houses !== undefined) {
-            loaded.map.houses = (body.houses || []).map((h) => ({
-                id: Number(h.id), name: String(h.name || ''), townId: Number(h.townId) || 0,
-                rent: Number(h.rent) || 0,
-                exit: !h.exit ? null : (Array.isArray(h.exit) ? { x: h.exit[0], y: h.exit[1], z: h.exit[2] } : h.exit)
-            }));
-        }
-
-        if (respawns !== null) {
-            loaded.map.spawns = respawns;
-        }
-        if (npcs !== null) {
-            loaded.map.npcPlacements = npcs;
         }
 
         const written = writeMap(name, loaded, { dryRun: body.dryRun === true });
@@ -1017,7 +1631,9 @@ async function handleApi(request, response, pathname, query) {
 
         sendJson(response, 200, {
             ok: true,
-            changed: applied.changed,
+            changed: aplicado.changed,
+            // La copia de seguridad que se hizo del archivo de antes (null si no cambió nada).
+            copia: written.copia || null,
             bytes: written.bytes,
             dryRun: written.dryRun === true,
             // Los totales del mapa DESPUÉS de aplicar, que es lo que deja comprobar de un
@@ -1389,6 +2005,8 @@ module.exports = {
     safeMapName,
     documentationKeys,
     applyComposites,
+    aplicarGuardado,
+    propiedadesDe,
     MOUNTS
 };
 

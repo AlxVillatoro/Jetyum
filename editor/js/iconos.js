@@ -74,7 +74,25 @@ const ICONOS = {
     anterior: '<path d="m15 18-6-6 6-6"/>',
     siguiente: '<path d="m9 18 6-6-6-6"/>',
     magenta: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" fill="#ff00ff" fill-opacity=".85"/><path d="M4 20 20 4"/>',
-    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>'
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
+
+    // Los archivos de mapa: nuevo, guardar como, propiedades y copias de seguridad.
+    'nuevo-mapa': '<path d="M21 11V3l-6 3-6-3-6 3v15l6-3 4 2"/><path d="M9 3v15M15 6v5"/><path d="M18 15v6M15 18h6"/>',
+    'guardar-como': '<path d="M11 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v3"/><path d="M7 3v5h8V3"/><path d="m14 21 .8-3.2 5-5a1.6 1.6 0 0 1 2.4 2.4l-5 5z"/>',
+    'propiedades-mapa': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/>',
+    copias: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+
+    // El diagnóstico: un triángulo de aviso, como el de cualquier lista de problemas.
+    diagnostico: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17v.01"/>',
+
+    // La vista de varias plantas: capas apiladas; la que se enciende es la que se dibuja de más.
+    'plantas-abajo': '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>',
+    'plantas-arriba': '<path d="m12 3 9 5-9 5-9-5z" stroke-dasharray="2 2"/><path d="m3 13 9 5 9-5"/><path d="m3 17 9 5 9-5"/>',
+    // El modo de selección: la planta rayada es la que coge el rectángulo.
+    'sel-actual': '<path d="m12 3 9 5-9 5-9-5z" stroke-dasharray="2.5 2"/><path d="m3 13 9 5 9-5M3 17l9 5 9-5" opacity=".35"/>',
+    'sel-inferiores': '<path d="m12 3 9 5-9 5-9-5z" stroke-dasharray="2.5 2"/><path d="m3 13 9 5 9-5M3 17l9 5 9-5" stroke-dasharray="2.5 2"/>',
+    'sel-visibles': '<path d="m12 9 9 5-9 5-9-5z" stroke-dasharray="2.5 2"/><path d="m3 18 9 4.5 9-4.5" stroke-dasharray="2.5 2"/><path d="M5 5s2.5-3 7-3 7 3 7 3-2.5 3-7 3-7-3-7-3z"/><circle cx="12" cy="5" r="1.2" fill="currentColor"/>',
+    sombra: '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5-3.2-1.8L12 14.3l-5.8-3.1z" fill="currentColor" fill-opacity=".45"/>'
 };
 
 /** El SVG de un icono, o `null` si no existe. */

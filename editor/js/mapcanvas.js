@@ -11,6 +11,14 @@
  * waypoint, de RESPAWN (con sus monstruos dentro) y de NPC. Un juego no dibuja esas cosas; un
  * editor no puede funcionar sin ellas.
  *
+ * UNA PLANTA, SALVO QUE SE PIDAN MÁS. Por defecto sólo se dibuja la planta que se edita: ver las
+ * de arriba y abajo está bien en un juego y estorba en un editor, porque al pintar hay que ver
+ * lo que se pinta. Pero a veces hace falta lo contrario —ver la calle desde el piso de arriba de
+ * una casa, o qué hay encima del sótano que se está pintando—, y para eso está la VISTA DE VARIAS
+ * PLANTAS de RME (`setVistaDePlantas`): las de abajo, su sombra y el fantasma de la de encima.
+ * QUÉ plantas y con qué transparencia lo decide `plantas.js`, que se prueba en Node; aquí sólo se
+ * pintan, cada una con el orden y el desplazamiento del juego.
+ *
  * DOS MODOS DE VISTA, Y LA ESCALA ES LO QUE LOS DISTINGUE
  *
  *   - `vista` (normal): la escala la elige quien edita, y 1 significa un píxel de
@@ -37,6 +45,13 @@ import {
     fantasmaDeHerramienta
 } from './fantasma.js';
 import { TAMANO_POR_DEFECTO } from './pincel.js';
+import {
+    VISTA_POR_DEFECTO,
+    mismaVista,
+    normalizarVista,
+    planDePlantas,
+    plantaConSueloPorDefecto
+} from './plantas.js';
 import { traducir } from '../../shared/js/i18n.mjs';
 import { COLOR_SIN_SUELO, tinteDeElemento } from './tintes.js';
 import {
@@ -157,6 +172,27 @@ export class MapCanvas {
         /** La caché del relleno del suelo por defecto, por tipo. */
         this.suelos = new Map();
 
+        /**
+         * LA VISTA DE VARIAS PLANTAS: `{inferiores, fantasmaSuperior, sombra}`, todo apagado de
+         * entrada. Qué hace cada modo está en la cabecera de `plantas.js`; se cambia con
+         * `setVistaDePlantas` y no a mano, porque cambiarla tiene que tirar la copia de la capa
+         * de abajo (ver `versionDeVista`).
+         */
+        this.vistaDePlantas = normalizarVista(VISTA_POR_DEFECTO);
+
+        /**
+         * UN NÚMERO QUE SUBE CADA VEZ QUE CAMBIA LA VISTA DE PLANTAS, y es lo que invalida la
+         * copia de la capa de abajo. La firma con la que `main.js` decide si basta con la capa de
+         * encima lleva el tamaño, la cámara, la planta y la versión del proveedor, pero no sabe
+         * nada de estos modos: sin este número, encender la sombra y mover el ratón pegaría la
+         * copia de antes, sin sombra, hasta el siguiente cambio de cámara. Se guarda con la copia y
+         * `_capaFijaValida` la rechaza si no coincide. También se puede meter en esa firma.
+         */
+        this.versionDeVista = 0;
+
+        /** El lienzo de trabajo para pintar una planta entera aparte (ver `_enAparte`). */
+        this.aparte = null;
+
         this.ctx.imageSmoothingEnabled = false;
         this.resize();
     }
@@ -180,6 +216,9 @@ export class MapCanvas {
 
         this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
         this.ctx.imageSmoothingEnabled = false;
+
+        /** La densidad de píxeles, que también necesita el lienzo de trabajo de `_enAparte`. */
+        this.ratio = ratio;
 
         this.camera.setViewport(rect.width, rect.height);
 
@@ -213,6 +252,42 @@ export class MapCanvas {
         this.z = z;
         this.camera.z = z;
         return this;
+    }
+
+    /**
+     * Cambia la VISTA DE VARIAS PLANTAS, al estilo de RME y NexaMap. Sólo se tocan los modos que
+     * se dicen; los demás se quedan como estaban:
+     *
+     *   - `inferiores`: dibujar las plantas de abajo bajo la que se edita, cada una con su
+     *     desplazamiento (en la superficie y por encima, hasta la 7; bajo tierra, dos más).
+     *   - `sombra`: oscurecer cada planta de abajo, más cuanto más honda. Sólo se nota con
+     *     `inferiores` encendido.
+     *   - `fantasmaSuperior`: dibujar la planta de encima, transparente, sobre la que se edita.
+     *
+     * La rejilla, el ratón, los marcadores y el fantasma de la herramienta siguen siendo SÓLO de
+     * la planta que se edita: las otras se miran, no se pintan.
+     *
+     * Todos empiezan apagados. Cambiar algo sube `versionDeVista`, que es lo que tira la copia de
+     * la capa de abajo; quien dibuja sólo tiene que pedir el siguiente fotograma.
+     *
+     * @param {{inferiores?: boolean, fantasmaSuperior?: boolean, sombra?: boolean}} opciones
+     * @returns {boolean} si ha cambiado algo
+     */
+    setVistaDePlantas(opciones) {
+        const nueva = normalizarVista(opciones, this.vistaDePlantas);
+
+        if (mismaVista(nueva, this.vistaDePlantas)) {
+            return false;
+        }
+
+        this.vistaDePlantas = nueva;
+        this.versionDeVista += 1;
+        return true;
+    }
+
+    /** La vista de plantas puesta, como una copia: cambiarla no cambia el lienzo. */
+    getVistaDePlantas() {
+        return Object.assign({}, this.vistaDePlantas);
     }
 
     centerOn(x, y) {
@@ -430,15 +505,189 @@ export class MapCanvas {
      * @returns {Array<Object>} las zonas protegidas de la planta, que también hacen falta arriba
      */
     _drawCapaFija() {
-        this._drawFloorBackground();
-        this._drawMapBorder();
+        /*
+         * LAS PLANTAS QUE SE VEN LAS DECIDE `plantas.js`, y aquí sólo se pintan en su orden: de la
+         * más honda a la más alta, como el juego. Con los modos apagados el plan es una sola
+         * planta —la que se edita, con su fondo— y esto hace exactamente lo de siempre.
+         *
+         * Las plantas de abajo y el fantasma de encima van DENTRO de la capa fija, y no es un
+         * detalle: son miles de operaciones de dibujo más, y el fuego de los respawns y el ratón
+         * tienen que seguir pegando la copia en vez de rehacerlas.
+         */
+        const plan = planDePlantas(this.z, this.vistaDePlantas, {
+            numPlantas: Number(this.map.floors) || undefined,
+            conFondo: (planta) => plantaConSueloPorDefecto(this.map.defaultGround, planta),
+            tieneCasillas: this._plantasConCasillas()
+        });
 
-        const ops = buildDrawList(this.map, this._camaraAcotada(), {
+        let zonas = [];
+
+        plan.forEach((paso) => {
+            if (paso.papel === 'actual') {
+                zonas = this._drawPlantaActual(paso);
+            } else if (paso.papel === 'inferior') {
+                this._drawPlantaInferior(paso);
+            } else {
+                this._drawPlantaSuperior(paso);
+            }
+        });
+
+        // Las banderas son de la planta que se edita y van ENCIMA del fantasma de arriba: son
+        // marcas del editor, como la rejilla, y tienen que leerse aunque haya un piso encima.
+        this._drawFlags();
+        this._guardarCapaFija(zonas);
+
+        return zonas;
+    }
+
+    /**
+     * Las plantas que tienen alguna casilla que dibujar, como una función `(z) => boolean`.
+     *
+     * Se calcula UNA VEZ, la primera vez que se pregunta, y sólo si se pregunta: con los modos
+     * apagados el plan no pregunta nunca y esto no cuesta nada. Recorre los tiles explícitos del
+     * mapa, no sus casillas: son unos pocos miles en el mapa de la ciudad, frente a recorrer
+     * entera una planta vacía para no dibujar nada.
+     */
+    _plantasConCasillas() {
+        let plantas = null;
+
+        return (z) => {
+            if (!plantas) {
+                plantas = new Set();
+                this.map.tiles.forEach((tile) => {
+                    if (!this.map.isVoid || !this.map.isVoid(tile)) {
+                        plantas.add(tile.z);
+                    }
+                });
+            }
+            return plantas.has(z);
+        };
+    }
+
+    /** La lista de dibujo de UNA planta, con el orden del juego y el desplazamiento que le toca. */
+    _opsDePlanta(z) {
+        return buildDrawList(this.map, this._camaraAcotada(z), {
             now: 0,
-            // Sólo la planta que se está editando. Ver las de arriba y abajo está bien
-            // en un juego y estorba en un editor: al pintar hay que ver lo que se pinta.
+            // Una planta cada vez: así cada una lleva su fondo y su sombra en medio, y el orden
+            // entre plantas —de la más honda a la más alta— lo pone el plan.
             onlyCurrentFloor: true
         });
+    }
+
+    /** Una planta de abajo: su fondo si lo tiene, sus sprites sin tintes y, si toca, su sombra. */
+    _drawPlantaInferior(paso) {
+        if (paso.fondo) {
+            this._drawFloorBackground(paso.z, paso.sobreOtras);
+        }
+
+        // SIN TINTES: el elegido, los respawns y las zonas son de la planta que se edita.
+        this._opsDePlanta(paso.z).forEach((op) => {
+            if (op.kind !== DRAW.CREATURE) {
+                this._drawSprite(op, null);
+            }
+        });
+
+        if (paso.sombra > 0) {
+            // El lienzo entero, y no sólo el mapa: lo que asoma de un muro alto por encima del
+            // borde también es de esa planta, y tiene que verse igual de oscuro.
+            const vista = this.vista;
+
+            this.ctx.save();
+            this.ctx.fillStyle = 'rgba(0,0,0,' + paso.sombra + ')';
+            this.ctx.fillRect(0, 0, vista.ancho, vista.alto);
+            this.ctx.restore();
+        }
+    }
+
+    /**
+     * El fantasma de la planta de encima: sus sprites, transparentes, sin fondo ni tintes.
+     *
+     * SE PINTA ENTERA APARTE Y SE PEGA CON TRANSPARENCIA, en vez de pintar cada sprite
+     * transparente. Con transparencia por sprite, el suelo de una casilla se vería a través del
+     * muro que tiene encima —los dos al 35 %, uno sobre otro—, y lo de arriba parecería un
+     * montón de calcos superpuestos y no un piso.
+     */
+    _drawPlantaSuperior(paso) {
+        const pintar = () => {
+            this._opsDePlanta(paso.z).forEach((op) => {
+                if (op.kind !== DRAW.CREATURE) {
+                    this._drawSprite(op, null);
+                }
+            });
+        };
+
+        const lienzo = this._enAparte(pintar);
+
+        this.ctx.save();
+        this.ctx.globalAlpha = paso.alfa;
+
+        if (lienzo) {
+            this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+            this.ctx.drawImage(lienzo, 0, 0);
+        } else {
+            // Sin documento no hay lienzo aparte: transparencia por sprite, peor pero algo.
+            pintar();
+        }
+
+        this.ctx.restore();
+    }
+
+    /**
+     * Pinta algo en el LIENZO DE TRABAJO —del tamaño del de verdad, vacío y con la misma
+     * transformación— en vez de en el de verdad, y lo devuelve para pegarlo. Mientras dura,
+     * `this.ctx` es el del lienzo de trabajo, que es lo que deja reutilizar `_drawSprite` y el
+     * fondo tal cual. Sin documento (en Node) devuelve `null` y no pinta nada.
+     */
+    _enAparte(pintar) {
+        if (typeof document === 'undefined' || !document.createElement) {
+            return null;
+        }
+
+        if (!this.aparte) {
+            this.aparte = document.createElement('canvas');
+        }
+
+        const lienzo = this.aparte;
+
+        if (lienzo.width !== this.canvas.width || lienzo.height !== this.canvas.height) {
+            lienzo.width = this.canvas.width;
+            lienzo.height = this.canvas.height;
+        }
+
+        const ctx = lienzo.getContext('2d');
+        const ratio = this.ratio || 1;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, lienzo.width, lienzo.height);
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+
+        const principal = this.ctx;
+        this.ctx = ctx;
+
+        try {
+            pintar();
+        } finally {
+            this.ctx = principal;
+        }
+
+        return lienzo;
+    }
+
+    /**
+     * La planta que se edita: su fondo, el borde del mapa y sus sprites con sus tintes.
+     *
+     * @returns {Array<Object>} las zonas protegidas de la planta, que también hacen falta arriba
+     */
+    _drawPlantaActual(paso) {
+        if (paso.fondo) {
+            this._drawFloorBackground(this.z, paso.sobreOtras);
+        }
+        this._drawMapBorder();
+
+        const ops = this._opsDePlanta(this.z);
 
         /*
          * EL OBJETO ELEGIDO Y LAS CASILLAS DEL RESPAWN SE AVERIGUAN UNA VEZ POR FOTOGRAMA, no
@@ -461,9 +710,6 @@ export class MapCanvas {
             this._drawSprite(op, { elegido: elegido, enRespawn: enRespawn, enZona: enZona });
         });
 
-        this._drawFlags();
-        this._guardarCapaFija(zonas);
-
         return zonas;
     }
 
@@ -485,15 +731,25 @@ export class MapCanvas {
         ctx.drawImage(this.canvas, 0, 0);
         ctx.globalCompositeOperation = 'source-over';
 
-        this.capaFija = { lienzo: lienzo, mapa: this.map, zonas: zonas };
+        this.capaFija = {
+            lienzo: lienzo,
+            mapa: this.map,
+            zonas: zonas,
+            versionDeVista: this.versionDeVista
+        };
     }
 
-    /** La copia de la capa de abajo, si aún vale para este lienzo y este mapa; si no, null. */
+    /**
+     * La copia de la capa de abajo, si aún vale para este lienzo, este mapa y esta vista de
+     * plantas; si no, null. La vista cuenta porque las plantas de abajo, su sombra y el fantasma
+     * de encima están DENTRO de la copia (ver `versionDeVista`).
+     */
     _capaFijaValida() {
         const fija = this.capaFija;
 
         if (!fija || fija.mapa !== this.map || fija.lienzo.width !== this.canvas.width ||
-            fija.lienzo.height !== this.canvas.height) {
+            fija.lienzo.height !== this.canvas.height ||
+            fija.versionDeVista !== this.versionDeVista) {
             return null;
         }
 
@@ -578,14 +834,22 @@ export class MapCanvas {
      * Acotarlo no cambia ni un píxel del resultado: fuera del mapa, el mundo del editor
      * devuelve `null` y el orden de dibujo ya lo saltaba. Lo único que cambia es cuántas
      * veces se pregunta.
+     *
+     * CON UNA PLANTA, LA CÁMARA «ESTÁ» EN ESA PLANTA PARA EL ORDEN DE DIBUJO, y sólo para él. Con
+     * `onlyCurrentFloor` el orden de dibujo pinta la planta de `camera.z`; para pintar la de abajo
+     * o la de encima se le dice que `z` es ésa, mientras `worldToScreen` y `visibleRect` siguen
+     * midiendo el desplazamiento desde la planta de verdad de la cámara. Así cada planta cae
+     * corrida donde la pondría el juego, y no encima de la que se edita.
+     *
+     * @param {number} [planta] la que se va a dibujar; por defecto, la de la cámara
      */
-    _camaraAcotada() {
+    _camaraAcotada(planta) {
         const camera = this.camera;
         const mapa = this.map;
 
         return {
             get z() {
-                return camera.z;
+                return planta === undefined ? camera.z : planta;
             },
             worldToScreen(x, y, z) {
                 return camera.worldToScreen(x, y, z);
@@ -623,20 +887,54 @@ export class MapCanvas {
      * se dibuja sobre el vacío. Aquí se imita eso borrando el fondo de esas casillas antes de
      * dibujarlas, y son pocas —las que el mapa escribe—, así que sigue siendo una operación de
      * dibujo por casilla y no 16.384.
+     *
+     * CON OTRA PLANTA PINTADA DEBAJO, ESE BORRADO NO VALE: pintar las casillas del color del
+     * vacío borraría también lo de abajo, y por los agujeros del suelo propio se vería negro en
+     * vez de la planta inferior —que es lo que se ve en el juego—. Entonces el fondo se pinta en
+     * el lienzo de trabajo, ahí se le hacen los agujeros con `clearRect` (transparentes, no del
+     * color del vacío) y se pega encima. Con rectángulos y `clearRect` da igual que dos casillas
+     * se pisen medio píxel en una escala con decimales; con un trazado de agujeros (`evenodd`) ese
+     * medio píxel pisado se volvería a rellenar y saldría una raya de fondo entre casillas.
+     *
+     * @param {number} [z] la planta; por defecto, la que se edita
+     * @param {boolean} [sobreOtras] si ya hay alguna planta pintada debajo
      */
-    _drawFloorBackground() {
+    _drawFloorBackground(z, sobreOtras) {
+        const planta = z === undefined ? this.z : z;
+
+        if (sobreOtras) {
+            const lienzo = this._enAparte(() => this._pintarFondo(planta, true));
+
+            if (lienzo) {
+                this.ctx.save();
+                this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+                this.ctx.drawImage(lienzo, 0, 0);
+                this.ctx.restore();
+                return;
+            }
+        }
+
+        this._pintarFondo(planta, false);
+    }
+
+    /**
+     * El patrón del suelo por defecto sobre el mapa de una planta, sin las casillas con suelo
+     * propio. `transparente` dice cómo se quitan esas casillas: dejándolas transparentes (en el
+     * lienzo de trabajo) o del color del vacío (en el de verdad, que es lo de siempre).
+     */
+    _pintarFondo(planta, transparente) {
         const paso = this.tileSize;
-        const origen = this.camera.worldToScreen(0, 0, this.z);
+        const origen = this.camera.worldToScreen(0, 0, planta);
         const ancho = this.map.width * paso;
         const alto = this.map.height * paso;
 
-        const typeId = this.map.defaultGroundFor(this.z);
+        const typeId = this.map.defaultGroundFor(planta);
         const sprite = this.provider.get(typeId);
 
         this.ctx.fillStyle = this._rellenoDeSuelo(typeId, sprite, origen, paso);
         this.ctx.fillRect(origen.x, origen.y, ancho, alto);
 
-        this._borrarFondoDeSuelosPropios(paso);
+        this._borrarFondoDeSuelosPropios(paso, planta, transparente);
     }
 
     /**
@@ -649,17 +947,25 @@ export class MapCanvas {
      * igual que los sprites, lo que quede de diferencia es la misma franja de menos de un píxel
      * que ya hay hoy entre el patrón y cualquier suelo, y no una franja nueva.
      */
-    _borrarFondoDeSuelosPropios(paso) {
+    _borrarFondoDeSuelosPropios(paso, z, transparente) {
+        const planta = z === undefined ? this.z : z;
+
         this.ctx.fillStyle = COLOR_SIN_SUELO;
 
         // Sólo las que se ven: ver `casillasConSueloPropio`, que explica por qué se le pasa el
         // rectángulo en vez de dejar que devuelva las 2.825 del mapa de la ciudad.
-        const rect = this._camaraAcotada().visibleRect(this.z);
+        const rect = this._camaraAcotada(planta).visibleRect(planta);
 
-        this.map.casillasConSueloPropio(this.z, rect).forEach((casilla) => {
-            const pantalla = this.camera.worldToScreen(casilla.x, casilla.y, this.z);
+        this.map.casillasConSueloPropio(planta, rect).forEach((casilla) => {
+            const pantalla = this.camera.worldToScreen(casilla.x, casilla.y, planta);
+            const x = Math.round(pantalla.x);
+            const y = Math.round(pantalla.y);
 
-            this.ctx.fillRect(Math.round(pantalla.x), Math.round(pantalla.y), paso, paso);
+            if (transparente) {
+                this.ctx.clearRect(x, y, paso, paso);
+            } else {
+                this.ctx.fillRect(x, y, paso, paso);
+            }
         });
     }
 
