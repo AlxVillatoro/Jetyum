@@ -87,7 +87,7 @@ module.exports = {
         // Su mordisco ENVENENA un poco: 1 de daño cada 2 s, 4 veces.
         { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -8,
             condition: { type: 'veneno', ticks: 4, interval: 2000, value: 1 } },
-        { name: 'earth', interval: 4000, chance: 20, minDamage: 0, maxDamage: -1 }
+        { name: 'earth', interval: 4000, chance: 20, minDamage: 0, maxDamage: -1, range: 1 }
     ],
 
     defenses: {

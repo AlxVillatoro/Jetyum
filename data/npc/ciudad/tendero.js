@@ -49,6 +49,15 @@ const TIENDA = {
         { id: 11892, buy: 42, sell: 15, name: 'estrella arrojadiza' },
         { id: 2417, buy: 2, sell: 1, name: 'antorcha' },
         { id: 12137, buy: 50, sell: 8, name: 'cuerda' },
+        // Herramientas y runas (data/scripts/actions/herramientas.js, data/scripts/spells/runas.js):
+        // la pala abre los montones de piedras; la runa en blanco se conjura en la runa que sea.
+        { id: 21030, buy: 50, sell: 8, name: 'pala' },
+        { id: 21031, buy: 50, sell: 8, name: 'pico' },
+        { id: 21000, buy: 10, sell: 2, name: 'runa en blanco' },
+        { id: 21003, buy: 95, name: 'runa de curacion intensa' },
+        { id: 21002, buy: 175, name: 'runa de curacion' },
+        { id: 21005, buy: 40, name: 'runa de proyectil ligero' },
+        { id: 21004, buy: 125, name: 'runa de proyectil' },
         { id: 12166, sell: 2, name: 'hueso' },
         { id: 12207, sell: 250, name: 'zafiro pequeno' },
         { id: 12211, sell: 250, name: 'rubi pequeno' },

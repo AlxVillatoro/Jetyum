@@ -4,7 +4,7 @@
     "size": 32,
     "columns": 32,
     "rows": 32,
-    "count": 9169,
+    "count": 9229,
     "sheets": [
         "sprites-0000.png",
         "sprites-0001.png",
@@ -14,7 +14,8 @@
         "sprites-0005.png",
         "sprites-0006.png",
         "sprites-0007.png",
-        "sprites-0008.png"
+        "sprites-0008.png",
+        "sprites-0009.png"
     ],
     "revisions": [
         "c62667c51876",
@@ -25,6 +26,7 @@
         "3e27453f3c73",
         "53a3299ecc57",
         "ab428441a7eb",
-        "49342a451866"
+        "5c1534167fac",
+        "952965a68c14"
     ]
 }

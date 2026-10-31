@@ -334,7 +334,7 @@ async function main() {
         const damaged = await client.waitUntil((world) => {
             const seen = world.creatures.get(rat.id);
             return seen && seen.health < 100;
-        }, 2000);
+        }, 9000);   // varios golpes: alguno puede quedar BLOQUEADO (escudo y armadura, como en TFS)
 
         check('y ve bajar su salud cuando le atacan',
             damaged,

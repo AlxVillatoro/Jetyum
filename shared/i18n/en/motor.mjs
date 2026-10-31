@@ -429,5 +429,25 @@ export default {
     'Monturas: {lista}. Uso: /montura <id>[, personaje]': 'Mounts: {lista}. Usage: /montura <id>[, character]',
     'No existe la montura «{montura}».': 'There is no «{montura}» mount.',
     'No hay nadie dentro llamado «{nombre}».': 'There is nobody online named «{nombre}».',
-    '{nombre} tiene ahora la montura «{montura}».': '{nombre} now has the «{montura}» mount.'
+    '{nombre} tiene ahora la montura «{montura}».': '{nombre} now has the «{montura}» mount.',
+
+    // -----------------------------------------------------------------------
+    // Combate de Tibia (fase 2): varitas, runas, «usar con», campos, herramientas y modos
+    // -----------------------------------------------------------------------
+    'No tienes maná suficiente.': 'You do not have enough mana.',
+    'Necesitas {objeto}.': 'You need {objeto}.',
+    'Tu vocación no puede usar {runa}.': 'Your vocation cannot use {runa}.',
+    'Necesitas nivel mágico {n} para {runa}.': 'You need magic level {n} to use {runa}.',
+    'Tienes que usarla sobre algo.': 'You have to use it on something.',
+    'Sólo puedes usar esta runa sobre criaturas.': 'You can only use this rune on creatures.',
+    'Está demasiado lejos.': 'It is too far away.',
+    'No puedes lanzarla a través de eso.': 'You cannot throw it through that.',
+    'No tienes eso.': 'You do not have that.',
+    'Tienes que usarlo sobre algo.': 'You have to use it on something.',
+    'Apaga el modo seguro si de verdad quieres atacar a jugadores sin calavera.':
+        'Turn secure mode off if you really want to attack unmarked players.',
+    'Ahí no cabe.': 'There is not enough room.',
+    'Hay alguien ahí.': 'There is someone there.',
+    'Ahí no hay ningún campo.': 'There is no field there.',
+    'No hay sitio arriba.': 'There is no room above.'
 };

@@ -11952,7 +11952,8 @@
   "12137": {
    "banderas": {
     "pickupable": true,
-    "useable": true
+    "useable": true,
+    "useWith": true
    }
   },
   "12138": {
@@ -15389,6 +15390,144 @@
    "banderas": {
     "isContainer": true,
     "containerSize": "10"
+   }
+  },
+  "21000": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21001": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21002": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21003": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21004": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21005": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21006": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21007": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21008": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21009": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21010": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21011": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21012": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21013": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21014": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "rune": true
+   }
+  },
+  "21025": {
+   "banderas": {
+    "blocksSolid": true,
+    "blocksProjectile": true,
+    "blocksPathfind": true
+   }
+  },
+  "21030": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "useWith": true
+   }
+  },
+  "21031": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true,
+    "useWith": true
+   }
+  },
+  "21032": {
+   "banderas": {
+    "onBottom": true,
+    "useable": true
+   }
+  },
+  "21033": {
+   "banderas": {
+    "onBottom": true,
+    "blocksPathfind": true
    }
   }
  }

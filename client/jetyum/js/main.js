@@ -35,6 +35,8 @@ import { crearVentanaContenedor } from './contenedor.js';
 import { crearVentanaComercio } from './comercio.js';
 import { crearDialogo } from './dialogo.js';
 import { crearHotkeys } from './hotkeys.js';
+import { crearCruz, destinoDeClic } from './usarcon.js';
+import { crearModosCombate } from './modoscombate.js';
 import { crearGestorVentanas } from './ventanas.js';
 import { pintarIconos } from './iconos.js';
 import {
@@ -244,6 +246,9 @@ class Game {
                         chat.value = accion.escribir + ' ';
                         chat.focus();
                     }
+                } else if (accion.cruz) {
+                    // «Con la cruz»: el clic siguiente dice sobre qué (el motor usa la primera que lleves).
+                    this.cruz.empezar({ hotkey: accion.cruz });
                 } else if (accion.usar && this.connection) {
                     this.connection.send([CLIENT.USE_HOTKEY_ITEM, accion.usar, accion.en]);
                 } else if (accion.aviso) {
@@ -251,6 +256,34 @@ class Game {
                 }
             }
         });
+        /*
+         * «USAR CON»: la cruz de las runas y las herramientas (usarcon.js). El clic con la cruz cae
+         * en el MAPA -la criatura de esa casilla, tú incluido, o la casilla- o en la LISTA DE
+         * BATALLA -esa criatura-; en cualquier otro sitio se cancela.
+         */
+        this.cruz = crearCruz({
+            destinoEn: (e) => {
+                const fila = e.target && e.target.closest ? e.target.closest('[data-criatura]') : null;
+                if (fila) {
+                    return { criatura: Number(fila.dataset.criatura) };
+                }
+                if (e.target !== this.canvas || !this.world.playerId) {
+                    return null;
+                }
+                const casilla = this._tileEnPantalla(e.clientX, e.clientY);
+                return destinoDeClic(casilla, this.world.creaturesAt(casilla.x, casilla.y, casilla.z));
+            },
+            enviar: (mensaje) => this.connection && this.connection.send(mensaje),
+            estado: document.getElementById('status'),
+            aviso: (texto) => this.consola.servidor(texto)
+        });
+
+        /** Los modos de combate, junto al equipo: se mandan al entrar y al cambiarlos. */
+        this.modosCombate = crearModosCombate({
+            raiz: document.getElementById('modos-combate'),
+            enviar: (mensaje) => this.connection && this.connection.send(mensaje)
+        });
+
         this.comercio = crearVentanaComercio({
             gestor: this.ventanas,
             provider: this.provider,
@@ -296,6 +329,9 @@ class Game {
                 // tuviera es de una sesión que ya no existe.
                 this.world = new ClientWorld();
                 this.camera.setCenter(0, 0, 7);
+
+                // La cruz de «usar con» es de la partida que se acaba de perder.
+                this.cruz.cancelar();
 
                 // Y si el jugador estaba arrastrando algo, el fantasma que sigue al raton se
                 // queda colgado en la pantalla para siempre: no hay raton que lo suelte, porque
@@ -385,6 +421,9 @@ class Game {
             } else if (event.type === 'login') {
                 this._setStatus('dentro del mundo como ' + event.player.name);
                 this.camera.setCenter(event.player.x, event.player.y, event.player.z);
+
+                // Los modos de combate que eligió el jugador (el motor empieza con los suyos).
+                this.modosCombate.enviar();
 
                 // La vida, el nivel y la vocacion llegan con la bienvenida, asi que los stats
                 // se pintan ya y no cuando cambie algo: si no, el panel empezaria a cero y
@@ -720,8 +759,18 @@ class Game {
         this.consola.privado(nombre, yo, texto);
     }
 
-    /** Usar algo que llevas (comer, beber): su índice en el inventario. */
+    /**
+     * Usar algo que llevas (comer, beber): su índice en el inventario. Si es algo que se usa SOBRE
+     * algo -una runa con cargas, la cuerda, la pala-, no se usa todavía: se pone la cruz, y el clic
+     * siguiente dice sobre qué (usarcon.js).
+     */
     usarDelInventario(indice) {
+        const entrada = this.world.inventory.find((x) => x.index === Number(indice));
+        if (entrada && (itemtypes.usaConObjetivo(entrada.typeId) &&
+            (!itemtypes.esRuna(entrada.typeId) || entrada.charges > 0))) {
+            this.cruz.empezar({ inventario: Number(indice) });
+            return;
+        }
         if (this.connection) {
             this.connection.send([CLIENT.USE_INVENTORY, Number(indice)]);
         }
@@ -945,6 +994,7 @@ class Game {
         this._ocultarCarga();
         this.world = new ClientWorld();
         this.objetivo = null;
+        this.cruz.cancelar();
         this.contenedor.cerrar();
         limpiarPaneles();
         this.consola.limpiar();

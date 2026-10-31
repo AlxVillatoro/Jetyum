@@ -22,6 +22,7 @@
  */
 
 const { EntityFactory } = require('./entities');
+const { lineaDeVision } = require('../world/areas');
 
 /** El nombre del callback de un movimiento lo decide su tipo de evento. */
 const MOVEMENT_CALLBACKS = {
@@ -33,7 +34,7 @@ const MOVEMENT_CALLBACKS = {
     removeitem: 'onRemoveItem'
 };
 
-const KINDS = ['action', 'movement', 'talkaction', 'monster', 'npc', 'event', 'globalevent', 'raid', 'spell', 'quest'];
+const KINDS = ['action', 'movement', 'talkaction', 'monster', 'npc', 'event', 'globalevent', 'raid', 'spell', 'rune', 'quest'];
 
 /**
  * El enfriamiento de cada grupo de hechizos (el «exhaust» de Tibia): tras uno de ataque no se
@@ -112,6 +113,9 @@ class ScriptRegistry {
         /** Los hechizos (`type: 'spell'`), por sus palabras. También se lanzan como talkactions. */
         this.spells = new Map();
 
+        /** Las runas (`type: 'rune'`), por el id del objeto: se usan con «usar con» sobre algo. */
+        this.runes = new Map();
+
         // Los hechizos de la vocación de un jugador (`player.getSpells()`, el `/spells`).
         if (this.world) {
             this.world.spellsFor = (jugador) => [...this.spells.values()]
@@ -164,6 +168,8 @@ class ScriptRegistry {
                 return this._registerTalkAction(definition, script);
             case 'spell':
                 return this._registerSpell(definition, script);
+            case 'rune':
+                return this._registerRune(definition, script);
             case 'quest':
                 return this._registerQuest(definition, script);
             case 'monster':
@@ -294,7 +300,12 @@ class ScriptRegistry {
         if (typeof definition.words !== 'string' || definition.words === '') {
             throw new Error("un hechizo necesita 'words', por ejemplo words: 'exura'");
         }
-        if (typeof definition.onCastSpell !== 'function') {
+        // UN CONJURO (`conjurar: { de, a, cargas }`) no necesita script: convierte una runa en blanco
+        // (`de`) que lleves en una runa (`a`) con sus cargas. Ver `_conjurar`.
+        const conjuro = definition.conjurar && definition.conjurar.de && definition.conjurar.a
+            ? { de: Number(definition.conjurar.de), a: Number(definition.conjurar.a),
+                cargas: Number(definition.conjurar.cargas) || 0 } : null;
+        if (typeof definition.onCastSpell !== 'function' && !conjuro) {
             throw new Error("un hechizo necesita 'onCastSpell(player, target, param)'");
         }
         const words = definition.words.toLowerCase();
@@ -309,7 +320,8 @@ class ScriptRegistry {
             needTarget: definition.needTarget === true,
             range: Number(definition.range) || 7,
             cooldown: Number(definition.cooldown) || 0,
-            onCastSpell: definition.onCastSpell,
+            onCastSpell: definition.onCastSpell || ((player) => this._conjurar(player, conjuro)),
+            conjurar: conjuro,
             script: script
         };
         this.spells.set(words, hechizo);
@@ -377,6 +389,139 @@ class ScriptRegistry {
             player.sendTextMessage(r.result);
         }
         return true;
+    }
+
+    /**
+     * CONJURAR: la runa en blanco que lleve se convierte en la runa, con sus cargas, en el mismo
+     * sitio. Sin runa en blanco, no se lanza (y no gasta maná).
+     */
+    _conjurar(player, conjuro) {
+        const jugador = this.world.getPlayer(player.getId());
+        const r = jugador ? this.world.conjureRune(jugador, conjuro.de, conjuro.a, conjuro.cargas) : { ok: false };
+        if (!r.ok) {
+            const blanca = this.world.itemTypes.get(conjuro.de);
+            player.sendCancelMessage('Necesitas ' + (blanca ? blanca.name : 'una runa en blanco') + '.');
+            return false;
+        }
+        this.world.sendMagicEffect(jugador.position, 102);   // MAGIA_AZUL
+        return true;
+    }
+
+    /**
+     * UNA RUNA, como las de TFS: un objeto con cargas que lanza un hechizo al usarlo SOBRE algo («usar
+     * con»: una criatura o una casilla). El motor comprueba lo de siempre —nivel, NIVEL MÁGICO,
+     * vocación, enfriamiento, alcance y que se vea el sitio— y gasta una carga; el script sólo dice
+     * qué hace:
+     *
+     *     {
+     *         type: 'rune', id: 21001, name: 'Sudden Death', level: 45, magicLevel: 15,
+     *         needTarget: true,       // sólo sobre una criatura (si no, también sobre una casilla)
+     *         aggressive: true,       // un ataque: no en una zona de protección (y grupo «ataque»)
+     *         onCastSpell(player, variant) {
+     *             // variant: { creature: la criatura (o null), position: la casilla }
+     *             Game.doTargetCombat(player, variant.creature, { type: 'death', min: 30, max: 60 });
+     *             return true;      // true (o un texto): lanzada; false: no, sin gastar la carga
+     *         }
+     *     }
+     */
+    _registerRune(definition, script) {
+        const id = Number(definition.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            throw new Error("una runa necesita 'id': el del objeto runa en items.xml");
+        }
+        if (typeof definition.onCastSpell !== 'function') {
+            throw new Error("una runa necesita 'onCastSpell(player, variant)'");
+        }
+        const agresiva = definition.aggressive !== false;
+        this.runes.set(id, {
+            id: id,
+            name: definition.name || ('runa ' + id),
+            level: Number(definition.level) || 1,
+            magicLevel: Number(definition.magicLevel) || 0,
+            vocations: Array.isArray(definition.vocations) && definition.vocations.length ? definition.vocations : null,
+            needTarget: definition.needTarget === true,
+            aggressive: agresiva,
+            group: ENFRIAMIENTO_DE_GRUPO[definition.group] ? definition.group : (agresiva ? 'ataque' : 'curacion'),
+            range: Number(definition.range) || 7,
+            cooldown: Number(definition.cooldown) || 0,
+            onCastSpell: definition.onCastSpell,
+            script: script
+        });
+        this.registeredScripts.add(script);
+        return { kind: 'rune', count: 1 };
+    }
+
+    /**
+     * USA UNA RUNA que lleva el jugador (`entrada` de su inventario) sobre `destino`
+     * (`{ creatureId }` o `{ x, y, z }`). Devuelve `{ ok, reason }`; el motivo ya se le ha dicho.
+     */
+    useRune(jugador, entrada, destino) {
+        const runa = entrada ? this.runes.get(Number(entrada.typeId)) : null;
+        const player = this.entities.player(jugador.id);
+        const falla = (texto, motivo) => {
+            player.sendCancelMessage(texto);
+            this.world.sendMagicEffect(jugador.position, 103);   // POFF
+            return { ok: false, reason: motivo };
+        };
+        if (!runa) {
+            return { ok: false, reason: 'notRune' };
+        }
+        if (runa.vocations && !runa.vocations.includes(jugador.vocation)) {
+            return falla('Tu vocación no puede usar ' + runa.name + '.', 'vocation');
+        }
+        if (jugador.level < runa.level) {
+            return falla('Necesitas nivel ' + runa.level + ' para ' + runa.name + '.', 'level');
+        }
+        if ((jugador.magicLevel || 0) < runa.magicLevel) {
+            return falla('Necesitas nivel mágico ' + runa.magicLevel + ' para ' + runa.name + '.', 'magicLevel');
+        }
+        const ahora = this.world.now();
+        jugador.enfriamientos = jugador.enfriamientos || {};
+        if (ahora < (jugador.enfriamientos[runa.group] || 0)) {
+            return falla('Estás agotado.', 'exhausted');
+        }
+
+        if (runa.aggressive && this.world.inProtectionZone && this.world.inProtectionZone(jugador)) {
+            return falla('No puedes atacar desde una zona de protección.', 'pz');
+        }
+
+        // EL DESTINO: una criatura (y su casilla) o una casilla (y quien esté en ella).
+        let criatura = destino && destino.creatureId !== undefined ? this.world.getCreature(Number(destino.creatureId)) : null;
+        const pos = criatura ? criatura.position
+            : (destino && destino.x !== undefined ? { x: Number(destino.x), y: Number(destino.y), z: Number(destino.z) } : null);
+        if (!pos) {
+            return falla('Tienes que usarla sobre algo.', 'noTarget');
+        }
+        if (!criatura) {
+            const tile = this.world.map.getTile(pos.x, pos.y, pos.z);
+            criatura = tile && tile.creatures.length ? tile.creatures[tile.creatures.length - 1] : null;
+        }
+        if (runa.needTarget && !criatura) {
+            return falla('Sólo puedes usar esta runa sobre criaturas.', 'needCreature');
+        }
+        if (pos.z !== jugador.position.z || Math.max(Math.abs(pos.x - jugador.position.x),
+            Math.abs(pos.y - jugador.position.y)) > runa.range) {
+            return falla('Está demasiado lejos.', 'tooFar');
+        }
+        if (!lineaDeVision(this.world.map, jugador.position, pos)) {
+            return falla('No puedes lanzarla a través de eso.', 'sight');
+        }
+
+        const variante = {
+            creature: criatura ? this.entities.creature(criatura.id) : null,
+            position: this.entities.position(pos.x, pos.y, pos.z)
+        };
+        const r = this._invoke({ handler: runa.onCastSpell, script: runa.script }, 'onCastSpell', [player, variante]);
+        if (r.error || r.result === false) {
+            this.world.sendMagicEffect(jugador.position, 103);
+            return { ok: false, reason: 'script' };
+        }
+        jugador.enfriamientos[runa.group] = ahora + (runa.cooldown || ENFRIAMIENTO_DE_GRUPO[runa.group]);
+        this.world.spendRuneCharge(jugador, entrada);
+        if (typeof r.result === 'string') {
+            player.sendTextMessage(r.result);
+        }
+        return { ok: true };
     }
 
     /**

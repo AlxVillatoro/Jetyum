@@ -37,7 +37,14 @@ const ICONOS = {
     combate: '<path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6M16 16l4 4M19 21l2-2"/><path d="M9.5 17.5 21 6V3h-3L6.5 14.5"/><path d="m11 19-6-6M8 16l-4 4M5 21l-2-2"/>',
     'pz-bloqueado': '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M4 4l16 16"/>',
     'zona-proteccion': '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m9 12 2 2 4-4"/>',
-    montura: '<path d="M7 20v-8a5 5 0 0 1 10 0v8"/><path d="M5 20h4M15 20h4M8.5 10h.01M15.5 10h.01"/>'
+    montura: '<path d="M7 20v-8a5 5 0 0 1 10 0v8"/><path d="M5 20h4M15 20h4M8.5 10h.01M15.5 10h.01"/>',
+    // LOS MODOS DE COMBATE, junto al equipo (modoscombate.js): ofensivo (la espada), equilibrado (el
+    // escudo a medias), defensivo (el escudo), perseguir (ir tras el punto) y el modo seguro (el candado).
+    'modo-ofensivo': '<path d="M20 4v5l-9 7-4 4-3-3 4-4 7-9z"/><path d="m6.5 11.5 6 6"/>',
+    'modo-equilibrado': '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M12 3 5 6v5c0 4.5 3 8 7 10z" fill="currentColor"/>',
+    'modo-defensivo': '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>',
+    perseguir: '<path d="m3 7 5 5-5 5M9 7l5 5-5 5"/><circle cx="19" cy="12" r="2" fill="currentColor"/>',
+    'modo-seguro': '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'
 };
 
 /** El SVG de un icono, listo para meter en un botón. */

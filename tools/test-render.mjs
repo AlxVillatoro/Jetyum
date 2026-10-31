@@ -20,7 +20,11 @@ import { Camera, TILE_PIXELS, floorOffset } from '../client/jetyum/js/camera.js'
 import { ClientWorld } from '../client/jetyum/js/world.js';
 import { buildDrawList, forEachTileInDrawOrder, summarize, DRAW } from '../client/jetyum/js/drawlist.js';
 import { paletteColor, darker, PALETTE_SIZE, createProvider, ProceduralProvider } from '../client/jetyum/js/sprites.js';
-import { accionDe, teclaDe, TECLAS } from '../client/jetyum/js/hotkeys.js';
+import { accionDe, teclaDe, TECLAS, modosDe, modoValido as modoDeHotkey } from '../client/jetyum/js/hotkeys.js';
+import { destinoDeClic, mensajeUsarCon } from '../client/jetyum/js/usarcon.js';
+import { mensajeModosCombate, normalizar as normalizarModos, POR_DEFECTO as MODOS_POR_DEFECTO } from '../client/jetyum/js/modoscombate.js';
+import { numeroDeEsquina } from '../client/jetyum/js/panels.js';
+import * as itemtypes from '../client/jetyum/js/itemtypes.js';
 import { scale2xDatos, bilineal2xDatos, modoValido } from '../client/jetyum/js/suavizado.js';
 import { IsoCamera, ANCHO_ROMBO, ALTO_ROMBO, ALTO_PLANTA } from '../client/jetyum/js/iso.js';
 import { Renderer, alturaDelJinete } from '../client/jetyum/js/renderer.js';
@@ -608,9 +612,10 @@ function main() {
         const { world } = makeWorld();
 
         const entradas = [
-            [0, 2412, 1, 'backpack', 'backpack'],
-            [1, 3031, 25, 'gold coin', 'inside'],
-            [2, 2400, 1, 'magic sword', 'hand']
+            // [índice, tipo, cantidad, nombre, ranura, cargas]
+            [0, 2412, 1, 'backpack', 'backpack', 0],
+            [1, 3031, 25, 'gold coin', 'inside', 0],
+            [2, 2400, 1, 'magic sword', 'hand', 0]
         ];
 
         const mensaje = [P.SERVER.INVENTORY, entradas.length, 1900, 40500]
@@ -764,6 +769,69 @@ function main() {
         const primera = r._opMontura;
         r._drawCreature(op(312), 1100);
         check('la operación de la montura se reutiliza (sin basura por fotograma)', r._opMontura === primera);
+    }
+
+    section('17. Runas, «usar con» y modos de combate');
+    {
+        // Las CARGAS viajan en el sexto campo de cada entrada del inventario.
+        const { world } = makeWorld();
+        const entradas = [
+            [0, 2412, 1, 'backpack', 'backpack', 0],
+            [1, 21004, 1, 'heavy magic missile rune', 'inside', 7],
+            [2, 3031, 25, 'gold coin', 'inside', 0]
+        ];
+        world.apply([[P.SERVER.INVENTORY, entradas.length, 100, 40500].concat(entradas.flat())],
+            { SERVER: P.SERVER, CLIENT: P.CLIENT });
+        const runa = world.inventory.find((e) => e.typeId === 21004);
+        const monedas = world.inventory.find((e) => e.typeId === 3031);
+        check('las cargas de una runa llegan con el inventario (y 0 en lo demás)',
+            P.INVENTORY_FIELD.STRIDE === 6 && runa && runa.charges === 7 && monedas.charges === 0 && monedas.count === 25,
+            world.inventory.map((e) => e.name + ':' + e.charges).join(', '));
+        check('y se pintan en la esquina como una pila: las cargas, o cuántos hay',
+            numeroDeEsquina(runa).includes('>7<') && numeroDeEsquina(monedas).includes('>25<') &&
+            numeroDeEsquina({ count: 1, charges: 0 }) === '');
+
+        // Qué pide la cruz: las banderas `rune` y `useWith` de objetos.json.
+        itemtypes.usarTabla({ items: {
+            21000: { banderas: { pickupable: true, rune: true } },
+            21004: { banderas: { pickupable: true, rune: true } },
+            12137: { banderas: { pickupable: true, useWith: true } },
+            2413: { banderas: { pickupable: true, stackable: true } }
+        } });
+        check('una runa y la cuerda se usan con la cruz; la runa en blanco y una poción, no',
+            itemtypes.usaConObjetivo(21004) && itemtypes.usaConObjetivo(12137) &&
+            !itemtypes.usaConObjetivo(21000) && !itemtypes.usaConObjetivo(2413));
+
+        // El mensaje que sale de un clic con la cruz.
+        const casilla = { x: 100, y: 200, z: 7 };
+        const clicCriatura = mensajeUsarCon({ inventario: 1 }, destinoDeClic(casilla, [{ id: 7 }, { id: 42 }]));
+        const clicSuelo = mensajeUsarCon({ hotkey: 21004 }, destinoDeClic(casilla, []));
+        check('clic sobre una criatura: USE_WITH sobre la criatura (la de arriba)',
+            clicCriatura[0] === P.CLIENT.USE_WITH && clicCriatura[1].inventario === 1 && clicCriatura[2].criatura === 42,
+            JSON.stringify(clicCriatura));
+        check('clic sobre una casilla sin nadie: USE_WITH sobre la casilla',
+            clicSuelo[0] === 0x86 && clicSuelo[1].hotkey === 21004 &&
+            JSON.stringify(clicSuelo[2]) === JSON.stringify({ casilla: [100, 200, 7] }), JSON.stringify(clicSuelo));
+
+        // Las hotkeys de runas: los tres modos de Tibia.
+        const quien = { yo: 7, objetivo: 42 };
+        check('una runa en hotkey: sobre el objetivo, sobre ti o con la cruz',
+            accionDe({ tipo: 'objeto', typeId: 21004, modo: 'objetivo' }, quien).en === 42 &&
+            accionDe({ tipo: 'objeto', typeId: 21004, modo: 'yo' }, quien).en === 7 &&
+            accionDe({ tipo: 'objeto', typeId: 21004, modo: 'cruz' }, quien).cruz === 21004 &&
+            !!accionDe({ tipo: 'objeto', typeId: 21004, modo: 'objetivo' }, { yo: 7, objetivo: null }).aviso);
+        check('qué modos tiene cada objeto (la cuerda sólo la cruz; una poción, en ti o en el objetivo)',
+            modosDe(21004).join() === 'objetivo,yo,cruz' && modosDe(12137).join() === 'cruz' &&
+            modosDe(2413).join() === 'yo,objetivo' && modoDeHotkey(12137, 'yo') === 'cruz' && modoDeHotkey(21004, 'cruz') === 'cruz');
+        itemtypes.usarTabla({});
+
+        // Los modos de combate.
+        check('modos de combate: el mensaje [0xA0, modo, perseguir, seguro]',
+            JSON.stringify(mensajeModosCombate({ modo: 1, perseguir: true, seguro: false })) === JSON.stringify([0xA0, 1, 1, 0]) &&
+            mensajeModosCombate(MODOS_POR_DEFECTO).join() === [P.CLIENT.FIGHT_MODES, 2, 0, 1].join());
+        check('y lo guardado roto vuelve a los del motor (equilibrado, sin perseguir, seguro)',
+            JSON.stringify(normalizarModos({ modo: 9, seguro: 'x' })) === JSON.stringify({ modo: 2, perseguir: false, seguro: true }) &&
+            JSON.stringify(normalizarModos(null)) === JSON.stringify(MODOS_POR_DEFECTO));
     }
 
     console.log('');

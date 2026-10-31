@@ -48,7 +48,9 @@ module.exports = {
     },
 
     attacks: [
-        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -30 }
+        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -30 },
+        // Te vacía el maná a su alrededor.
+        { name: 'manadrain', interval: 3000, chance: 20, minDamage: -10, maxDamage: -30, radius: 3, target: false }
     ],
 
     defenses: { defense: 6, armor: 6 },

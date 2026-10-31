@@ -8,13 +8,17 @@
  *       pulsar; si no, se escribe en el chat para terminarlo.
  *     · OBJETO: uno de los que llevas (una poción...), usado EN TI o EN TU OBJETIVO (la criatura
  *       que estás atacando). El motor usa el primero de ese tipo que lleves.
+ *       Una RUNA tiene los tres modos de Tibia: sobre el objetivo, sobre ti o CON LA CRUZ (la
+ *       tecla pone la cruz y el clic siguiente dice sobre qué; ver usarcon.js). Una herramienta que
+ *       se usa sobre algo (la cuerda, la pala) sólo tiene la cruz.
  * - Se guardan en este navegador, por personaje.
  *
  * QUÉ SE PUEDE Y QUÉ NO lo decide el motor (que tengas el objeto, que el objetivo esté a la vista,
  * que la poción no se le dé a un monstruo...), y lo dice en el chat.
  */
 
-import { iconoDeObjeto } from './panels.js';
+import { iconoDeObjeto, numeroDeEsquina } from './panels.js';
+import * as itemtypes from './itemtypes.js';
 
 export const TECLAS = [];
 for (let i = 1; i <= 12; i += 1) {
@@ -39,8 +43,32 @@ export function teclaDe(evento) {
 }
 
 /**
+ * Los MODOS en que se puede usar un objeto desde una hotkey: `yo`, `objetivo` y `cruz`.
+ *
+ * - una runa que se lanza: los tres, como en Tibia
+ * - una herramienta que se usa sobre algo (`useWith`: la cuerda, la pala): sólo la cruz, porque
+ *   no tiene sentido usarla «en ti» ni «en tu objetivo»
+ * - lo demás (una poción): en ti o en tu objetivo
+ */
+export function modosDe(typeId) {
+    if (itemtypes.esRuna(typeId)) {
+        return ['objetivo', 'yo', 'cruz'];
+    }
+    if (itemtypes.usaConObjetivo(typeId)) {
+        return ['cruz'];
+    }
+    return ['yo', 'objetivo'];
+}
+
+/** El modo guardado si el objeto lo admite; si no, el primero de los suyos. */
+export function modoValido(typeId, modo) {
+    const modos = modosDe(typeId);
+    return modos.includes(modo) ? modo : modos[0];
+}
+
+/**
  * Qué hay que hacer al pulsar una hotkey: `{ decir }`, `{ escribir }`, `{ usar: typeId, en: id }`,
- * `{ aviso }` o null si la tecla está libre.
+ * `{ cruz: typeId }` (poner la cruz para elegir sobre qué), `{ aviso }` o null si la tecla está libre.
  *
  * @param {Object} h lo guardado para esa tecla
  * @param {{yo: number, objetivo: number|null}} quien
@@ -57,6 +85,9 @@ export function accionDe(h, quien) {
         return h.auto === false ? { escribir: texto } : { decir: texto };
     }
     if (h.tipo === 'objeto' && h.typeId) {
+        if (h.modo === 'cruz') {
+            return { cruz: Number(h.typeId) };
+        }
         if (h.modo === 'objetivo') {
             return quien.objetivo ? { usar: Number(h.typeId), en: quien.objetivo } : { aviso: 'No tienes ningún objetivo.' };
         }
@@ -118,7 +149,22 @@ export function crearHotkeys(o) {
             return '<span class="magia">' + escapar(h.texto || '') + '</span>' + (h.auto === false ? ' <small>(al chat)</small>' : '');
         }
         return iconoDeObjeto(h.typeId, o.provider, 16, 1) + ' <span>' + escapar(nombreDe(h.typeId)) + '</span> <small>' +
-            (h.modo === 'objetivo' ? 'en el objetivo' : 'en ti') + '</small>';
+            (h.modo === 'cruz' ? 'con la cruz' : h.modo === 'objetivo' ? 'en el objetivo' : 'en ti') + '</small>';
+    }
+
+    /** Las cargas de la runa de ese tipo que se usaría (la primera que lleves, como el motor). */
+    function cargasDe(typeId) {
+        const e = (o.inventario() || []).find((x) => x.typeId === Number(typeId) && x.charges > 0);
+        return e ? { charges: e.charges } : null;
+    }
+
+    /** Los botones de los modos del objeto elegido (ver `modosDe`). */
+    function botonesDeModo(h) {
+        const etiquetas = { yo: 'Usar en mí', objetivo: 'Usar en el objetivo', cruz: 'Usar con la cruz' };
+        const modo = h.typeId ? modoValido(h.typeId, h.modo) : (h.modo || 'yo');
+        const modos = h.typeId ? modosDe(h.typeId) : ['yo', 'objetivo'];
+        return modos.map((m) => '<label><input type="radio" name="hk-modo" value="' + m + '" ' + (m === modo ? 'checked' : '') +
+            '> ' + etiquetas[m] + '</label>').join(' ');
     }
 
     function pintar() {
@@ -148,10 +194,10 @@ export function crearHotkeys(o) {
             (tipo === 'objeto'
                 ? '<div class="hk-bloque"><div class="hk-objetos">' + (objetos.length ? objetos.map((e) =>
                     '<button type="button" class="hk-objeto' + (Number(h.typeId) === e.typeId ? ' elegido' : '') + '" data-hk-objeto="' + e.typeId +
-                    '" title="' + escapar(e.name || '') + '">' + iconoDeObjeto(e.typeId, o.provider, 32, 1) + '</button>').join('')
+                    '" title="' + escapar(e.name || '') + '">' + iconoDeObjeto(e.typeId, o.provider, 32, 1) + numeroDeEsquina(cargasDe(e.typeId)) +
+                    '</button>').join('')
                     : '<span class="vacio">no llevas nada</span>') + '</div>' +
-                  '<label><input type="radio" name="hk-modo" value="yo" ' + (h.modo !== 'objetivo' ? 'checked' : '') + '> Usar en mí</label> ' +
-                  '<label><input type="radio" name="hk-modo" value="objetivo" ' + (h.modo === 'objetivo' ? 'checked' : '') + '> Usar en el objetivo</label></div>'
+                  botonesDeModo(h) + '</div>'
                 : '');
     }
 
@@ -177,7 +223,9 @@ export function crearHotkeys(o) {
             }
             const obj = e.target.closest('[data-hk-objeto]');
             if (obj) {
-                datos[elegida] = { tipo: 'objeto', typeId: Number(obj.dataset.hkObjeto), modo: (datos[elegida] || {}).modo || 'yo' };
+                // El modo se queda si el objeto nuevo lo admite (una runa por otra); si no, el suyo.
+                const typeId = Number(obj.dataset.hkObjeto);
+                datos[elegida] = { tipo: 'objeto', typeId, modo: modoValido(typeId, (datos[elegida] || {}).modo) };
                 guardar();
                 pintar();
             }

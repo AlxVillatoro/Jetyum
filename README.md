@@ -129,6 +129,18 @@ rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.
 - **Combate y botín.** Los monstruos dejan su cuerpo con el botín dentro, que se pudre con el
   tiempo. Un caballero con espada da un tajo en la dirección en que mira. Al morir se pierde un
   10 % de experiencia y se reaparece en el templo.
+- **Combate como en TFS.** El daño sale del nivel, la skill y el ataque del arma; el escudo
+  **bloquea** y la armadura reduce; a distancia se puede **fallar** (según la skill y la distancia);
+  y hay **modos de combate** (ofensivo, equilibrado, defensivo), **perseguir** y **modo seguro** (no
+  atacar por error a jugadores sin calavera). Los monstruos usan **todos sus ataques**: hechizos a
+  distancia y de área (que no atraviesan paredes), parálisis, drenar vida y maná, curarse, mantener
+  la distancia, huir con poca vida y sus frases; y sus inmunidades cuentan.
+- **Runas, campos y herramientas.** «Usar con» (clic derecho en la runa o la herramienta y luego en
+  el objetivo, o desde una hotkey) lanza las **runas** —sudden death, magic missiles, curación, great
+  fireball, explosion, campos de fuego, energía y veneno, magic wall, destroy field, paralyze—, que
+  se **conjuran** sobre runas en blanco (`adori vita vis`…) y gastan cargas. Los **campos** queman,
+  electrifican o envenenan al pisarlos y se apagan solos. La **pala** abre los montones de piedras y
+  la **cuerda** sube por los agujeros. El Tendero vende runas en blanco, algunas runas y herramientas.
 - **Más juego.** Pociones y comida, hechizos de ataque y apoyo con enfriamiento, misiones,
   comercio con NPC, mensajes privados (`@nombre texto`), grupos (`/party`), calaveras PvP,
   depósito, arcos con flechas, efectos y proyectiles, y día y noche con luces.
@@ -263,6 +275,7 @@ copias temporales):
 | `test:arte` | El arte HD: plantillas, importador y la aldea |
 | `test:i18n` | Los idiomas: traducción, diccionarios y que todo el texto de las páginas tenga traducción |
 | `test:reglas` | Rangos de acceso, zonas de protección y PvP, en combate y PZ lock, protección de la red, rates, el sanador y las monturas |
+| `test:combate` | Fórmulas de TFS y modos de combate, inmunidades, hechizos de los monstruos, runas y conjuros, campos y herramientas |
 
 `npm run check:jetyum` comprueba además que el cliente y el editor cargan todos sus módulos.
 

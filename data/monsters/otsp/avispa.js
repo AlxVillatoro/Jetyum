@@ -48,7 +48,10 @@ module.exports = {
     },
 
     attacks: [
-        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -18 }
+        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -18 },
+        // Su aguijón envenena.
+        { name: 'earth', interval: 2000, chance: 20, minDamage: 0, maxDamage: -12, range: 1,
+            condition: { type: 'veneno', ticks: 4, interval: 2000, value: 3 } }
     ],
 
     defenses: { defense: 4, armor: 4 },

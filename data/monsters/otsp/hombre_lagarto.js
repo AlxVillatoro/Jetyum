@@ -48,7 +48,9 @@ module.exports = {
     },
 
     attacks: [
-        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -38 }
+        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -38 },
+        // Lanza su lanza desde lejos.
+        { name: 'physical', interval: 2000, chance: 20, minDamage: 0, maxDamage: -40, range: 7, shootEffect: 'spear' }
     ],
 
     defenses: { defense: 16, armor: 16 },

@@ -47,6 +47,32 @@ function tipoDe(nombre) {
     return TIPOS[t] ? t : (ALIAS[t] || null);
 }
 
+/**
+ * Las INMUNIDADES de un monstruo que paran cada condición (`immunities` de su ficha, como en
+ * TFS): el que es inmune al veneno —o a la tierra, que es su elemento— no se envenena.
+ */
+const INMUNE_A = {
+    veneno: ['poison', 'earth'],
+    fuego: ['fire'],
+    energia: ['energy'],
+    sangrado: ['bleed', 'bleeding', 'physical'],
+    paralisis: ['paralyze', 'paralysis'],
+    prisa: [],
+    regeneracion: [],
+    luz: []
+};
+
+/** ¿Es la criatura inmune a esa condición? */
+function esInmune(creature, tipo) {
+    const lista = creature && creature.monsterType && creature.monsterType.immunities;
+    if (!Array.isArray(lista)) {
+        return false;
+    }
+    const nombres = INMUNE_A[tipo] || [];
+    return lista.some((i) => nombres.includes(String(i && i.type).toLowerCase()) &&
+        (i.percent === undefined || Number(i.percent) >= 100));
+}
+
 class Condiciones {
     constructor(options) {
         this.world = options.world;
@@ -61,6 +87,9 @@ class Condiciones {
         const c = condicion || {};
         const tipo = tipoDe(c.type);
         if (!tipo || !creature || (creature.isDead && creature.isDead())) {
+            return false;
+        }
+        if (esInmune(creature, tipo)) {
             return false;
         }
         const def = TIPOS[tipo];

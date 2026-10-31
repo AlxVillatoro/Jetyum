@@ -25,6 +25,14 @@ const { FLAG_DEFAULTS } = itemModule;
 /** Las claves que se copian y NO son sí/no: la ranura, el tipo de arma y los huecos. */
 export const CLAVES_DE_TEXTO = ['slotType', 'weaponType', 'containerSize'];
 
+/**
+ * Las banderas sí/no que el cliente necesita y NO están en `FLAG_DEFAULTS` (el motor las lee aparte,
+ * como atributos sueltos de items.xml): `rune` -una runa, que se lanza sobre algo- y `useWith` -una
+ * herramienta que se usa SOBRE algo: la cuerda, la pala, el pico-. Con ellas el cliente sabe que al
+ * usarlas hay que elegir con la cruz sobre qué, sin preguntar al servidor.
+ */
+export const CLAVES_SI_NO = ['rune', 'useWith'];
+
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const SALIDA = path.join(RAIZ, 'client', 'jetyum', 'assets', 'objetos.json');
 const ITEMS = path.join(RAIZ, 'data', 'items', 'items.xml');
@@ -36,7 +44,7 @@ export function leerBanderas(cuerpo) {
     let m;
     while ((m = atributo.exec(cuerpo)) !== null) {
         const [, clave, valor] = m;
-        if (Object.prototype.hasOwnProperty.call(FLAG_DEFAULTS, clave)) {
+        if (Object.prototype.hasOwnProperty.call(FLAG_DEFAULTS, clave) || CLAVES_SI_NO.includes(clave)) {
             if (valor === '1' || valor === 'true') {
                 banderas[clave] = true;
             }

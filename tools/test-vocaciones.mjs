@@ -131,8 +131,9 @@ async function main() {
         check('y el siguiente golpe espera attackSpeed', k.nextAttackAt - world.now() <= knight.attackSpeed &&
             k.nextAttackAt - world.now() > knight.attackSpeed - 50);
         check('el arma decide la skill y la formula de la vocación el daño',
+            // TFS 1.x (modo equilibrado, factor 1,2) por el `meleeDamage` 1,1 del caballero.
             require('../engine/world/combat.js').attackProfile(k, world).maxDamage ===
-            Math.floor((8 / 5 + 0.085 * 48 * k.skills.sword.level) * 1.1));
+            Math.max(1, Math.round((Math.floor(8 / 5) + ((k.skills.sword.level / 4 + 1) * (48 / 3) * 1.03) / 1.2) * 1.1)));
         check('la armadura del caballero vale un 10% más (formula.armor)', k.armorFactor === 1.1);
 
         // Regeneración en el tick del mundo.
@@ -243,7 +244,7 @@ async function main() {
             k.maxHealth === 150 + 50 * 4 && antes === 150 + 15 * 4, antes + ' -> ' + k.maxHealth);
         const { attackProfile } = require('../engine/world/combat.js');
         check('y el daño ya sale con el multiplicador nuevo', attackProfile(k, e.world).maxDamage ===
-            Math.floor((5 / 5 + 0.085 * 7 * 10) * 3), String(attackProfile(k, e.world).maxDamage));
+            Math.round((Math.floor(5 / 5) + ((10 / 4 + 1) * (7 / 3) * 1.03) / 1.2) * 3), String(attackProfile(k, e.world).maxDamage));
         fs.writeFileSync(archivo, 'module.exports = [ { id: 0, name: ');
         const roto = e.recargarDefiniciones();
         check('un archivo con un error no rompe nada: se queda lo último bueno',

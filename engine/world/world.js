@@ -1314,7 +1314,15 @@ class World {
     recomputeEquipment(creature) {
         let weaponAttack = 0;
         let armorLevel = 0;
+        let weaponDefense = 0;
+        let shieldDefense = 0;
 
+        /*
+         * COMO EN TFS: la ARMADURA es la suma del `armor` de lo que se lleva puesto (casco, cota,
+         * piernas, botas...), y la DEFENSA es la del arma (`defense` + `extraDefense`) y la del
+         * escudo, que es con lo que se BLOQUEAN los golpes (combat.js). Antes la armadura sumaba
+         * la `defense` de todo y no leía `armor`: un casco no protegía.
+         */
         this.equipmentOf(creature).forEach((entry) => {
             const definition = this.itemTypes.get(entry.typeId);
             const attributes = (definition && definition.attributes) || {};
@@ -1322,13 +1330,23 @@ class World {
             if (attributes.attack) {
                 weaponAttack += Number(attributes.attack);
             }
+            if (attributes.armor) {
+                armorLevel += Number(attributes.armor);
+            }
             if (attributes.defense) {
-                armorLevel += Number(attributes.defense);
+                if (entry.slot === 'shield' || String(attributes.slotType || '').toLowerCase() === 'shield' ||
+                        String(attributes.weaponType || '').toLowerCase() === 'shield') {
+                    shieldDefense = Math.max(shieldDefense, Number(attributes.defense));
+                } else {
+                    weaponDefense = Math.max(weaponDefense, Number(attributes.defense) + (Number(attributes.extraDefense) || 0));
+                }
             }
         });
 
         creature.weaponAttack = weaponAttack;
         creature.armorLevel = armorLevel;
+        creature.weaponDefense = weaponDefense;
+        creature.shieldDefense = shieldDefense;
 
         // ¿QUÉ SE HA PUESTO Y QUÉ SE HA QUITADO? Para los `onEquip` / `onDeEquip` de los scripts.
         // La primera vez (al entrar) sólo se apunta lo que lleva: entrar no es ponerse nada.
@@ -3191,6 +3209,15 @@ class World {
      *
      * @returns {{count: number, weight: number, capacity: number, flat: Array}}
      */
+    /** Las CARGAS de una runa (o de lo que las tenga), para que el cliente las enseñe; 0 si no tiene. */
+    _cargasParaVer(creature, vista) {
+        const def = this.itemTypes.get(Number(vista.typeId));
+        if (!def || !def.attributes || def.attributes.charges === undefined) {
+            return 0;
+        }
+        return this.runeCharges(this.inventoryEntry(creature, vista.index));
+    }
+
     inventoryPayload(creature) {
         /*
          * LA RANURA VIAJA, y es lo unico que le faltaba al inventario para que el cliente
@@ -3205,7 +3232,7 @@ class World {
          * El orden de los campos anteriores no cambia: la ranura va al final.
          */
         const entries = this.inventoryOf(creature)
-            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name, entry.slot]);
+            .map((entry) => [entry.index, entry.typeId, entry.count, entry.name, entry.slot, this._cargasParaVer(creature, entry)]);
 
         return {
             count: entries.length,
@@ -3351,5 +3378,7 @@ class World {
 Object.assign(World.prototype, require('./extras').extras);
 // Grupos de acceso, zonas y PvP, combate, templos y monturas (`reglas.js`).
 Object.assign(World.prototype, require('./reglas').reglas);
+// Los campos de fuego, energía y veneno, y el muro mágico (`campos.js`).
+Object.assign(World.prototype, require('./campos').campos);
 
 module.exports = { World, DIRECTION_DELTA, COMPACT_EVERY_TICKS, resetIdCounter };

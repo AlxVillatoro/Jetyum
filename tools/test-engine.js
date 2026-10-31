@@ -916,10 +916,12 @@ function main() {
             'ataque 0 -> ' + hero.weaponAttack + ', que es el `attack` de la espada: el ' +
             'arma es el dato y el ataque el resultado, no dos numeros sueltos');
 
-        check('y lo demas aporta defensa',
-            world.equipItem(hero, indiceDe(2376, false)).ok === true && hero.armorLevel === 35,
-            'la espada declara defense 35 y suma como armadura; el dia que existan ' +
-            'escudos y armaduras sumaran aqui sin tocar nada mas');
+        // Como en TFS: la `defense` del arma es su DEFENSA (con ella se bloquea), y la armadura sale
+        // del `armor` de lo que se lleva puesto.
+        check('y la defensa del arma es su defensa, no armadura',
+            world.equipItem(hero, indiceDe(2376, false)).ok === true && hero.weaponDefense === 35 &&
+            hero.armorLevel === 0,
+            'defensa ' + hero.weaponDefense + ', armadura ' + hero.armorLevel);
 
         check('lo que no es equipable se rechaza',
             world.giveItem(hero, 3031, 10) === 1 &&

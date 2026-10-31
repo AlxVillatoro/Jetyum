@@ -48,7 +48,9 @@ module.exports = {
     },
 
     attacks: [
-        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -10 }
+        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -10 },
+        // Tira piedras, como el goblin de Tibia.
+        { name: 'physical', interval: 2000, chance: 15, minDamage: 0, maxDamage: -15, range: 7, shootEffect: 'smallstone' }
     ],
 
     defenses: { defense: 10, armor: 10 },

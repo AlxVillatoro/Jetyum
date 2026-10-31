@@ -360,9 +360,9 @@ export function actualizarEquipo(inventario, proveedor, itemtypes, peso) {
      */
     const firma = RANURAS.map((ranura) => {
         const entrada = porRanura.get(ranura.clave);
-        return entrada ? entrada.index + ':' + entrada.typeId + ':' + entrada.count : '-';
+        return entrada ? entrada.index + ':' + entrada.typeId + ':' + entrada.count + ':' + (entrada.charges || 0) : '-';
     }).join('|') + '||' + entradas.filter((e) => e.slot === SLOT_INSIDE)
-        .map((e) => e.index + ':' + e.typeId + ':' + e.count).join(',') +
+        .map((e) => e.index + ':' + e.typeId + ':' + e.count + ':' + (e.charges || 0)).join(',') +
         // El peso entra en la firma porque cambia solo: al subir de nivel sube la capacidad y el
         // inventario es el mismo, asi que sin esto la linea del peso se quedaria con el numero
         // viejo justo cuando el jugador acaba de poder cargar mas.
@@ -444,7 +444,7 @@ function pintarMochila(entradas, proveedor, itemtypes, peso) {
             dibujarIcono(entrada.typeId, proveedor, 32, entrada.count) +
             '<span class="nombre">' + entrada.name +
             (entrada.count > 1 ? ' x' + entrada.count : '') + '</span>' +
-            (entrada.count > 1 ? '<span class="cuantas">' + entrada.count + '</span>' : '') +
+            numeroDeEsquina(entrada) +
             '</div>').join('') +
             '<div class="objeto hueco-vacio"></div>'.repeat(Math.max(0, huecos - dentro.length));
     }
@@ -526,9 +526,7 @@ function pintarRanura(caja, ranura, entrada, proveedor) {
     caja.dataset.index = entrada.index;
     caja.title = entrada.name + ' (' + ranura.etiqueta + ')';
 
-    const cantidad = entrada.count > 1
-        ? '<span class="cuantas">' + entrada.count + '</span>'
-        : '';
+    const cantidad = numeroDeEsquina(entrada);
 
     const dibujo = dibujarIcono(entrada.typeId, proveedor, 32, entrada.count);
 
@@ -540,6 +538,18 @@ function pintarRanura(caja, ranura, entrada, proveedor) {
         '<span class="nombre">' + entrada.name +
         (entrada.count > 1 ? ' x' + entrada.count : '') + '</span>' +
         cantidad;
+}
+
+/**
+ * EL NÚMERO DE LA ESQUINA de un hueco, como en Tibia: cuántos hay en una pila (si más de uno) o las
+ * CARGAS que le quedan a una runa. Son el mismo dibujo porque se leen igual: «cuánto queda de esto».
+ *
+ * @param {Object} entrada una entrada del inventario (`count` y `charges`)
+ * @returns {string} el HTML del número, o '' si no lleva
+ */
+export function numeroDeEsquina(entrada) {
+    const n = entrada && entrada.charges > 0 ? entrada.charges : (entrada && entrada.count > 1 ? entrada.count : 0);
+    return n > 0 ? '<span class="cuantas">' + n + '</span>' : '';
 }
 
 /**

@@ -254,6 +254,25 @@ export const CLIENT = {
     /** Montar o desmontar la montura elegida (Ctrl+R en Tibia; el 0xD4 de su protocolo). */
     TOGGLE_MOUNT: 0xD4,
 
+    /**
+     * «USAR CON» (el «use with» de Tibia): usar algo SOBRE algo. `[0x86, origen, destino]`:
+     *
+     *   origen   `{ inventario: índice }` (lo que llevas), `{ hotkey: typeId }` (el primero que
+     *            lleves de ese tipo) o `{ suelo: [x, y, z] }` (lo que hay encima en esa casilla, a tu lado)
+     *   destino  `{ criatura: id }` o `{ casilla: [x, y, z] }`
+     *
+     * Así se lanzan las RUNAS sobre una criatura o una casilla, y se usan las HERRAMIENTAS (la cuerda
+     * en el agujero, la pala en el montón de piedras). El motor decide si se puede.
+     */
+    USE_WITH: 0x86,
+
+    /**
+     * LOS MODOS DE COMBATE (el 0xA0 de Tibia): `[0xA0, modo, perseguir, seguro]`. `modo` 1 ofensivo,
+     * 2 equilibrado, 3 defensivo (cuánto pegas y cuánto defiendes); `perseguir` 1 para ir detrás del
+     * objetivo; `seguro` 1 para no poder atacar a un jugador sin calavera por error.
+     */
+    FIGHT_MODES: 0xA0,
+
     /** Mirar algo. */
     LOOK: 0x8C,
 
@@ -695,7 +714,7 @@ export const INVENTORY_FIELD = {
      */
     WEIGHT: 2,
     CAPACITY: 3,
-    /** Donde empieza cada entrada; cada una ocupa cinco posiciones. */
+    /** Donde empieza cada entrada; cada una ocupa `STRIDE` posiciones. */
     ENTRIES: 4,
     /*
      * LA RANURA VIAJA EN LA ENTRADA, y es el campo que hace posible el panel de equipo.
@@ -720,7 +739,9 @@ export const INVENTORY_FIELD = {
      * conservan su sitio, asi que leerlos sigue siendo el mismo desplazamiento.
      */
     SLOT: 4,
-    STRIDE: 5
+    /** Las CARGAS de una runa (0 si no las tiene): se ven en la esquina, como en Tibia. Va al final. */
+    CHARGES: 5,
+    STRIDE: 6
 };
 
 /**

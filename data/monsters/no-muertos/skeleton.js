@@ -89,7 +89,7 @@ module.exports = {
 
     attacks: [
         { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -17 },
-        { name: 'lifedrain', interval: 4000, chance: 25, minDamage: 0, maxDamage: -13 }
+        { name: 'lifedrain', interval: 4000, chance: 25, minDamage: 0, maxDamage: -13, range: 1 }
     ],
 
     defenses: {

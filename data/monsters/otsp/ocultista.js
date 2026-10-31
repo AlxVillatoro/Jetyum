@@ -38,7 +38,7 @@ module.exports = {
         canPushItems: false,
         canPushCreatures: false,
         staticAttackChance: 90,
-        targetDistance: 1,
+        targetDistance: 4,
         runHealth: 10,
         healthHidden: false,
         isBlockable: false,
@@ -48,7 +48,11 @@ module.exports = {
     },
 
     attacks: [
-        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -34 }
+        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -34 },
+        // Un hechicero: bola de fuego a distancia y, de vez en cuando, una parálisis.
+        { name: 'fire', interval: 2000, chance: 25, minDamage: -10, maxDamage: -35, range: 7, shootEffect: 'fire' },
+        { name: 'speed', interval: 4000, chance: 10, speedChange: -150, duration: 6000, range: 7, shootEffect: 'energy' },
+        { name: 'healing', interval: 4000, chance: 20, minDamage: 15, maxDamage: 35 }
     ],
 
     defenses: { defense: 8, armor: 8 },

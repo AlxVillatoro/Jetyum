@@ -249,6 +249,10 @@ cajón de sastre:
 - Los objetos, aspectos, efectos y proyectiles del **OpenTibia Sprite Pack**, importados con
   `npm run assets:otsp` (`tools/importar-otsp.mjs`).
 - El **arte HD** de `data/arte-hd/`, importado con `npm run arte:importar` (docs/ARTE-HD.md).
+- Las **runas, los campos y las herramientas de cavar** (objetos 21000-21033), con
+  `npm run runas:generar` (`tools/generar-runas.mjs`): las runas, la pala, el pico y el montón de
+  piedras son pixel art dibujado por código; los campos reutilizan los sprites de los efectos 111
+  (fuego), 102 (energía), 103 teñido de verde (veneno) y 108 (el brillo del muro mágico).
 - Lo que queda del arte de **BrowserQuest** con el que nació el proyecto (la hoja de terreno,
   objetos 5000-5471; los aspectos 128-137 y algunos de monstruo; el tajo de espada 201-204), ya
   convertido a este formato. El código y las imágenes originales de BrowserQuest ya no están.

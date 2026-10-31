@@ -221,3 +221,22 @@ export function vaEncima(id) {
 export function esUsable(id) {
     return tieneBandera(id, 'useable');
 }
+
+/**
+ * LA RUNA EN BLANCO: también es una runa (`rune` en items.xml), pero sin hechizo dentro. Se crea con
+ * un conjuro y no se lanza sobre nada, así que usarla no pide la cruz.
+ */
+export const RUNA_EN_BLANCO = 21000;
+
+/** ES UNA RUNA QUE SE LANZA: `rune` y no la runa en blanco. */
+export function esRuna(id) {
+    return tieneBandera(id, 'rune') && Number(id) !== RUNA_EN_BLANCO;
+}
+
+/**
+ * SE USA SOBRE ALGO, con la cruz de Tibia («usar con»): una runa que se lanza, o una herramienta con
+ * `useWith` (la cuerda, la pala, el pico). Usarla no la usa: pide elegir la criatura o la casilla.
+ */
+export function usaConObjetivo(id) {
+    return esRuna(id) || tieneBandera(id, 'useWith');
+}

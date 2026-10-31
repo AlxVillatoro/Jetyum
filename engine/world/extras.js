@@ -103,6 +103,58 @@ const extras = {
         return true;
     },
 
+    // -----------------------------------------------------------------------
+    // Runas
+    // -----------------------------------------------------------------------
+
+    /** Las cargas que le quedan a una runa: las suyas, o las de su tipo (`charges` de items.xml). */
+    runeCharges(entry) {
+        if (!entry) {
+            return 0;
+        }
+        const propias = entry.attributes && entry.attributes.charges;
+        if (propias !== undefined && propias !== null) {
+            return Number(propias);
+        }
+        const def = this.itemTypes.get(Number(entry.typeId));
+        return def && def.attributes && def.attributes.charges !== undefined ? Number(def.attributes.charges) : 1;
+    },
+
+    /** Gasta una carga de una runa; con la última, la runa desaparece (como en Tibia). */
+    spendRuneCharge(player, entry) {
+        const quedan = this.runeCharges(entry) - 1;
+        if (quedan <= 0) {
+            return this.consumeEntry(player, entry, 1);
+        }
+        entry.attributes = { ...(entry.attributes || {}), charges: quedan };
+        this.emit('onInventoryChange', player);
+        return true;
+    },
+
+    /**
+     * CONJURA: una runa en blanco (`de`) de las que lleva se convierte en la runa `a` con `cargas`
+     * cargas, en el mismo sitio. Devuelve `{ ok, entry }`.
+     */
+    conjureRune(player, de, a, cargas) {
+        const blanca = (player.inventory || []).find((e) => e.typeId === Number(de));
+        if (!blanca) {
+            return { ok: false, reason: 'noBlank' };
+        }
+        const atributos = Number(cargas) > 0 ? { charges: Number(cargas) } : null;
+        let nueva;
+        if (blanca.count > 1) {
+            blanca.count -= 1;
+            nueva = this._addToContainer(player, Number(a), 1, atributos);
+        } else {
+            blanca.typeId = Number(a);
+            blanca.attributes = atributos;
+            nueva = blanca;
+        }
+        this.recomputeEquipment(player);
+        this.emit('onInventoryChange', player);
+        return { ok: true, entry: nueva };
+    },
+
     /** Le da dinero, en las monedas más grandes (1234 → 12 de platino y 34 de oro), si le cabe. */
     addMoneyTo(player, amount) {
         const n = Math.trunc(Number(amount) || 0);

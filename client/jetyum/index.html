@@ -549,6 +549,24 @@
         padding: 3px 16px; cursor: pointer; border-radius: 2px; }
     .dialogo-pie button:hover { background: #3a5578; }
 
+    /*
+     * LOS MODOS DE COMBATE, en una columna a la derecha del equipo, como en Tibia: los tres modos
+     * (uno puesto), y separados por un hueco perseguir y el modo seguro.
+     */
+    #ventana-equipo:not(.minimizada) #equipment { display: flex; justify-content: center; gap: 4px; }
+    #modos-combate { display: flex; flex-direction: column; gap: 3px; }
+    #modos-combate .boton-icono { width: 22px; height: 22px; }
+    #modos-combate .boton-icono svg { width: 14px; height: 14px; }
+    #modos-combate [data-perseguir] { margin-top: 6px; }
+
+    /* «USAR CON»: mientras se elige sobre qué usar una runa o una herramienta, el cursor es una cruz. */
+    body.usando-con, body.usando-con * { cursor: crosshair !important; }
+
+    /* Las cargas de una runa en la ventana de hotkeys, en su esquina como en el equipo. */
+    .hk-objeto { position: relative; }
+    .hk-objeto .cuantas { position: absolute; right: 2px; bottom: 1px; color: #f0f0f0; font-size: 9px;
+        text-shadow: 1px 1px 0 #000; }
+
     /* El botón de las hotkeys, junto a la capacidad. */
     #equipment-slots .boton-hotkeys { width: 22px; height: 36px; }
 
@@ -789,6 +807,14 @@
                 <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button></div>
             <div class="ventana-cuerpo" id="equipment">
                 <div id="equipment-slots"></div>
+                <!-- Los modos de combate, como en Tibia: los pinta y los manda modoscombate.js. -->
+                <div id="modos-combate" role="group" aria-label="Modos de combate">
+                    <button type="button" class="boton-icono" data-modo-combate="1" data-icono="modo-ofensivo" title="Ofensivo: pegas más fuerte y te defiendes menos"></button>
+                    <button type="button" class="boton-icono" data-modo-combate="2" data-icono="modo-equilibrado" title="Equilibrado: tanto ataque como defensa"></button>
+                    <button type="button" class="boton-icono" data-modo-combate="3" data-icono="modo-defensivo" title="Defensivo: te defiendes mejor y pegas menos"></button>
+                    <button type="button" class="boton-icono" data-perseguir data-icono="perseguir" title="Perseguir: ir detrás de tu objetivo"></button>
+                    <button type="button" class="boton-icono" data-seguro data-icono="modo-seguro" title="Modo seguro: no atacar por error a un jugador sin calavera"></button>
+                </div>
             </div>
         </section>
 

@@ -502,6 +502,12 @@ class GameSession {
             case P.CLIENT.TOGGLE_MOUNT:
                 return this._handleToggleMount();
 
+            case P.CLIENT.USE_WITH:
+                return this._handleUseWith(message[1], message[2]);
+
+            case P.CLIENT.FIGHT_MODES:
+                return this._handleFightModes(message[1], message[2], message[3]);
+
             default:
                 this.stats.rejected += 1;
                 return { handled: false, reason: 'unknownOpcode', opcode: opcode };
@@ -1336,6 +1342,13 @@ class GameSession {
             this.player.target = null;
             return { handled: true, action: 'attack', result: { hit: false, reason: 'protected', block: bloqueo } };
         }
+        // EL MODO SEGURO (por defecto, encendido): no se ataca por error a un jugador sin calavera.
+        if (target.isPlayer && target.isPlayer() && this.player.secureMode !== false &&
+                !this.world.skullOf(target) && !this.world.sameParty(this.player, target)) {
+            this.sendText('Apaga el modo seguro si de verdad quieres atacar a jugadores sin calavera.');
+            this.player.target = null;
+            return { handled: true, action: 'attack', result: { hit: false, reason: 'secureMode' } };
+        }
 
         const result = this.combat.attack(this.player, target);
         this.player.target = target;
@@ -1383,7 +1396,39 @@ class GameSession {
             if (target.isDead()) {
                 player.target = null;
             }
+            return;
         }
+        // PERSEGUIR (el modo «chase» de Tibia): si está lejos, un paso hacia él.
+        if (check.reason === 'outOfRange' && player.chaseMode === true && !this.autoCamino) {
+            this._pasoHacia(target.position);
+        }
+    }
+
+    /** Un paso hacia una posición (rodeando lo que haya), para perseguir. */
+    _pasoHacia(destino) {
+        const camino = this._caminoHastaElLado(destino.x, destino.y, destino.z);
+        if (!camino || camino.length === 0) {
+            return false;
+        }
+        const desde = this.player.position.copy();
+        const paso = camino[0];
+        const r = this.world.moveCreature(this.player, { x: paso.x - desde.x, y: paso.y - desde.y });
+        if (r.moved) {
+            this._send(this.view.moveMessage(this.player, desde, r.to));
+            this.view.noteMoved(this.player);
+            this.view.markDirty(this.playerId);
+        }
+        return r.moved === true;
+    }
+
+    /** Los modos de combate: cuánto pegar y defender, perseguir y el modo seguro. */
+    _handleFightModes(modo, perseguir, seguro) {
+        const MODOS = { 1: 'ofensivo', 2: 'equilibrado', 3: 'defensivo' };
+        this.player.fightMode = MODOS[Number(modo)] || 'equilibrado';
+        this.player.chaseMode = Number(perseguir) === 1;
+        this.player.secureMode = Number(seguro) !== 0;
+        return { handled: true, action: 'fightModes', fightMode: this.player.fightMode,
+            chase: this.player.chaseMode, secure: this.player.secureMode };
     }
 
     // -----------------------------------------------------------------------
@@ -1434,6 +1479,14 @@ class GameSession {
             this.sendText('No llevas ' + (definicion ? (definicion.plural || definicion.name) : 'eso') + '.');
             return { handled: true, action: 'useHotkeyItem', used: false, reason: 'noItem' };
         }
+        // UNA RUNA desde una hotkey: sobre la criatura que diga (tu objetivo) o, sin ella, sobre ti.
+        if (this.engine.registry.runes.has(id)) {
+            const r = this.engine.registry.useRune(this.player, entry,
+                { creatureId: Number(creatureId) || this.playerId });
+            this.sendInventory();
+            this.view.markDirty(this.playerId);
+            return { handled: true, action: 'useHotkeyItem', used: r.ok === true, rune: true, reason: r.reason };
+        }
         const objetivo = this.world.getCreature(Number(creatureId) || this.playerId);
         const yo = this.player.position;
         if (!objetivo || !objetivo.position || objetivo.position.z !== yo.z ||
@@ -1459,6 +1512,88 @@ class GameSession {
         this.sendInventory();
         this.view.markDirty(this.playerId);
         return { handled: true, action: 'useHotkeyItem', used: r.handled === true, itemId: id, target: objetivo.id };
+    }
+
+    /**
+     * «USAR CON» (`CLIENT.USE_WITH`): una RUNA sobre una criatura o una casilla (a 7 o menos, a la
+     * vista; las reglas, en `registry.useRune`), o cualquier otro objeto sobre lo que hay en una
+     * casilla de AL LADO (la cuerda en el agujero, la pala en las piedras): su `onUse` de los scripts
+     * recibe el objetivo, como en TFS (`onUse(player, item, fromPosition, target, toPosition)`).
+     */
+    _handleUseWith(origen, destino) {
+        const o = origen && typeof origen === 'object' ? origen : {};
+        const d = destino && typeof destino === 'object' ? destino : {};
+        const yo = this.player.position;
+        const registry = this.engine.registry;
+
+        // --- Lo que se usa ---
+        let entrada = null;
+        let delSuelo = null;
+        if (o.inventario !== undefined) {
+            entrada = this.world.inventoryEntry(this.player, Number(o.inventario));
+        } else if (o.hotkey !== undefined) {
+            const id = Number(o.hotkey);
+            entrada = (this.player.inventory || []).find((e) => e.typeId === id && e.slot === 'inside') ||
+                (this.player.inventory || []).find((e) => e.typeId === id) || null;
+        } else if (Array.isArray(o.suelo)) {
+            const [x, y, z] = o.suelo.map(Number);
+            const tile = this.world.map.getTile(x, y, z);
+            const items = tile ? tile.getItems() : [];
+            delSuelo = items.length && Math.max(Math.abs(x - yo.x), Math.abs(y - yo.y)) <= 1 && z === yo.z
+                ? items[items.length - 1] : null;
+        }
+        if (!entrada && !delSuelo) {
+            this.sendText('No tienes eso.');
+            return { handled: true, action: 'useWith', used: false, reason: 'noItem' };
+        }
+        const typeId = entrada ? entrada.typeId : delSuelo.typeId;
+
+        // --- Sobre qué ---
+        const criatura = d.criatura !== undefined ? this.world.getCreature(Number(d.criatura)) : null;
+        const casilla = Array.isArray(d.casilla) ? d.casilla.map(Number) : null;
+        const pos = criatura ? criatura.position : (casilla ? { x: casilla[0], y: casilla[1], z: casilla[2] } : null);
+        if (!pos) {
+            this.sendText('Tienes que usarlo sobre algo.');
+            return { handled: true, action: 'useWith', used: false, reason: 'noTarget' };
+        }
+
+        // --- Una runa ---
+        if (entrada && registry.runes.has(typeId)) {
+            const r = registry.useRune(this.player, entrada,
+                criatura ? { creatureId: criatura.id } : { x: pos.x, y: pos.y, z: pos.z });
+            this.sendInventory();
+            this.view.markDirty(this.playerId);
+            return { handled: true, action: 'useWith', used: r.ok === true, rune: true, reason: r.reason };
+        }
+
+        // --- Cualquier otro objeto: sobre lo que hay a tu lado ---
+        if (pos.z !== yo.z || Math.max(Math.abs(pos.x - yo.x), Math.abs(pos.y - yo.y)) > 1) {
+            this.sendText('Esta demasiado lejos.');
+            return { handled: true, action: 'useWith', used: false, reason: 'tooFar' };
+        }
+        const tile = this.world.map.getTile(pos.x, pos.y, pos.z);
+        const items = tile ? tile.getItems() : [];
+        const encima = items.length ? items[items.length - 1] : null;
+        const attrs = (entrada ? entrada.attributes : delSuelo.attributes) || {};
+        const r = registry.dispatchAction(typeId, {
+            playerId: this.playerId,
+            itemWrapper: entrada ? registry.entities.inventoryItem(this.playerId, entrada) : undefined,
+            itemUid: delSuelo ? delSuelo.instanceId : undefined,
+            actionId: attrs.actionId,
+            uniqueId: attrs.uniqueId,
+            fromX: yo.x, fromY: yo.y, fromZ: yo.z,
+            targetCreatureId: criatura ? criatura.id : undefined,
+            targetId: !criatura && encima ? encima.typeId : undefined,
+            targetUid: !criatura && encima ? encima.instanceId : undefined,
+            toX: pos.x, toY: pos.y, toZ: pos.z,
+            isHotkey: o.hotkey !== undefined
+        });
+        if (!r.handled) {
+            this.sendText('No puedes usar eso.');
+        }
+        this.sendInventory();
+        this.view.markDirty(this.playerId);
+        return { handled: true, action: 'useWith', used: r.handled === true, itemId: typeId };
     }
 
     /**

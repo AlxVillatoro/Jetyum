@@ -263,6 +263,7 @@ function createEngine(options) {
         Object.keys(registry.globalEvents).forEach((k) => { registry.globalEvents[k].length = 0; });
         registry.raids.clear();
         registry.spells.clear();
+        registry.runes.clear();
         registry.quests.length = 0;
         world.monsterTypes.clear();
 
@@ -451,6 +452,8 @@ function createEngine(options) {
         });
     };
     world.on('onItemAdded', avisarCasilla('additem'));
+    // Pisar un campo de fuego, energía o veneno (campos.js).
+    world.on('onStepIn', (creature, tile) => world.stepOnField(creature, tile));
     world.on('onItemRemoved', avisarCasilla('removeitem'));
 
     // --- 8. Combate e IA --------------------------------------------------

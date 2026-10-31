@@ -22,6 +22,7 @@
  */
 
 const { findPath } = require('./pathfinding');
+const { HechizosDeMonstruo } = require('./monstruos');
 
 /** A qué distancia ve un monstruo a un jugador. */
 const SIGHT_RADIUS = 8;
@@ -59,7 +60,10 @@ class MonsterAI {
         /** Monstruos que ya tienen un turno programado, para no duplicarlos. */
         this.scheduled = new Set();
 
-        this.stats = { thinks: 0, targetsFound: 0, steps: 0, attacks: 0 };
+        this.stats = { thinks: 0, targetsFound: 0, steps: 0, attacks: 0, huidas: 0 };
+
+        // Lo que hace además de pegar: hechizos, defensas, frases y cambiar de objetivo (monstruos.js).
+        this.hechizos = new HechizosDeMonstruo({ world: this.world, combat: this.combat, random: opts.random });
 
         // Un monstruo que aparece (incluidos los que reaparecen) empieza a pensar.
         if (this.world && typeof this.world.on === 'function') {
@@ -125,8 +129,19 @@ class MonsterAI {
         }
 
         this.stats.thinks += 1;
+        const ahora = this.world.now();
 
-        const target = this._pickTarget(monster);
+        // Hable o no haya nadie, se cura si le toca y dice sus frases.
+        this.hechizos.hablar(monster, ahora);
+        this.hechizos.defenderse(monster, ahora);
+
+        let target = this._pickTarget(monster);
+        if (target) {
+            const otro = this.hechizos.cambiarObjetivo(monster, target, this._playersInSight(monster), ahora);
+            if (otro) {
+                target = otro;
+            }
+        }
         monster.target = target;
 
         let result;
@@ -185,6 +200,19 @@ class MonsterAI {
     }
 
     /** El jugador vivo más cercano dentro del radio de visión. */
+    /** Los jugadores que tiene a la vista (para cambiar de objetivo). */
+    _playersInSight(monster) {
+        const lista = [];
+        this.world.players.forEach((player) => {
+            if (!player.isDead() && player.position.z === monster.position.z &&
+                    monster.position.distanceTo(player.position) <= this.sightRadius &&
+                    !(this.world.inProtectionZone && this.world.inProtectionZone(player))) {
+                lista.push(player);
+            }
+        });
+        return lista;
+    }
+
     _findNearestPlayer(monster) {
         let best = null;
         let bestDistance = Infinity;
@@ -217,6 +245,34 @@ class MonsterAI {
     _pursue(monster, target) {
         monster.faceTowards(target.position);
 
+        const flags = (monster.monsterType && monster.monsterType.flags) || {};
+        const ahora = this.world.now();
+
+        // LOS HECHIZOS van aparte del cuerpo a cuerpo y con su propio reloj (monstruos.js).
+        const hechizo = this.hechizos.atacar(monster, target, ahora);
+
+        /*
+         * HUIR con poca vida (`runHealth`), como en TFS: se aleja de su objetivo y no le pega, aunque
+         * sus hechizos sí salen. Y MANTENER LA DISTANCIA (`targetDistance` > 1): los que atacan de
+         * lejos no se acercan más de eso, y se apartan si se les acerca.
+         */
+        const huye = Number(flags.runHealth) > 0 && monster.health <= Number(flags.runHealth);
+        const distanciaDeseada = Math.max(1, Number(flags.targetDistance) || 1);
+        const distancia = monster.position.distanceTo(target.position);
+        if (huye) {
+            this.stats.huidas += 1;
+            const moved = this._alejarse(monster, target);
+            return { acted: true, action: 'flee', target: target.id, moved: moved, spell: hechizo };
+        }
+        if (distanciaDeseada > 1 && distancia < distanciaDeseada) {
+            const moved = this._alejarse(monster, target);
+            return { acted: true, action: 'keepDistance', target: target.id, moved: moved, spell: hechizo };
+        }
+        if (distanciaDeseada > 1 && distancia > distanciaDeseada) {
+            const moved = this._stepToward(monster, target.position, target);
+            return { acted: true, action: 'chase', target: target.id, moved: moved, spell: hechizo };
+        }
+
         const check = this.combat.canAttack(monster, target);
 
         if (check.allowed) {
@@ -229,11 +285,55 @@ class MonsterAI {
 
         if (check.reason === 'outOfRange') {
             const moved = this._stepToward(monster, target.position, target);
-            return { acted: true, action: 'chase', target: target.id, moved: moved };
+            return { acted: true, action: 'chase', target: target.id, moved: moved, spell: hechizo };
         }
 
-        // Enfriamiento: no hay nada que hacer este turno.
-        return { acted: false, action: 'wait', reason: check.reason };
+        // Enfriamiento: no hay nada que hacer este turno (salvo el hechizo, si salió).
+        return { acted: !!hechizo, action: hechizo ? 'spell' : 'wait', reason: check.reason, spell: hechizo };
+    }
+
+    /**
+     * Un paso que le ALEJE del objetivo: de las casillas de alrededor, la libre y transitable que más
+     * le aparta (sin salirse demasiado de su respawn). Si no hay ninguna, se queda.
+     */
+    _alejarse(monster, target) {
+        const ahora = this.world.now();
+        if (ahora < monster.nextStepAt) {
+            return { moved: false, reason: 'exhausted' };
+        }
+        const desde = monster.position;
+        let mejor = null;
+        let mejorDistancia = desde.distanceTo(target.position);
+        for (let dy = -1; dy <= 1; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+                if (dx === 0 && dy === 0) {
+                    continue;
+                }
+                const x = desde.x + dx;
+                const y = desde.y + dy;
+                if (!this.world.map.isWalkable(x, y, desde.z) || this.world.hasCreatureAt(x, y, desde.z)) {
+                    continue;
+                }
+                const spawn = monster.spawn;
+                if (spawn && Math.max(Math.abs(x - spawn.x), Math.abs(y - spawn.y)) > LEASH_RADIUS) {
+                    continue;
+                }
+                const d = Math.max(Math.abs(x - target.position.x), Math.abs(y - target.position.y));
+                if (d > mejorDistancia) {
+                    mejor = { x: dx, y: dy };
+                    mejorDistancia = d;
+                }
+            }
+        }
+        if (!mejor) {
+            return { moved: false, reason: 'cornered' };
+        }
+        monster.path = null;
+        const r = this.world.moveCreature(monster, mejor);
+        if (r.moved) {
+            this.stats.steps += 1;
+        }
+        return r;
     }
 
     /**
@@ -326,6 +426,11 @@ class MonsterAI {
 
         if (target && x === goal.x && y === goal.y && z === goal.z) {
             return false;
+        }
+
+        // Un campo que le haría daño se rodea (campos.js), salvo que pueda pisarlo o sea inmune.
+        if (this.world.monsterAvoidsTile && this.world.monsterAvoidsTile(monster, x, y, z)) {
+            return true;
         }
 
         return this.world.hasCreatureAt(x, y, z);

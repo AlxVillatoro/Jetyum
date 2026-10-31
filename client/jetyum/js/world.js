@@ -389,7 +389,9 @@ export class ClientWorld {
                              */
                             slot: message[base + 4],
                             equipped: message[base + 4] !== undefined &&
-                                message[base + 4] !== SLOT_INSIDE
+                                message[base + 4] !== SLOT_INSIDE,
+                            // Las CARGAS de una runa (0 si no es una): se pintan en su esquina.
+                            charges: Number(message[base + I.CHARGES]) || 0
                         });
                     }
 

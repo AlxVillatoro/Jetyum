@@ -298,6 +298,20 @@ export default {
     'no llevas nada': 'you carry nothing',
     'Usar en mí': 'Use on myself',
     'Usar en el objetivo': 'Use on target',
+    'Usar con la cruz': 'Use with crosshair',
+    'con la cruz': 'with crosshair',
+
+    // --- usarcon.js: la cruz de «usar con» (runas y herramientas) ---
+    'Elige sobre qué usarlo (Escape o clic derecho: cancelar)': 'Choose what to use it on (Escape or right click: cancel)',
+    'Elige sobre qué usarlo (Escape o clic derecho: cancelar).': 'Choose what to use it on (Escape or right click: cancel).',
+
+    // --- index.html y modoscombate.js: los modos de combate, junto al equipo ---
+    'Modos de combate': 'Fight modes',
+    'Ofensivo: pegas más fuerte y te defiendes menos': 'Offensive: you hit harder and defend less',
+    'Equilibrado: tanto ataque como defensa': 'Balanced: as much attack as defense',
+    'Defensivo: te defiendes mejor y pegas menos': 'Defensive: you defend better and hit less',
+    'Perseguir: ir detrás de tu objetivo': 'Chase: follow your target',
+    'Modo seguro: no atacar por error a un jugador sin calavera': 'Secure mode: do not attack an unmarked player by mistake',
     'Cerrar (Ctrl+K)': 'Close (Ctrl+K)',
     'F1–F12 y Shift+F1–F12 · Ctrl+K abre y cierra': 'F1–F12 and Shift+F1–F12 · Ctrl+K opens and closes',
 

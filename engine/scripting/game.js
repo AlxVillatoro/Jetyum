@@ -28,80 +28,9 @@
 const { Position } = require('./entities');
 const { EFECTO, PROYECTIL, CONST_ME, CONST_ANI, EFECTO_DE_ELEMENTO } = require('../../shared/js/efectos.mjs');
 
-/**
- * ÁREAS para `Game.doAreaCombat`: listas de desplazamientos `{x, y}` desde el centro. Se pueden
- * escribir como en TFS, con una matriz de cadenas donde '3' es el centro y '1' lo que se alcanza:
- *
- *     Game.area.desdeMatriz(['111', '131', '111'])     // el cuadrado de 3x3
- */
-const DIRECCIONES = {
-    norte: [0, -1], north: [0, -1], 0: [0, -1], este: [1, 0], east: [1, 0], 1: [1, 0],
-    sur: [0, 1], south: [0, 1], 2: [0, 1], oeste: [-1, 0], west: [-1, 0], 3: [-1, 0]
-};
-const AREA = {
-    /** Un círculo de radio r (r=1: las 8 casillas de alrededor y el centro). */
-    circulo(r) {
-        const lista = [];
-        for (let y = -r; y <= r; y += 1) {
-            for (let x = -r; x <= r; x += 1) {
-                if (x * x + y * y <= r * r + r) {
-                    lista.push({ x, y });
-                }
-            }
-        }
-        return lista;
-    },
-    /** Un cuadrado de lado 2r+1. */
-    cuadrado(r) {
-        const lista = [];
-        for (let y = -r; y <= r; y += 1) {
-            for (let x = -r; x <= r; x += 1) {
-                lista.push({ x, y });
-            }
-        }
-        return lista;
-    },
-    /** Un rayo recto de `largo` casillas hacia una dirección (sin el centro). */
-    rayo(direccion, largo) {
-        const d = DIRECCIONES[String(direccion).toLowerCase()] || [0, 1];
-        const lista = [];
-        for (let i = 1; i <= (largo || 5); i += 1) {
-            lista.push({ x: d[0] * i, y: d[1] * i });
-        }
-        return lista;
-    },
-    /** Una onda que se abre hacia una dirección (como `exevo flam hur`): 1, 3, 3, 5 casillas... */
-    onda(direccion, largo) {
-        const d = DIRECCIONES[String(direccion).toLowerCase()] || [0, 1];
-        const lista = [];
-        for (let i = 1; i <= (largo || 4); i += 1) {
-            const ancho = Math.floor((i + 1) / 2);
-            for (let j = -ancho + 1; j <= ancho - 1; j += 1) {
-                lista.push(d[0] !== 0 ? { x: d[0] * i, y: j } : { x: j, y: d[1] * i });
-            }
-        }
-        return lista;
-    },
-    /** De una matriz de cadenas al estilo de TFS ('3' el centro, '1' alcanzado). */
-    desdeMatriz(filas) {
-        let cx = 0;
-        let cy = 0;
-        filas.forEach((fila, y) => {
-            const x = String(fila).indexOf('3');
-            if (x !== -1) {
-                cx = x;
-                cy = y;
-            }
-        });
-        const lista = [];
-        filas.forEach((fila, y) => String(fila).split('').forEach((c, x) => {
-            if (c === '1' || c === '3') {
-                lista.push({ x: x - cx, y: y - cy });
-            }
-        }));
-        return lista;
-    }
-};
+// Las ÁREAS (`Game.area.circulo(2)`...) están en engine/world/areas.js: las usan también los
+// hechizos de los monstruos.
+const { AREA } = require('../world/areas');
 
 function createGame(deps) {
     const world = deps.world;
@@ -522,6 +451,22 @@ function createGame(deps) {
         /** Las monturas de data/XML/mounts.js. */
         getMounts() {
             return Array.from(world.mountTypes.values()).map((m) => ({ ...m }));
+        },
+
+        /**
+         * CREA UN CAMPO (fuego, energía, veneno o muro mágico: un objeto con `fieldType`) en una
+         * casilla, como lo deja una runa. `creador` (un envoltorio) es quien lo lanza: el daño cuenta
+         * como suyo. No se crea en una zona de protección ni donde no se pueda pisar (engine/world/campos.js).
+         *
+         * @returns {boolean} si se creó
+         */
+        createField(typeId, posicion, creador) {
+            return !!world.createField(typeId, posicion, real(creador));
+        },
+
+        /** Quita los campos de fuego, energía y veneno de una casilla. Devuelve cuántos. */
+        removeFields(posicion) {
+            return world.removeFields(posicion);
         },
 
         /** Lanza una raid por su nombre (`data/scripts/raids/`). */

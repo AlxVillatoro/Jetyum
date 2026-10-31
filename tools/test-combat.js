@@ -194,16 +194,26 @@ function main() {
     player.weaponType = 'sword';
     player.skills.sword.level = 10;
     const playerProfile = attackProfile(player, world);
-    check('un jugador ataca con su arma (formula de TFS: nivel/5 + 0,085 x ataque x skill)',
-        playerProfile.maxDamage === Math.floor(1 / 5 + 0.085 * 48 * 10) &&
-        playerProfile.minDamage === Math.floor(playerProfile.maxDamage / 4) &&
+    // TFS 1.x: nivel/5 + (skill/4 + 1) · (ataque/3) · 1,03 / factor del modo (equilibrado: 1,2).
+    check('un jugador ataca con su arma (formula de TFS 1.x, modo equilibrado)',
+        playerProfile.maxDamage === Math.round(Math.floor(1 / 5) + ((10 / 4 + 1) * (48 / 3) * 1.03) / 1.2) &&
+        playerProfile.minDamage === Math.floor(1 / 5) &&
         playerProfile.skill === 'sword' && playerProfile.interval === 2000,
         'arma de ataque 48 y espada 10 -> ' + playerProfile.minDamage + '..' + playerProfile.maxDamage);
 
     player.weaponType = null;
     player.weaponAttack = 0;
     check('sin arma pega con el puño (ataque 7) y entrena puño',
-        attackProfile(player, world).skill === 'fist' && attackProfile(player, world).maxDamage === 6);
+        attackProfile(player, world).skill === 'fist' && attackProfile(player, world).maxDamage === 7);
+
+    player.fightMode = 'ofensivo';
+    const ofensivo = attackProfile(player, world).maxDamage;
+    player.fightMode = 'defensivo';
+    const defensivo = attackProfile(player, world).maxDamage;
+    player.fightMode = 'equilibrado';
+    check('el modo de combate cambia el daño: ofensivo más, defensivo menos',
+        ofensivo > attackProfile(player, world).maxDamage && defensivo < attackProfile(player, world).maxDamage,
+        ofensivo + ' / ' + attackProfile(player, world).maxDamage + ' / ' + defensivo);
 
     check('la resistencia elemental se lee de la definicion',
         elementPercent(rat, 'fire') === 20 &&
@@ -234,9 +244,10 @@ function main() {
         'la diagonal cuenta como alcance 1');
 
     // Distancia 1 en diagonal: (40,40) a (41,41).
+    // El golpe puede quedar BLOQUEADO por la defensa (los puños) o la armadura: se resuelve igual.
     const firstAttack = combat.attack(rat, near);
-    check('el ataque se resuelve y hace daño',
-        firstAttack.hit === true && near.health < near.maxHealth,
+    check('el ataque se resuelve (lo que entra, entra; lo que se para, queda bloqueado)',
+        firstAttack.hit === true && near.health === near.maxHealth - firstAttack.damage,
         'vida ' + near.health + '/' + near.maxHealth);
 
     check('el atacante queda en enfriamiento',
@@ -271,9 +282,23 @@ function main() {
             armored.damage < result.damage,
             result.damage + ' -> ' + armored.damage + ' con armadura 40');
 
-        check('nunca se baja de 1 punto de daño',
-            harness.combat.applyDamage(target, 1, { attacker: attacker }).damage >= 1,
-            'un golpe que no hace nada es indistinguible de un fallo');
+        // Como en TFS: lo que para la armadura entero queda BLOQUEADO (0), y es un golpe, no un fallo.
+        const parado = harness.combat.applyDamage(target, 1, { attacker: attacker });
+        check('un golpe que la armadura para entero queda bloqueado (0, como en TFS)',
+            parado.hit === true && parado.damage === 0,
+            'daño ' + parado.damage);
+
+        // El escudo para los golpes con arma (bloqueables) antes que la armadura.
+        target.armorLevel = 0;
+        target.shieldDefense = 40;
+        target.skills.shielding.level = 60;
+        const conEscudo = harness.combat.applyDamage(target, 20, { attacker: attacker, bloqueable: true });
+        const sinBloqueo = harness.combat.applyDamage(target, 20, { attacker: attacker });
+        check('el escudo para los golpes con arma, y no la magia',
+            conEscudo.damage === 0 && sinBloqueo.damage === 20,
+            conEscudo.damage + ' / ' + sinBloqueo.damage);
+        target.shieldDefense = 0;
+        target.armorLevel = 40;
 
         // La inmunidad es la excepcion al minimo.
         const dragon = harness.world.createMonster('Dragon', { x: 42, y: 40, z: 7 });
@@ -551,7 +576,8 @@ function main() {
         const attackResult = harness.ai.think(cazador);
 
         check('estando contiguo, ataca en vez de moverse',
-            presa.health < healthBefore && attackResult.action === 'attack',
+            attackResult.action === 'attack' && attackResult.result.hit === true &&
+            presa.health === healthBefore - attackResult.result.damage,
             'vida ' + healthBefore + ' -> ' + presa.health);
 
         // --- Volver a casa ---

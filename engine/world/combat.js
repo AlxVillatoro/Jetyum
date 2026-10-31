@@ -72,12 +72,34 @@ const DEFAULT_FORMULAS = {
      * queda al menos un punto de daño: un golpe que no hace nada no se distingue
      * de un fallo y confunde al que juega.
      */
+    /**
+     * LO QUE PARA LA ARMADURA, como `Creature::blockHit` de TFS: con más de 3 de armadura, entre la
+     * mitad y casi toda (`armor - (armor % 2 + 1)`); con 1 a 3, un punto.
+     */
     armorReduction(target, random) {
         const armor = targetArmor(target);
         if (armor <= 0) {
             return 0;
         }
-        return Math.floor(random() * (Math.floor(armor / 2) + 1));
+        if (armor <= 3) {
+            return 1;
+        }
+        const min = Math.floor(armor / 2);
+        const max = Math.max(min, armor - (armor % 2 + 1));
+        return min + Math.floor(random() * (max - min + 1));
+    },
+
+    /**
+     * LO QUE PARA EL ESCUDO (o el arma) de un golpe físico cuerpo a cuerpo o a distancia: entre la
+     * mitad y toda la defensa (`Creature::blockHit` de TFS). Ver `targetDefense`.
+     */
+    defenseReduction(target, random, world) {
+        const defensa = targetDefense(target, world);
+        if (defensa <= 0) {
+            return 0;
+        }
+        const min = Math.floor(defensa / 2);
+        return min + Math.floor(random() * (defensa - min + 1));
     },
 
     /** Multiplicador por resistencia o debilidad elemental. */
@@ -137,8 +159,28 @@ function playerAttackProfile(player, world) {
     const weaponType = String(player.weaponType || '').toLowerCase();
 
     if (weaponType === 'wand' || weaponType === 'rod') {
-        const max = Math.max(1, Math.floor((8 + player.level / 2) * formula.wandDamage));
-        return { minDamage: Math.floor(max / 2), maxDamage: max, interval: vocation.attackSpeed, range: 3, skill: null };
+        /*
+         * UNA VARITA usa SUS números si items.xml los trae (`minDamage`, `maxDamage`, `manaCost`,
+         * `element`, `shootType`: el weapons.xml de TFS, en el propio objeto) y gasta ese maná por
+         * disparo. Sin ellos, una fórmula por nivel, para que una varita sin datos no sea inútil.
+         */
+        const arma = world && world.weaponOf ? world.weaponOf(player) : null;
+        const attrs = (arma && arma.attributes) || {};
+        const conDatos = attrs.maxDamage !== undefined;
+        const max = conDatos ? Math.abs(Number(attrs.maxDamage))
+            : Math.max(1, Math.floor((8 + player.level / 2) * formula.wandDamage));
+        const elemento = attrs.element ? String(attrs.element).toLowerCase() : (weaponType === 'rod' ? 'ice' : 'energy');
+        return {
+            minDamage: conDatos ? Math.abs(Number(attrs.minDamage) || 0) : Math.floor(max / 2),
+            maxDamage: max,
+            interval: vocation.attackSpeed,
+            range: Number(attrs.range) || 3,
+            skill: null,
+            element: elemento,
+            manaCost: Math.max(0, Number(attrs.manaCost) || 0),
+            proyectil: Number(attrs.shootType) || PROYECTIL_POR_NOMBRE[elemento] || 0,
+            magico: true
+        };
     }
 
     const skill = Vocacion.skillDeArma(weaponType);
@@ -173,10 +215,17 @@ function playerAttackProfile(player, world) {
             gasta = Number(attrs.breakChance) > 0 ? { slot: 'hand', chance: Number(attrs.breakChance) } : null;
         }
     }
-    const max = Math.max(1, Math.floor((player.level / 5 + 0.085 * attack * skillLevel) * factor));
+    /*
+     * LA FÓRMULA DE TFS 1.x (`Weapons::getMaxWeaponDamage`): nivel/5 más
+     * (skill/4 + 1) · (ataque/3) · 1,03, dividido por el FACTOR DEL MODO DE COMBATE (ofensivo 1,
+     * equilibrado 1,2, defensivo 2), y por la vocación. El mínimo es nivel/5.
+     */
+    const factorModo = factorDeAtaque(player);
+    const max = Math.max(1, Math.round((Math.floor(player.level / 5) +
+        ((skillLevel / 4 + 1) * (attack / 3) * 1.03) / factorModo) * factor));
 
     return {
-        minDamage: Math.floor(max / 4),
+        minDamage: Math.min(max, Math.floor(player.level / 5)),
         maxDamage: max,
         interval: vocation.attackSpeed,
         range: skill === 'distance' ? (player.weaponRange || 6) : 1,
@@ -207,14 +256,110 @@ function targetArmor(target) {
  * constantes `COMBAT_*` de Tibia, porque en JavaScript no existen y crear treinta
  * constantes globales para esto no aporta nada.
  */
+// ---------------------------------------------------------------------------
+// Modos de combate, defensa y acierto (TFS)
+// ---------------------------------------------------------------------------
+
+/**
+ * LOS TRES MODOS DE COMBATE de Tibia (el jugador los elige en el cliente): cuánto se divide el daño
+ * (`getAttackFactor` de TFS) y cuánto se multiplica la defensa (`getDefenseFactor`).
+ */
+const MODOS = {
+    ofensivo: { ataque: 1.0, defensa: 1.0 },
+    equilibrado: { ataque: 1.2, defensa: 1.0 },
+    defensivo: { ataque: 2.0, defensa: 2.0 }
+};
+
+function modoDe(player) {
+    return player && MODOS[player.fightMode] ? player.fightMode : 'equilibrado';
+}
+
+function factorDeAtaque(player) {
+    return MODOS[modoDe(player)].ataque;
+}
+
+/** En ofensivo, quien acaba de pegar defiende la MITAD (está con la guardia baja), como en TFS. */
+function factorDeDefensa(player, world) {
+    const modo = modoDe(player);
+    if (modo === 'ofensivo') {
+        const ahora = world && world.now ? world.now() : Date.now();
+        const ritmo = (world && world.vocationOf ? world.vocationOf(player).attackSpeed : 2000) || 2000;
+        return ahora - (player.lastAttackAt || 0) < ritmo ? 0.5 : 1.0;
+    }
+    return MODOS[modo].defensa;
+}
+
+/**
+ * LA DEFENSA con la que se bloquea un golpe físico. Un monstruo, la `defense` de su ficha. Un
+ * jugador, como `Player::getDefense` de TFS: el escudo (con la skill de escudo) o, sin escudo, el
+ * arma (con su skill) o los puños (7, con la de puño), por (skill/4 + 2,23) · defensa · 0,15, por el
+ * factor del modo de combate y por la vocación.
+ */
+function targetDefense(target, world) {
+    if (!target) {
+        return 0;
+    }
+    if (target.isMonster && target.isMonster()) {
+        const defenses = target.monsterType && target.monsterType.defenses;
+        return defenses && defenses.defense ? Number(defenses.defense) : 0;
+    }
+    if (!(target.isPlayer && target.isPlayer())) {
+        return 0;
+    }
+    let valor = 7;
+    let skill = 'fist';
+    if (target.weaponDefense > 0) {
+        valor = target.weaponDefense;
+        skill = Vocacion.skillDeArma(String(target.weaponType || '').toLowerCase()) || 'fist';
+    }
+    if (target.shieldDefense > 0) {
+        valor = target.shieldDefense;
+        skill = 'shielding';
+    }
+    const nivel = target.skills && target.skills[skill] ? target.skills[skill].level : 10;
+    const vocacion = world && world.vocationOf ? world.vocationOf(target) : VOCACION_BASE;
+    const multiplicador = (vocacion.formula && vocacion.formula.defense) || 1;
+    return Math.floor((nivel / 4 + 2.23) * valor * 0.15 * factorDeDefensa(target, world) * multiplicador);
+}
+
+/**
+ * LA PROBABILIDAD DE ACERTAR a distancia (en %), con la tabla de `WeaponDistance` de TFS 1.x para un
+ * arma de una mano: depende de la skill de distancia y de a cuántas casillas está el objetivo.
+ */
+function probabilidadDeAcierto(skill, distancia) {
+    const s = Math.max(0, Number(skill) || 0);
+    switch (distancia) {
+        case 2:
+            return Math.min(s, 28) * 2.4 + 8;
+        case 3:
+            return Math.min(s, 45) * 1.55 + 6;
+        case 4:
+            return Math.min(s, 58) * 1.25 + 3;
+        case 6:
+            return Math.min(s, 90) * 0.8 + 3;
+        case 7:
+            return Math.min(s, 104) * 0.7 + 2;
+        default:
+            return Math.min(s, 74) + 1;
+    }
+}
+
 function elementPercent(target, element) {
     if (!target) {
         return 0;
     }
 
-    const list = (target.isMonster && target.isMonster() && target.monsterType)
-        ? target.monsterType.elements
-        : target.elements;
+    const esMonstruo = !!(target.isMonster && target.isMonster() && target.monsterType);
+    const list = esMonstruo ? target.monsterType.elements : target.elements;
+
+    // LAS INMUNIDADES de un monstruo (`immunities` de su ficha) son una resistencia del 100 %: el
+    // inmune a la tierra no recibe nada de un hechizo de tierra. Antes se declaraban y no contaban.
+    const inmune = esMonstruo && Array.isArray(target.monsterType.immunities) &&
+        target.monsterType.immunities.some((i) => String(i && i.type).toLowerCase() === String(element).toLowerCase() &&
+            (i.percent === undefined || Number(i.percent) >= 100));
+    if (inmune) {
+        return 100;
+    }
 
     if (!Array.isArray(list)) {
         return 0;
@@ -313,6 +458,7 @@ class Combat {
         const interval = profile && profile.interval ? Number(profile.interval) : 2000;
 
         attacker.nextAttackAt = now + interval;
+        attacker.lastAttackAt = now;
         if (attacker.target === undefined) {
             attacker.target = target;
         }
@@ -334,6 +480,20 @@ class Combat {
                     ': ponlas en la ranura de munición.');
             }
             return { hit: false, reason: 'noAmmo' };
+        }
+
+        // Una varita gasta maná por disparo; sin el suficiente, no dispara.
+        if (profile && profile.manaCost > 0 && attacker.isPlayer && attacker.isPlayer()) {
+            if ((attacker.mana || 0) < profile.manaCost) {
+                if (this.world) {
+                    this.world.sendTextMessage(attacker.id, 'No tienes maná suficiente.');
+                }
+                return { hit: false, reason: 'noMana' };
+            }
+            attacker.mana -= profile.manaCost;
+            if (this.world && this.world.addManaSpent) {
+                this.world.addManaSpent(attacker, profile.manaCost);
+            }
         }
 
         // Quien ataca se gira hacia su objetivo, y se avisa (el `onAttack` de los scripts: el tajo
@@ -367,9 +527,27 @@ class Combat {
             this.world.addSkillTries(attacker, profile.skill, 1);
         }
 
+        // A DISTANCIA SE PUEDE FALLAR: la probabilidad sale de la skill y de la distancia (TFS). La
+        // flecha vuela y se gasta igual; sólo no llega.
+        if (profile && profile.skill === 'distance' && attacker.isPlayer && attacker.isPlayer()) {
+            const skill = attacker.skills && attacker.skills.distance ? attacker.skills.distance.level : 10;
+            const distancia = attacker.position.distanceTo(target.position);
+            if (this.random() * 100 >= probabilidadDeAcierto(skill, distancia)) {
+                this.stats.misses += 1;
+                if (this.world && this.world.sendMagicEffect) {
+                    this.world.sendMagicEffect(target.position, EFECTO.POFF);
+                }
+                return { hit: false, reason: 'miss' };
+            }
+        }
+
         const resultado = this.applyDamage(target, raw, {
             attacker: attacker,
-            element: element
+            element: element,
+            // Un golpe con arma (cuerpo a cuerpo o a distancia) lo para el escudo; la magia de una
+            // varita, ni el escudo ni la armadura.
+            bloqueable: !(profile && profile.magico),
+            ignoreArmor: !!(profile && profile.magico)
         });
 
         // Un ataque puede dejar una CONDICIÓN si hace daño (la araña venenosa envenena):
@@ -396,22 +574,45 @@ class Combat {
 
         const element = opts.element || null;
         const multiplier = this.formulas.elementMultiplier(target, element);
-        const reduction = this.formulas.armorReduction(target, this.random);
 
-        // El mínimo de 1 punto tiene una excepcion: la INMUNIDAD. Una resistencia
-        // del 100% debe anular el golpe por completo, y aplicar el minimo haria que
-        // un dragon inmune al fuego recibiera un punto de daño por cada bola de
-        // fuego, que es peor que no hacer nada porque ademas envenena. La
-        // inmunidad se comprueba ANTES del minimo, no despues.
-        // La magia no se para con la armadura (como en Tibia): `ignoreArmor` lo pide un hechizo.
-        let damage;
-        if (multiplier <= 0) {
-            damage = 0;
-        } else {
-            damage = Math.max(1, Math.floor((rawDamage * multiplier) - (opts.ignoreArmor ? 0 : reduction)));
+        /*
+         * EL GOLPE, COMO `Creature::blockHit` DE TFS: un golpe FÍSICO con arma lo puede parar primero
+         * la DEFENSA (el escudo o el arma) y luego la ARMADURA; lo que quede, entra. Si no queda nada,
+         * está BLOQUEADO (daño 0, y se ven las chispas). La magia no la para la armadura
+         * (`ignoreArmor`, que piden los hechizos) y una resistencia del 100 % (la inmunidad) lo anula.
+         */
+        let damage = multiplier <= 0 ? 0 : Math.floor(rawDamage * multiplier);
+        const fisico = !element || element === 'physical';
+        if (damage > 0 && fisico && opts.bloqueable) {
+            damage -= this.formulas.defenseReduction(target, this.random, this.world);
+        }
+        if (damage > 0 && !opts.ignoreArmor) {
+            damage -= this.formulas.armorReduction(target, this.random);
+        }
+        damage = Math.max(0, damage);
+
+        // DRENAR MANÁ no quita vida: quita maná (a quien lo tenga) y se queda en eso.
+        if (element === 'manadrain') {
+            const quitado = Math.min(Number(target.mana) || 0, damage);
+            if (quitado > 0) {
+                target.mana -= quitado;
+            }
+            if (this.world && this.world.sendMagicEffect && opts.effect !== 0) {
+                this.world.sendMagicEffect(target.position, opts.effect || EFECTO.MAGIA_AZUL);
+            }
+            if (opts.attacker && opts.attacker !== target && this.world && this.world.noteCombat) {
+                this.world.noteCombat(opts.attacker, target);
+            }
+            return { hit: true, damage: 0, manaDrained: quitado, element: element, multiplier: multiplier, killed: false, loot: [] };
         }
 
         target.damage(damage);
+
+        // DRENAR VIDA cura a quien lo lanza lo que le quita al otro.
+        if (element === 'lifedrain' && damage > 0 && opts.attacker && opts.attacker !== target &&
+                this.world && this.world.healCreature) {
+            this.world.healCreature(opts.attacker, damage);
+        }
 
         // Los dos quedan EN COMBATE (no pueden salir), y quien pega a otro jugador, con PZ lock.
         if (opts.attacker && opts.attacker !== target && this.world && this.world.noteCombat) {
@@ -802,6 +1003,9 @@ module.exports = {
     DEFAULT_FORMULAS,
     attackProfile,
     targetArmor,
+    targetDefense,
+    probabilidadDeAcierto,
+    MODOS,
     elementPercent,
     LOOT_CHANCE_BASE
 };

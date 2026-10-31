@@ -133,6 +133,18 @@ diamonds like Habbo, with the same sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE
 - **Combat and loot.** Monsters leave their corpse with the loot inside, which rots over time. A
   knight with a sword slashes in the direction they are facing. Dying costs 10% of experience and
   you respawn at the temple.
+- **TFS combat.** Damage comes from level, skill and weapon attack; shields **block** and armor
+  reduces; distance attacks can **miss** (by skill and distance); and there are **fight modes**
+  (offensive, balanced, defensive), **chase** and **secure mode** (no attacking unmarked players by
+  mistake). Monsters use **all their attacks**: ranged and area spells (which don't go through
+  walls), paralysis, life and mana drain, self-healing, keeping their distance, fleeing at low health
+  and their voices; and their immunities count.
+- **Runes, fields and tools.** «Use with» (right click the rune or tool and then the target, or from
+  a hotkey) casts **runes** —sudden death, magic missiles, healing, great fireball, explosion, fire,
+  energy and poison fields, magic wall, destroy field, paralyze—, which are **conjured** on blank
+  runes (`adori vita vis`…) and spend charges. **Fields** burn, shock or poison whoever steps on them
+  and go out by themselves. The **shovel** opens stone piles and the **rope** pulls you up through
+  holes. The Shopkeeper sells blank runes, some runes and tools.
 - **More game.** Potions and food, attack and support spells with cooldowns, quests, NPC trade,
   private messages (`@name text`), parties (`/party`), PvP skulls, depot, bows with arrows,
   effects and projectiles, and day and night with lights.
@@ -269,6 +281,7 @@ it writes to temporary copies):
 | `test:arte` | The HD art: templates, importer and the village |
 | `test:i18n` | Languages: translation, dictionaries and that every text on the pages has a translation |
 | `test:reglas` | Access groups, protection zones and PvP, in-fight and PZ lock, network protection, rates, the healer and mounts |
+| `test:combate` | TFS formulas and fight modes, immunities, monster spells, runes and conjuring, fields and tools |
 
 `npm run check:jetyum` also checks that the client and the editor load all their modules.
 

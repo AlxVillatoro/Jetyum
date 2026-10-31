@@ -148,6 +148,26 @@ module.exports = {
 - Los cuerpos del OpenTibia Sprite Pack que existen: Cat, Coleoptera, Goblin, Occultist («dead
   human»), Scolopendra, Succubus y Vespidae. Los demás monstruos dejan la caja.
 
+**Sus ataques, como en TFS** (engine/world/monstruos.js). El primero, `melee`, es el cuerpo a cuerpo;
+los demás son HECHIZOS, cada uno con su reloj (`interval`) y su probabilidad (`chance`):
+
+```js
+attacks: [
+    { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -34 },
+    { name: 'fire', interval: 2000, chance: 25, minDamage: -10, maxDamage: -35, range: 7, shootEffect: 'fire' },
+    { name: 'speed', interval: 4000, chance: 10, speedChange: -150, duration: 6000, range: 7 },   // paraliza
+    { name: 'energy', interval: 3000, chance: 15, minDamage: -20, maxDamage: -40, radius: 3, target: false },  // área
+    { name: 'healing', interval: 4000, chance: 20, minDamage: 15, maxDamage: 35 }               // se cura
+],
+```
+
+`name` es un elemento (`physical`, `fire`, `energy`, `earth`/`poison`, `ice`, `holy`, `death`), o
+`lifedrain` (se queda la vida que quita), `manadrain`, `speed` o `healing`. `range`: a cuántas casillas;
+`radius` (con `target: true`, alrededor del objetivo) o `length`/`spread` (un rayo o una onda) para un
+área; `shootEffect` y `effect` lo que se ve; `condition` lo que deja. Sólo alcanzan a jugadores, y no a
+través de paredes. Las `immunities` cuentan (al daño y a las condiciones), y `flags.runHealth` (huye
+con poca vida), `flags.targetDistance` (mantiene la distancia), `voices` y `changeTarget` también.
+
 ---
 
 ## Comandos de chat
@@ -325,7 +345,45 @@ module.exports = {
 
 Los que hay: `exura`, `exura gran`, `exura vita` (curar); `exori flam`, `exori vis`, `exori frigo`,
 `exori tera` (golpe al objetivo), `exevo flam hur` (onda de fuego), `exori` (tajo alrededor, de
-caballeros); `utani hur` (correr), `utevo lux` (luz) y `exana pox` (quitar el veneno).
+caballeros); `utani hur` (correr), `utevo lux` (luz) y `exana pox` (quitar el veneno). Y los
+**conjuros** de runas (más abajo).
+
+**Un conjuro** no necesita script: `conjurar: { de, a, cargas }` convierte una runa en blanco (`de`) que
+lleves en la runa `a` con sus cargas:
+
+```js
+{ type: 'spell', words: 'adori vita vis', name: 'Sudden Death', group: 'apoyo', level: 45, mana: 985, soul: 5,
+  vocations: ['Sorcerer', 'Master Sorcerer'], conjurar: { de: 21000, a: 21001, cargas: 3 } }
+```
+
+---
+
+## Runas (`type: 'rune'`)
+
+Una runa es un objeto con cargas que lanza un hechizo al usarlo **sobre** algo («usar con»: clic
+derecho en la runa y luego en una criatura o una casilla, o desde una hotkey). El motor comprueba
+nivel, **nivel mágico**, vocación, enfriamiento, alcance (7) y que se vea el sitio; las ofensivas no
+se usan desde una zona de protección. Si el script devuelve `true`, gasta una carga (con la última,
+la runa desaparece):
+
+```js
+// data/scripts/spells/runas.js (un trozo)
+module.exports = {
+    type: 'rune', id: 21001, name: 'Sudden Death', level: 45, magicLevel: 15,
+    needTarget: true,       // sólo sobre una criatura (si no, también sobre una casilla)
+    aggressive: true,       // un ataque: grupo «ataque» y no desde una zona de protección
+    onCastSpell(player, variant) {          // variant: { creature (o null), position }
+        Game.doTargetCombat(player, variant.creature, { type: 'death', min: 40, max: 80, proyectil: PROYECTIL.FUEGO });
+        return true;
+    }
+};
+```
+
+Las que hay (21001-21014 de items.xml): sudden death, heavy y light magic missile, ultimate e
+intense healing, great fireball, explosion, fire field, fire bomb, energy field, poison field, magic
+wall, destroy field y paralyze. Los **campos** se crean con `Game.createField(id, posicion, quien)` y
+se quitan con `Game.removeFields(posicion)` (engine/world/campos.js): hacen daño y dejan la condición
+al pisarlos, y se apagan solos.
 
 ---
 

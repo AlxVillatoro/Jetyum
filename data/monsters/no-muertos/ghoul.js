@@ -86,7 +86,7 @@ module.exports = {
 
     attacks: [
         { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -70 },
-        { name: 'lifedrain', interval: 4000, chance: 25, minDamage: 0, maxDamage: -27 },
+        { name: 'lifedrain', interval: 4000, chance: 25, minDamage: 0, maxDamage: -27, range: 1 },
         /**
          * La curación va con el máximo en POSITIVO a propósito. En un datapack de
          * TFS la convención del signo negativo es para "quita vida", así que drenar

@@ -48,7 +48,9 @@ module.exports = {
     },
 
     attacks: [
-        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -45 }
+        { name: 'melee', interval: 2000, chance: 100, minDamage: 0, maxDamage: -45 },
+        // Te roba la vida a distancia (y se la queda).
+        { name: 'lifedrain', interval: 3000, chance: 20, minDamage: -20, maxDamage: -50, range: 7 }
     ],
 
     defenses: { defense: 12, armor: 12 },
