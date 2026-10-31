@@ -198,3 +198,56 @@ cambian. Mover, usar o perder lo ofrecido, alejarse, morir o salir lo cancela.
 | `CLIENT.TRADE_CLOSE` (0x93) | `[0x93]` | Cancelar (cerrar la ventana) |
 | `SERVER.TRADE` (0x47) | `[0x47, {companero, tuya, suya, aceptaste, acepto}]` | La ventana entera, cada vez que cambia. `tuya`/`suya`: la oferta en lista plana (el objeto y, si es contenedor, todo lo de dentro por niveles), cada uno `{typeId, count, name, charges}`; `suya` es null hasta que el otro contesta. Sólo la recibe quien ya ofreció algo |
 | `SERVER.TRADE_CLOSE` (0x48) | `[0x48]` | Se cierra (el porqué llega en un `TEXT`: «Intercambio cancelado.», «Intercambio completado.») |
+
+---
+
+## 7. Los canales del chat
+
+Los canales de Tibia 8.60 (en TFS, `Chat` y `chatchannels.xml`). Las reglas están en el motor
+(`engine/world/canales.js`); el cliente pide la lista, abre pestañas y habla en ellas.
+
+**En el juego**: el «+» al final de las pestañas de la consola pide la lista y la enseña como un
+menú; elegir un canal lo abre en su pestaña (y la pone delante). Escribiendo con esa pestaña delante
+se habla en el canal; cada línea sale «Nombre [nivel]: texto», como en Tibia, y las del servidor (el
+mensaje del día del gremio, un anuncio) en naranja. Cerrar la pestaña (su ×) es salir del canal. La
+última opción del menú abre **tu canal privado** («Canal de Ana»): con su pestaña delante,
+«/invitar nombre» y «/excluir nombre» (o `/invite`, `/exclude`) invitan y excluyen.
+
+Los ids son los de TFS 1.x: **0** tu gremio (sólo si estás en uno), **1** tu grupo (es la pestaña
+«Grupo» de siempre: lo que se dice en él sigue llegando como `PRIVATE_MESSAGE` con canal `'grupo'`),
+**3** «Juego», **5** «Comercio» (una oferta cada dos minutos), **7** «Ayuda», y del **100** en
+adelante los privados. Los nombres llegan en español y los traduce la página.
+
+| Mensaje | Forma | Qué es |
+|---|---|---|
+| `CLIENT.CHANNEL_LIST` (0x9B) | `[0x9B]` | Pedir la lista de canales que puedes abrir |
+| `CLIENT.CHANNEL_OPEN` (0x98) | `[0x98, id]` | Abrir (entrar en) un canal |
+| `CLIENT.CHANNEL_CLOSE` (0x99) | `[0x99, id]` | Salir de un canal (cerrar su pestaña). Si es tu canal privado, se acaba para todos |
+| `CLIENT.CHANNEL_SAY` (0x9A) | `[0x9A, id, texto]` | Hablar en un canal. Si no se puede (no estás dentro, el nivel, la espera de Comercio, estás silenciado), llega un `TEXT` con el porqué |
+| `CLIENT.CHANNEL_CREATE_PRIVATE` (0xAA) | `[0xAA]` | Abrir tu canal privado (o volver al que tenías) |
+| `CLIENT.CHANNEL_INVITE` (0xAB) | `[0xAB, nombre]` | Invitar a alguien conectado a tu canal privado |
+| `CLIENT.CHANNEL_EXCLUDE` (0xAC) | `[0xAC, nombre]` | Excluirlo (si estaba dentro, se le cierra) |
+| `SERVER.CHANNEL_LIST` (0x51) | `[0x51, [[id, nombre], ...]]` | La lista: tu gremio, tu grupo, los públicos a los que llegas por nivel y los privados a los que te invitaron (y el tuyo) |
+| `SERVER.CHANNEL_OPEN` (0x52) | `[0x52, id, nombre, propio]` | Se abre un canal; `propio` 1 si es tu canal privado |
+| `SERVER.CHANNEL_MESSAGE` (0x53) | `[0x53, id, autor, nivel, texto, tipo]` | Una línea. Con `autor`, la dijo un jugador de ese `nivel` (no se traduce); sin autor (`''`) es del servidor y se traduce. `tipo`: `''` (un jugador), `'sistema'` o `'rojo'` |
+| `SERVER.CHANNEL_CLOSE` (0x54) | `[0x54, id]` | El servidor te saca de un canal (te excluyeron, el dueño lo cerró, ya no estás en el gremio) |
+
+## 8. La lista VIP
+
+La lista VIP es **de la cuenta** y vive en el servidor (`engine/world/vip.js`, tabla
+`account_viplist`): todos los personajes de una cuenta ven la misma, en cualquier navegador. Se
+añade por nombre (un personaje que exista, esté dentro o no) y caben `vipLimit` (20). El punto verde
+es «está dentro»; cuando alguien de tu lista entra o sale, el registro del servidor dice «Ana ha
+entrado en el juego.» / «Ana ha salido del juego.».
+
+La primera vez que el servidor manda la lista, el cliente le sube los nombres de la lista vieja de
+este navegador (`localStorage['jetyum.vip']`) que no estén ya, y la borra. Un servidor sin base de
+datos no manda lista, y entonces la ventana sigue con la del navegador (y el punto verde es «lo ves
+ahora»), como antes.
+
+| Mensaje | Forma | Qué es |
+|---|---|---|
+| `CLIENT.VIP_ADD` (0xDC) | `[0xDC, nombre]` | Añadir. Si no se puede (no existe, ya está, eres tú, la lista está llena), llega un `TEXT` |
+| `CLIENT.VIP_REMOVE` (0xDD) | `[0xDD, id]` | Quitar, por el id del personaje (o por su nombre) |
+| `SERVER.VIP_LIST` (0x55) | `[0x55, [[id, nombre, enLinea], ...]]` | La lista entera: al entrar y cada vez que cambia (a todos los personajes de la cuenta que estén dentro) |
+| `SERVER.VIP_STATE` (0x56) | `[0x56, id, nombre, enLinea]` | Uno de tu lista ha entrado (1) o salido (0) |

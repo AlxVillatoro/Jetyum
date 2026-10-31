@@ -528,6 +528,11 @@ function createEngine(options) {
         : registry.entities.item(world.adoptItem(ref.item)));
     world.eventoDeIntercambio = (evento, player, otro, ...ofertas) =>
         registry.dispatchEvent(evento, [wrap(player), wrap(otro)].concat(ofertas.map(envolverOferta)));
+    // LOS CANALES DEL CHAT (canales.js): niveles y esperas de `chatChannels`, y los eventos de TFS para
+    // los scripts (`channeljoin`, `channelleave`, `channelspeak`; `false` en éste impide el mensaje).
+    world.configurarCanales(config);
+    world.vipLimit = Number(config.vipLimit) || undefined;
+    world.eventoDeCanal = (evento, player, ...extra) => registry.dispatchEvent(evento, [wrap(player)].concat(extra));
     // Morir o alejarse (andando o teletransportado) lo cancela.
     world.on('onPlayerDeath', (player) => world.cancelarIntercambio(player));
     world.on('onStepIn', (creature) => creature.intercambio && world.revisarIntercambio(creature));
@@ -715,6 +720,15 @@ function createEngine(options) {
             guardar: (player) => repository.save(player)
         };
 
+        // LA LISTA VIP de cada cuenta (tabla `account_viplist`, `engine/world/vip.js`).
+        world.vipEnLaBase = {
+            personaje: (nombre) => repository.database.findCharacterForMail(nombre),
+            listar: (cuentaId) => repository.database.listVip(cuentaId),
+            anadir: (cuentaId, personajeId) => repository.database.addVip(cuentaId, personajeId),
+            quitar: (cuentaId, personajeId) => repository.database.removeVip(cuentaId, personajeId),
+            seguidores: (personajeId) => repository.database.vipFollowers(personajeId)
+        };
+
         log.info('personajes guardados: ' + persistenceStats.players +
             ' en ' + persistenceStats.accounts + ' cuenta(s)');
     } else {
@@ -894,6 +908,8 @@ function createEngine(options) {
             const result = repository.saveAll();
             // Lo que hay dentro de las casas (sólo las que han cambiado: casas.js).
             world.guardarCasas();
+            // El `onSave` de los eventos globales (TFS): ya está todo guardado.
+            registry.dispatchGlobal('save', []);
             if (result.failed > 0) {
                 log.error('guardado periodico: ' + result.saved + ' guardados, ' +
                     result.failed + ' fallaron');
@@ -968,6 +984,19 @@ function createEngine(options) {
             session.sendTradeClose();
         }
     });
+    // Los canales del chat (canales.js) y la lista VIP (vip.js), a quien vayan.
+    const aSuSesion = (player, hacer) => {
+        const session = api.sessions && player && api.sessions.get(player.id);
+        if (session) {
+            hacer(session);
+        }
+    };
+    world.on('onChannelOpen', (player, canal) => aSuSesion(player, (s) => s.sendChannelOpen(canal)));
+    world.on('onChannelClose', (player, id) => aSuSesion(player, (s) => s.sendChannelClose(id)));
+    world.on('onChannelMessage', (player, id, autor, nivel, texto, tipo) =>
+        aSuSesion(player, (s) => s.sendChannelMessage(id, autor, nivel, texto, tipo)));
+    world.on('onVipList', (player, lista) => aSuSesion(player, (s) => s.sendVipList(lista)));
+    world.on('onVipState', (player, id, nombre, enLinea) => aSuSesion(player, (s) => s.sendVipState(id, nombre, enLinea)));
     // Un diálogo (popupFYI) para un jugador.
     world.on('onPopup', (player, titulo, texto) => {
         const session = api.sessions && api.sessions.get(player.id);
@@ -1077,8 +1106,26 @@ function createEngine(options) {
         return true;
     };
 
-    /** Crea una sesión con un transporte ya resuelto. Se registra al entrar. */
-    api.createSession = (send) => api.sessions.createSession(send);
+    // LOS GREMIOS Y LOS CASTIGOS (gremios.js, castigos.js) van a la base como las casas, y sus
+    // números salen de config.js. La IP de cada jugador la sabe su sesión (para `/ipban`).
+    world.baseDeGremios = repository ? repository.database : null;
+    world.baseDeCastigos = world.baseDeGremios;
+    world.guildCreateLevel = Number(config.guildCreateLevel) || 8;
+    world.banDays = Number(config.banDays) || 7;
+    world.ipDe = (player) => {
+        const session = api.sessions && player ? api.sessions.get(player.id) : null;
+        return session && session.ip ? session.ip : '';
+    };
+
+    /**
+     * Crea una sesión con un transporte ya resuelto. Se registra al entrar. `opciones.ip` es la
+     * dirección del cliente (la pone server.js): con ella se mira si la IP está suspendida.
+     */
+    api.createSession = (send, opciones) => {
+        const session = api.sessions.createSession(send);
+        session.ip = String((opciones && opciones.ip) || '');
+        return session;
+    };
 
     // El mundo avisa al final de cada tick y la red empuja entonces los cambios de
     // vista. Se engancha aquí y no dentro del mundo porque el mundo no sabe que

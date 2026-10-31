@@ -601,6 +601,10 @@ class Combat {
 
         // DRENAR MANÁ no quita vida: quita maná (a quien lo tenga) y se queda en eso.
         if (element === 'manadrain') {
+            // `onManaChange` de los scripts puede cambiarlo (engine/scripting/game.js).
+            if (damage > 0 && this.world && this.world.alCambiarMana) {
+                damage = this.world.alCambiarMana(target, opts.attacker || null, damage, element, opts);
+            }
             const quitado = Math.min(Number(target.mana) || 0, damage);
             if (quitado > 0) {
                 target.mana -= quitado;
@@ -612,6 +616,11 @@ class Combat {
                 this.world.noteCombat(opts.attacker, target);
             }
             return { hit: true, damage: 0, manaDrained: quitado, element: element, multiplier: multiplier, killed: false, loot: [] };
+        }
+
+        // `onHealthChange` de los scripts puede cambiar el daño antes de que entre (engine/scripting/game.js).
+        if (damage > 0 && this.world && this.world.alCambiarVida) {
+            damage = this.world.alCambiarVida(target, opts.attacker || null, damage, element, opts);
         }
 
         target.damage(damage);
@@ -679,6 +688,14 @@ class Combat {
             killed: false,
             loot: []
         };
+
+        // `onPrepareDeath` de los scripts: con `false` no muere y se queda con 1 de vida como poco (si
+        // el script no le cura más). Es lo que usan las arenas de TFS.
+        if (target.isDead() && this.world && this.world.antesDeMorir &&
+                this.world.antesDeMorir(target, opts.attacker || null) === false) {
+            target.health = Math.max(1, target.health);
+            result.remaining = target.health;
+        }
 
         if (target.isDead()) {
             result.killed = true;

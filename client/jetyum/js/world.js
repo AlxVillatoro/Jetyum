@@ -161,6 +161,9 @@ export class ClientWorld {
 
         /** Tu grupo: { lider, miembros }. */
         this.grupo = { lider: '', miembros: [] };
+
+        /** Tu lista VIP, si la manda el servidor: [{ id, nombre, enLinea }]; null hasta entonces. */
+        this.vip = null;
     }
 
     static key(x, y, z) {
@@ -337,6 +340,55 @@ export class ClientWorld {
                 case P.SERVER.TRADE_CLOSE:
                     events.push({ type: 'tradeClose' });
                     break;
+
+                /*
+                 * LOS CANALES DEL CHAT. Los nombres llegan en español y se quedan así: los pinta la
+                 * página (pestañas, la lista), que los traduce sola y los vuelve a traducir si cambia el
+                 * idioma. Lo que dice un jugador en un canal es suyo; una línea sin autor es del
+                 * servidor y se traduce aquí, como `SERVER.TEXT`.
+                 */
+                case P.SERVER.CHANNEL_LIST:
+                    events.push({ type: 'channelList', canales: (Array.isArray(message[1]) ? message[1] : [])
+                        .map((c) => ({ id: Number(c[0]), nombre: String(c[1] || '') })) });
+                    break;
+
+                case P.SERVER.CHANNEL_OPEN:
+                    events.push({ type: 'channelOpen', id: Number(message[1]), nombre: String(message[2] || ''),
+                        propio: message[3] === 1 });
+                    break;
+
+                case P.SERVER.CHANNEL_MESSAGE: {
+                    const autor = String(message[2] || '');
+                    events.push({ type: 'channelMessage', id: Number(message[1]), autor: autor,
+                        nivel: Number(message[3]) || 0,
+                        text: autor ? String(message[4]) : traducir(String(message[4])),
+                        tipo: String(message[5] || '') });
+                    break;
+                }
+
+                case P.SERVER.CHANNEL_CLOSE:
+                    events.push({ type: 'channelClose', id: Number(message[1]) });
+                    break;
+
+                // LA LISTA VIP del servidor (la de la cuenta) y quién entra o sale.
+                case P.SERVER.VIP_LIST:
+                    this.vip = (Array.isArray(message[1]) ? message[1] : [])
+                        .map((v) => ({ id: Number(v[0]), nombre: String(v[1]), enLinea: v[2] === 1 }));
+                    events.push({ type: 'vipList', lista: this.vip });
+                    break;
+
+                case P.SERVER.VIP_STATE: {
+                    const enLinea = message[3] === 1;
+                    (this.vip || []).forEach((v) => {
+                        if (v.id === Number(message[1])) {
+                            v.enLinea = enLinea;
+                        }
+                    });
+                    // Lo que se dice en el registro del servidor, ya en el idioma puesto.
+                    events.push({ type: 'vipState', id: Number(message[1]), nombre: String(message[2]), enLinea: enLinea,
+                        text: traducir(String(message[2]) + (enLinea ? ' ha entrado en el juego.' : ' ha salido del juego.')) });
+                    break;
+                }
 
                 case P.SERVER.WORLD_LIGHT:
                     this.luzMundo = Number(message[1]);

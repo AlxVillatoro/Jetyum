@@ -6,10 +6,12 @@
  * - Las ventanas se minimizan (−) o se cierran (×) desde su cabecera.
  * - Batalla: las criaturas a la vista, la más cercana arriba, con su vida; clic para atacar. La
  *   que estás atacando sale con el marco rojo.
- * - VIP: tu lista de amigos (se guarda en este navegador); el punto verde es que lo ves ahora.
+ * - VIP: tu lista de amigos. Si el servidor guarda cuentas es la de tu cuenta (`SERVER.VIP_LIST`) y
+ *   el punto verde es que está dentro; si no, la de este navegador y el punto verde es que lo ves.
  * - Opciones: nombres, barras de vida, hora en la consola y el diagnóstico.
  *
- * Todo lo que sabe del mundo lo saca del mundo del cliente: no pide nada al motor.
+ * Todo lo que sabe del mundo lo saca del mundo del cliente; al motor sólo le pide (por `acciones`)
+ * añadir y quitar de la lista VIP.
  */
 
 import { pintarIconos } from './iconos.js';
@@ -152,25 +154,37 @@ export function crearLateral(o) {
     }
 
     // --- VIP ---
+    // DOS MODOS. Si el servidor guarda cuentas, la lista es la SUYA (la de la cuenta, `SERVER.VIP_LIST`):
+    // añadir y quitar se le piden a él, y el punto verde es «está dentro». Si no manda lista (un
+    // servidor sin base de datos), es la de este navegador, y el punto verde es «lo ves ahora».
     let vip = leer(CLAVE_VIP, []);
+    /** La del servidor, [{ id, nombre, enLinea }], o null mientras no la mande. */
+    let vipServidor = null;
     const listaVip = document.getElementById('lista-vip');
     const formVip = document.getElementById('vip-anadir');
     let vistos = new Set();
+
+    function filaVip(nombre, verde, titulo, quitar) {
+        return '<div class="vip-fila" title="' + escapar(nombre) + titulo + '">' +
+            '<span class="punto' + (verde ? ' visto' : '') + '"></span>' +
+            '<span class="nombre" translate="no">' + escapar(nombre) + '</span>' +
+            '<button type="button" class="boton-icono" data-quitar="' + escapar(quitar) +
+            '" data-icono="cerrar" title="Quitar de la lista"></button></div>';
+    }
 
     function pintarVip() {
         if (!listaVip) {
             return;
         }
-        listaVip.innerHTML = vip.length === 0
+        const vacia = vipServidor ? vipServidor.length === 0 : vip.length === 0;
+        listaVip.innerHTML = vacia
             ? '<span class="vacio">añade a tus amigos abajo</span>'
-            : vip.map((nombre) => {
-                const visto = vistos.has(nombre.toLowerCase());
-                return '<div class="vip-fila" title="' + escapar(nombre) + (visto ? ': a la vista' : ': no lo ves') + '">' +
-                    '<span class="punto' + (visto ? ' visto' : '') + '"></span>' +
-                    '<span class="nombre">' + escapar(nombre) + '</span>' +
-                    '<button type="button" class="boton-icono" data-quitar="' + escapar(nombre) +
-                    '" data-icono="cerrar" title="Quitar de la lista"></button></div>';
-            }).join('');
+            : (vipServidor
+                ? vipServidor.map((v) => filaVip(v.nombre, v.enLinea, v.enLinea ? ': conectado' : ': desconectado', v.id))
+                : vip.map((nombre) => {
+                    const visto = vistos.has(nombre.toLowerCase());
+                    return filaVip(nombre, visto, visto ? ': a la vista' : ': no lo ves', nombre);
+                })).join('');
         pintarIconos(listaVip);
     }
     if (formVip) {
@@ -178,7 +192,9 @@ export function crearLateral(o) {
             e.preventDefault();
             const input = document.getElementById('vip-nombre');
             const nombre = (input.value || '').trim();
-            if (nombre && !vip.some((n) => n.toLowerCase() === nombre.toLowerCase())) {
+            if (nombre && vipServidor) {
+                acciones.vipAnadir(nombre);
+            } else if (nombre && !vip.some((n) => n.toLowerCase() === nombre.toLowerCase())) {
                 vip.push(nombre);
                 guardar(CLAVE_VIP, vip);
             }
@@ -190,7 +206,9 @@ export function crearLateral(o) {
     if (listaVip) {
         listaVip.addEventListener('click', (e) => {
             const quitar = e.target.closest('[data-quitar]');
-            if (quitar) {
+            if (quitar && vipServidor) {
+                acciones.vipQuitar(Number(quitar.dataset.quitar));
+            } else if (quitar) {
                 vip = vip.filter((n) => n !== quitar.dataset.quitar);
                 guardar(CLAVE_VIP, vip);
                 pintarVip();
@@ -198,6 +216,34 @@ export function crearLateral(o) {
         });
     }
     pintarVip();
+
+    /**
+     * Llega la lista del servidor (al entrar, al cambiar, o alguien entra o sale). LA PRIMERA VEZ se
+     * suben los nombres de la lista vieja de este navegador que no estén ya, y se borra: desde ahí
+     * la lista es la de la cuenta, en cualquier navegador.
+     */
+    function vipDelServidor(lista) {
+        const primera = vipServidor === null;
+        vipServidor = (lista || []).map((v) => ({ id: v.id, nombre: v.nombre, enLinea: !!v.enLinea }));
+        if (primera && vip.length > 0) {
+            const ya = new Set(vipServidor.map((v) => v.nombre.toLowerCase()));
+            vip.filter((n) => !ya.has(String(n).toLowerCase())).forEach((n) => acciones.vipAnadir(n));
+            vip = [];
+            try {
+                localStorage.removeItem(CLAVE_VIP);
+            } catch (e) {
+                // Sin almacenamiento: no había nada que subir.
+            }
+        }
+        pintarVip();
+    }
+
+    /** Al salir: hasta que el servidor vuelva a mandar una lista, se usa la del navegador. */
+    function vipOlvidar() {
+        vipServidor = null;
+        vip = leer(CLAVE_VIP, []);
+        pintarVip();
+    }
 
     // --- Batalla ---
     const listaBatalla = document.getElementById('lista-batalla');
@@ -251,7 +297,7 @@ export function crearLateral(o) {
 
         const cambioVip = ahoraVistos.size !== vistos.size || [...ahoraVistos].some((n) => !vistos.has(n));
         vistos = ahoraVistos;
-        if (cambioVip) {
+        if (cambioVip && !vipServidor) {
             pintarVip();
         }
 
@@ -287,5 +333,5 @@ export function crearLateral(o) {
         });
     }
 
-    return { actualizar, mostrar };
+    return { actualizar, mostrar, vipDelServidor, vipOlvidar };
 }

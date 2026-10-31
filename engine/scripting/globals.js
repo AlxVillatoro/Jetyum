@@ -18,6 +18,9 @@
 
 const LATIDO_MS = 250;
 
+/** Cada cuánto piensa cada jugador (`onThink` de los eventos de criatura), como el segundo de TFS. */
+const PENSAR_CADA_MS = 1000;
+
 function horaDe(fecha) {
     return String(fecha.getHours()).padStart(2, '0') + ':' + String(fecha.getMinutes()).padStart(2, '0');
 }
@@ -31,6 +34,8 @@ function horaDe(fecha) {
  * @param {Function} [deps.game] devuelve el objeto `Game` (se pasa a `run` de las raids)
  * @param {Function} [deps.ahora] reloj de pared (las pruebas lo fijan)
  * @param {Function} [deps.azar] número en [0, 1) (las pruebas lo fijan)
+ * @param {Function} [deps.record] `(jugadores) => anterior | null`: apunta un récord de jugadores;
+ *        sin él, el del almacén global de `Game` (game.js)
  */
 function createGlobalClock(deps) {
     const { registry, world, scheduler } = deps;
@@ -131,6 +136,27 @@ function createGlobalClock(deps) {
                 registry._invoke(entry, 'onThink', [entry.interval]);
             }
         });
+
+        // El `onThink(creature, interval)` de los eventos de criatura (TFS): cada segundo, por jugador.
+        if (transcurrido % PENSAR_CADA_MS < LATIDO_MS) {
+            const pensar = registry.events.get('think');
+            if (pensar && pensar.length > 0) {
+                world.players.forEach((player) => {
+                    registry.dispatchEvent('think', [registry.entities.creature(player.id), PENSAR_CADA_MS]);
+                });
+            }
+        }
+
+        // `onRecord(current, old)`: más jugadores a la vez que nunca (el récord lo guarda game.js).
+        const juego = deps.game ? deps.game() : null;
+        const apuntarRecord = deps.record || (juego && juego._almacenGlobal
+            ? (n) => juego._almacenGlobal.nuevoRecord(n) : null);
+        if (apuntarRecord && world.players.size > 0) {
+            const anterior = apuntarRecord(world.players.size);
+            if (anterior !== null && anterior !== undefined) {
+                registry.dispatchGlobal('record', [world.players.size, anterior]);
+            }
+        }
 
         // raids periódicas.
         registry.raids.forEach((raid) => {

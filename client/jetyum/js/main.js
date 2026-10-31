@@ -158,7 +158,16 @@ class Game {
         /** La consola de abajo: lo que se dice y los mensajes del servidor, con su hora. */
         this.consola = crearConsola({
             lineas: document.getElementById('consola-lineas'),
-            pestanas: document.querySelector('.consola-pestanas')
+            pestanas: document.querySelector('.consola-pestanas'),
+            // Cerrar la pestaña de un canal es salir de él; el «+» pide la lista de canales.
+            alCerrarCanal: (id) => this.connection && this.connection.send([CLIENT.CHANNEL_CLOSE, id]),
+            alPedirCanales: (boton) => {
+                if (this.connection) {
+                    const r = boton.getBoundingClientRect();
+                    this.listaDeCanalesEn = { x: r.left, y: r.bottom + 2 };
+                    this.connection.send([CLIENT.CHANNEL_LIST]);
+                }
+            }
         });
 
         /** El minimapa: el color `minimap` de cada cosa del pack. */
@@ -209,7 +218,10 @@ class Game {
                 stop: () => this.stop(),
                 salir: () => this.salir(),
                 atacar: (id) => this.alternarObjetivo(id),
-                opcion: (nombre, valor) => this._opcion(nombre, valor)
+                opcion: (nombre, valor) => this._opcion(nombre, valor),
+                // La lista VIP del servidor (la de la cuenta): añadir por nombre y quitar por id.
+                vipAnadir: (nombre) => this.connection && this.connection.send([CLIENT.VIP_ADD, nombre]),
+                vipQuitar: (id) => this.connection && this.connection.send([CLIENT.VIP_REMOVE, id])
             }
         });
 
@@ -411,6 +423,19 @@ class Game {
                 } else {
                     this.consola.privado(event.from, event.from, event.text);
                 }
+            } else if (event.type === 'channelList') {
+                this._elegirCanal(event.canales);
+            } else if (event.type === 'channelOpen') {
+                this.consola.canalAbierto(event.id, event.nombre, event.propio);
+            } else if (event.type === 'channelMessage') {
+                this.consola.mensajeDeCanal(event.id, event.autor, event.nivel, event.text, event.tipo);
+            } else if (event.type === 'channelClose') {
+                this.consola.canalCerrado(event.id);
+            } else if (event.type === 'vipList') {
+                this.lateral.vipDelServidor(event.lista);
+            } else if (event.type === 'vipState') {
+                this.lateral.vipDelServidor(this.world.vip || []);
+                this.consola.servidor(event.text);
             } else if (event.type === 'trade') {
                 this.intercambio.abrir(event.ventana);
             } else if (event.type === 'tradeClose') {
@@ -871,6 +896,19 @@ class Game {
             this.connection.send([CLIENT.PRIVATE_MESSAGE, '#grupo', grupo[1]]);
             return;
         }
+        // Tu canal privado: «/invitar nombre» y «/excluir nombre» (o en inglés, /invite y /exclude).
+        const canalPrivado = /^\/(invitar|invite|excluir|exclude)\s+(.+)$/i.exec(text);
+        if (canalPrivado) {
+            const invitar = /^invit/i.test(canalPrivado[1]);
+            this.connection.send([invitar ? CLIENT.CHANNEL_INVITE : CLIENT.CHANNEL_EXCLUDE, canalPrivado[2].trim()]);
+            return;
+        }
+        // Con la pestaña de un canal delante, se habla en ese canal.
+        const canal = this.consola.canalActual();
+        if (canal !== null && !text.startsWith('/')) {
+            this.connection.send([CLIENT.CHANNEL_SAY, canal, text]);
+            return;
+        }
         const destino = this.consola.destino();
         if (destino && !text.startsWith('/')) {
             if (destino === '#grupo') {
@@ -881,6 +919,22 @@ class Game {
             return;
         }
         this.connection.send([CLIENT.SAY, text]);
+    }
+
+    /**
+     * LA LISTA DE CANALES (`SERVER.CHANNEL_LIST`), como un menú bajo el «+»: elegir uno lo abre, y
+     * la última opción abre tu canal privado. Los que ya tienes abiertos no salen.
+     */
+    _elegirCanal(lista) {
+        const abiertos = new Set(this.consola.canalesAbiertos().map((c) => c.id));
+        const donde = this.listaDeCanalesEn || { x: 8, y: window.innerHeight - 220 };
+        const opciones = lista.filter((c) => !abiertos.has(c.id)).map((c) => ({
+            texto: c.nombre,
+            accion: () => this.connection && this.connection.send([CLIENT.CHANNEL_OPEN, c.id])
+        }));
+        opciones.push({ texto: 'Abrir tu canal privado',
+            accion: () => this.connection && this.connection.send([CLIENT.CHANNEL_CREATE_PRIVATE]) });
+        this.menuObjeto.abrir(donde.x, donde.y, opciones);
     }
 
     /** Un mensaje privado: se manda y se apunta en su pestaña. */
@@ -1149,6 +1203,7 @@ class Game {
         this.contenedor.cerrar();
         limpiarPaneles();
         this.consola.limpiar();
+        this.lateral.vipOlvidar();
         this.minimapa.olvidar();
         const overlay = document.getElementById('overlay');
         if (overlay) {

@@ -13,6 +13,8 @@ import muerte from './en/muerte.mjs';
 import casas from './en/casas.mjs';
 import correo from './en/correo.mjs';
 import intercambio from './en/intercambio.mjs';
+import gremios from './en/gremios.mjs';
+import canales from './en/canales.mjs';
 
 registrar('en', motor);
 registrar('en', contenido);
@@ -22,3 +24,5 @@ registrar('en', muerte);
 registrar('en', casas);
 registrar('en', correo);
 registrar('en', intercambio);
+registrar('en', gremios);
+registrar('en', canales);

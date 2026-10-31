@@ -48,7 +48,9 @@ module.exports = [
                 titulo: item.getName(),
                 texto: item.getAttribute('text') || '',
                 editable: true,
-                maximo: Number(item.getAttribute('maxTextLen')) || 500
+                maximo: Number(item.getAttribute('maxTextLen')) || 500,
+                // El objeto que se escribe: con él, los `onTextEdit` de los scripts se enteran.
+                item: item
             }, (texto) => {
                 if (item.setAttribute('text', texto)) {
                     item.setAttribute('description', loQueSeLee(texto));

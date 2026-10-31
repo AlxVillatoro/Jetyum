@@ -187,6 +187,13 @@ class PlayerRepository {
             return { error: 'ese personaje no es de esta cuenta' };
         }
 
+        // LOS CASTIGOS (castigos.js): una cuenta suspendida o un personaje con el nombre bloqueado no
+        // entran, y se les dice por qué. Lo que ya caducó se limpia aquí.
+        const castigo = this.world.castigoAlEntrar ? this.world.castigoAlEntrar(account.id, row ? row.id : 0) : null;
+        if (castigo) {
+            return { error: castigo };
+        }
+
         let created = false;
 
         const premium = Number(account.premium_until || 0) > Math.floor(this.now() / 1000);
@@ -244,6 +251,10 @@ class PlayerRepository {
         // casa en la que ya no puede estar, sale a la puerta (casas.js).
         if (this.world.casaAlEntrar) {
             this.world.casaAlEntrar(player);
+        }
+        // Su gremio, que se queda en memoria mientras esté dentro (gremios.js).
+        if (this.world.cargarGremioDe) {
+            this.world.cargarGremioDe(player);
         }
 
         this.database.setCharacterOnline(row.id, true);
@@ -619,6 +630,10 @@ class PlayerRepository {
         const account = this.database.authenticate(accountName, password);
         if (!account) {
             return { error: 'cuenta o contrasena incorrectas (si no tienes cuenta, creala en «Crear cuenta»)' };
+        }
+        const castigo = this.world.castigoAlEntrar ? this.world.castigoAlEntrar(account.id, 0) : null;
+        if (castigo) {
+            return { error: castigo };
         }
         return {
             characters: this.database.listCharacters(account.id).map((row) => ({

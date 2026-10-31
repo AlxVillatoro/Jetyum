@@ -116,6 +116,14 @@ class GameSession {
             return { handled: false, reason: 'serverFull', error: motivo };
         }
 
+        // UNA IP SUSPENDIDA no entra (castigos.js); la cuenta y el nombre los mira el repositorio.
+        const castigo = this.world.castigoDeIp ? this.world.castigoDeIp(this.ip) : null;
+        if (castigo) {
+            this._send(P.message(P.SERVER.LOGIN_ERROR, castigo));
+            this.stats.rejected += 1;
+            return { handled: false, reason: 'banned', error: castigo };
+        }
+
         if (this.repository && this.repository.isOpen) {
             const result = this.repository.login(credentials_);
 
@@ -186,6 +194,20 @@ class GameSession {
             this._send(P.message(P.SERVER.LOGIN_ERROR, 'el servidor no te deja entrar ahora'));
             this.close();
             return { handled: false, reason: 'loginBlocked' };
+        }
+
+        // La IP desde la que entra queda apuntada (`players.lastip`): así `/ipban` llega también a
+        // quien ya no está dentro.
+        if (this.ip && player.characterId && this.world.baseDeCastigos && this.world.baseDeCastigos.setLastIp) {
+            this.world.baseDeCastigos.setLastIp(player.characterId, this.ip);
+        }
+
+        // LA LISTA VIP (vip.js): la suya, con quién está dentro, y a quien le tiene en la suya, que ha
+        // entrado. Sin persistencia no hay lista en el servidor (el cliente usa la de su navegador).
+        if (this.world.enviarListaVip) {
+            this.world.enviarListaVip(player);
+            this.world.avisarVip(player, true);
+            this.vipAvisado = true;
         }
 
         return { handled: true, created: created };
@@ -333,6 +355,10 @@ class GameSession {
         if (this.entered && this.player && this.world.partyOf && this.world.partyOf(this.player)) {
             this.world.partyLeave(this.player);
         }
+        // Y de los canales del chat (su canal privado se acaba).
+        if (this.entered && this.player && this.world.salirDeLosCanales) {
+            this.world.salirDeLosCanales(this.player);
+        }
 
         // Se GUARDA antes de sacarlo del mundo, y en ese orden: al revés, si el
         // guardado fallara el personaje ya no estaría en el mundo y lo que hubiera
@@ -357,6 +383,11 @@ class GameSession {
             this.world.removePlayer(this.playerId);
             if (this.manager) {
                 this.manager.unregister(this);
+            }
+            // Ya fuera del mundo: quien le tiene en su lista VIP ve que ha salido.
+            if (this.player && this.vipAvisado && this.world.avisarVip) {
+                this.vipAvisado = false;
+                this.world.avisarVip(this.player, false);
             }
         }
     }
@@ -546,6 +577,34 @@ class GameSession {
                 return { handled: true, action: 'textWindowSave',
                     ok: this.world.guardarVentanaDeTexto(this.player, message[1], message[2]) };
 
+            // Los canales del chat (engine/world/canales.js) y la lista VIP (engine/world/vip.js).
+            case P.CLIENT.CHANNEL_LIST:
+                return this.sendChannelList();
+
+            case P.CLIENT.CHANNEL_OPEN:
+                return { handled: true, action: 'channelOpen', ...this.world.abrirCanal(this.player, message[1]) };
+
+            case P.CLIENT.CHANNEL_CLOSE:
+                return { handled: true, action: 'channelClose', ...this.world.cerrarCanal(this.player, message[1]) };
+
+            case P.CLIENT.CHANNEL_SAY:
+                return this._handleChannelSay(message[1], message[2]);
+
+            case P.CLIENT.CHANNEL_CREATE_PRIVATE:
+                return { handled: true, action: 'channelCreate', ...this.world.crearCanalPrivado(this.player) };
+
+            case P.CLIENT.CHANNEL_INVITE:
+                return { handled: true, action: 'channelInvite', ...this.world.invitarAlCanal(this.player, message[1]) };
+
+            case P.CLIENT.CHANNEL_EXCLUDE:
+                return { handled: true, action: 'channelExclude', ...this.world.excluirDelCanal(this.player, message[1]) };
+
+            case P.CLIENT.VIP_ADD:
+                return { handled: true, action: 'vipAdd', ...this.world.anadirVip(this.player, message[1]) };
+
+            case P.CLIENT.VIP_REMOVE:
+                return { handled: true, action: 'vipRemove', ...this.world.quitarVip(this.player, message[1]) };
+
             default:
                 this.stats.rejected += 1;
                 return { handled: false, reason: 'unknownOpcode', opcode: opcode };
@@ -710,6 +769,9 @@ class GameSession {
         if (casa) {
             this._send(P.message(P.SERVER.TEXT, 0, casa));
         }
+        // El gremio de cada jugador de la casilla, como en TFS: «Él es Líder del gremio X.» (gremios.js).
+        creatures.map((c) => (this.world.textoDeGremio ? this.world.textoDeGremio(c, this.player) : null)).filter(Boolean)
+            .forEach((linea) => this._send(P.message(P.SERVER.TEXT, 0, linea)));
         return { handled: true, action: 'look', text: text, casa: casa };
     }
 
@@ -1988,6 +2050,51 @@ class GameSession {
     /** Un mensaje privado o de grupo que le llega a este jugador. */
     sendPrivateMessage(de, texto, canal) {
         return this._send(P.message(P.SERVER.PRIVATE_MESSAGE, String(de), String(texto), canal || 'privado'));
+    }
+
+    /** Hablar en un canal: con el mismo ritmo que el resto del chat (`_puedeHablar`). */
+    _handleChannelSay(id, texto) {
+        if (!this._puedeHablar()) {
+            this.sendText('Estás hablando demasiado deprisa: espera un momento.');
+            return { handled: true, action: 'channelSay', ok: false, reason: 'spam' };
+        }
+        const r = this.world.hablarEnCanal(this.player, id, texto);
+        return { handled: true, action: 'channelSay', ok: r.ok === true, reason: r.reason };
+    }
+
+    /** Los canales que puede abrir (`SERVER.CHANNEL_LIST`). */
+    sendChannelList() {
+        const lista = this.world.canalesPara(this.player);
+        this._send(P.message(P.SERVER.CHANNEL_LIST, lista.map((c) => [c.id, c.nombre])));
+        return { handled: true, action: 'channelList', channels: lista };
+    }
+
+    /** Se le abre un canal (`SERVER.CHANNEL_OPEN`). */
+    sendChannelOpen(canal) {
+        return this._send(P.message(P.SERVER.CHANNEL_OPEN, Number(canal.id), String(canal.nombre || ''),
+            canal.propio ? 1 : 0));
+    }
+
+    /** Se le cierra un canal (`SERVER.CHANNEL_CLOSE`). */
+    sendChannelClose(id) {
+        return this._send(P.message(P.SERVER.CHANNEL_CLOSE, Number(id)));
+    }
+
+    /** Una línea en un canal (`SERVER.CHANNEL_MESSAGE`). */
+    sendChannelMessage(id, autor, nivel, texto, tipo) {
+        return this._send(P.message(P.SERVER.CHANNEL_MESSAGE, Number(id), String(autor || ''),
+            Number(nivel) || 0, String(texto), String(tipo || '')));
+    }
+
+    /** Su lista VIP entera (`SERVER.VIP_LIST`). */
+    sendVipList(lista) {
+        return this._send(P.message(P.SERVER.VIP_LIST,
+            (lista || []).map((v) => [Number(v.id), String(v.nombre), v.enLinea ? 1 : 0])));
+    }
+
+    /** Uno de su lista entra o sale (`SERVER.VIP_STATE`). */
+    sendVipState(id, nombre, enLinea) {
+        return this._send(P.message(P.SERVER.VIP_STATE, Number(id), String(nombre), enLinea ? 1 : 0));
     }
 
     /** Una ventana de texto, para leer o escribir (`SERVER.TEXT_WINDOW`). */

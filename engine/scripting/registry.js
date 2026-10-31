@@ -50,7 +50,11 @@ const GLOBAL_EVENTS = {
     startup: 'onStartup',
     shutdown: 'onShutdown',
     think: 'onThink',
-    time: 'onTime'
+    time: 'onTime',
+    // Al guardar (el guardado periódico de engine.js) y al batir el récord de jugadores a la vez
+    // (`onRecord(current, old)`, lo mira globals.js).
+    save: 'onSave',
+    record: 'onRecord'
 };
 
 /**
@@ -67,7 +71,21 @@ const CREATURE_EVENTS = {
     attack: 'onAttack',
     // El intercambio entre jugadores (engine/world/intercambio.js); `false` lo impide.
     traderequest: 'onTradeRequest',
-    tradeaccept: 'onTradeAccept'
+    tradeaccept: 'onTradeAccept',
+    // Los canales del chat (engine/world/canales.js): `onJoin(player, canal)`, `onLeave(player, canal)`
+    // y `onSpeak(player, tipo, texto, canal)`, los de los canales de TFS; `false` en `onSpeak` lo calla.
+    channeljoin: 'onJoin',
+    channelleave: 'onLeave',
+    channelspeak: 'onSpeak',
+    // Los de TFS que enganchan engine/scripting/game.js y globals.js: `onThink(creature, interval)`
+    // cada segundo por jugador; `onHealthChange` / `onManaChange` antes de quitar vida o maná (pueden
+    // devolver el daño cambiado); `onPrepareDeath(creature, killer)` (`false`: no muere); y
+    // `onTextEdit(player, item, text)` al guardar lo escrito en un objeto (`false`: no se guarda).
+    think: 'onThink',
+    healthchange: 'onHealthChange',
+    manachange: 'onManaChange',
+    preparedeath: 'onPrepareDeath',
+    textedit: 'onTextEdit'
 };
 
 /** Canales de chat, para el cuarto argumento de `onSay`. */
@@ -108,7 +126,7 @@ class ScriptRegistry {
          * haber muchos (un guardado periódico, un anuncio, una limpieza...). Cada entrada lleva
          * su nombre, su intervalo (`think`) o su hora (`time`).
          */
-        this.globalEvents = { startup: [], shutdown: [], think: [], time: [] };
+        this.globalEvents = { startup: [], shutdown: [], think: [], time: [], save: [], record: [] };
 
         /** Las raids, por nombre: anuncios y monstruos que llegan por etapas. */
         this.raids = new Map();
@@ -276,10 +294,18 @@ class ScriptRegistry {
         }
 
         // `access: 'gamemaster'`: sólo para ese grupo o uno mayor (data/XML/groups.js). Sin él, la
-        // usa cualquiera.
-        const access = definition.access === undefined || definition.access === null || definition.access === ''
-            ? null : String(definition.access);
-        this.talkActions.push({ words: words, handler: definition.onSay, script: script, access: access });
+        // usa cualquiera. `access: true` (el `talk:access(true)` de TFS): sólo el personal, los grupos
+        // con `access: true`. Y `accountType: ACCOUNT_TYPE_GOD` (el `talk:accountType` de TFS): el id
+        // del grupo tiene que llegar a ese número (los ids de groups.js son los ACCOUNT_TYPE_* de TFS).
+        const access = definition.access === undefined || definition.access === null || definition.access === '' ||
+            definition.access === false ? null : (definition.access === true ? true : String(definition.access));
+        const accountType = Number(definition.accountType) || 0;
+        // `separator` (el de TFS): lo que separa las palabras del parámetro. Por defecto un espacio
+        // ('/item 3031'); con '' vale pegado ('/t3031'); con otro ('"') tiene que ir delante del parámetro.
+        const separator = definition.separator === undefined || definition.separator === null
+            ? ' ' : String(definition.separator);
+        this.talkActions.push({ words: words, handler: definition.onSay, script: script, access: access,
+            accountType: accountType, separator: separator });
         this.registeredScripts.add(script);
         return { kind: 'talkaction', count: 1 };
     }
@@ -914,10 +940,24 @@ class ScriptRegistry {
          * raids, y tampoco descubre qué comandos hay probando.
          */
         const jugador = this.world && this.world.getCreature ? this.world.getCreature(Number(c.playerId) || 0) : null;
-        const puede = (t) => !t.access ||
-            !!(jugador && this.world.hasGroup && this.world.hasGroup(jugador, t.access));
-        const matches = this.talkActions.filter((t) =>
-            (lower === t.words || lower.startsWith(t.words + ' ')) && puede(t));
+        const grupo = jugador && this.world.groupOf ? this.world.groupOf(jugador) : null;
+        const puede = (t) => (!t.access ||
+            (t.access === true ? !!(grupo && grupo.access === true)
+                : !!(jugador && this.world.hasGroup && this.world.hasGroup(jugador, t.access)))) &&
+            (!t.accountType || !!(grupo && grupo.id >= t.accountType));
+        // Lo que va detrás de las palabras tiene que empezar por su separador (ver `_registerTalkAction`).
+        const casa = (t) => {
+            if (lower === t.words) {
+                return true;
+            }
+            if (!lower.startsWith(t.words)) {
+                return false;
+            }
+            const sep = t.separator === undefined ? ' ' : t.separator;
+            const resto = lower.slice(t.words.length);
+            return sep === '' || (sep === ' ' ? resto.startsWith(' ') : resto.replace(/^\s+/, '').startsWith(sep));
+        };
+        const matches = this.talkActions.filter((t) => casa(t) && puede(t));
 
         if (matches.length === 0) {
             return { handled: false };
@@ -927,7 +967,10 @@ class ScriptRegistry {
         matches.sort((a, b) => b.words.length - a.words.length);
         const entry = matches[0];
 
-        const param = String(words).slice(entry.words.length).replace(/^\s+/, '');
+        let param = String(words).slice(entry.words.length).replace(/^\s+/, '');
+        if (entry.separator && entry.separator !== ' ' && param.startsWith(entry.separator)) {
+            param = param.slice(entry.separator.length);
+        }
 
         return this._invoke(entry, 'onSay', [
             this.entities.player(c.playerId || 0),

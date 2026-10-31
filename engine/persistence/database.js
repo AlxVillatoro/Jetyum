@@ -37,7 +37,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 /** Versión del esquema. Sube cuando cambie la estructura. */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 11;
 
 /**
  * Las tablas.
@@ -311,6 +311,119 @@ const MIGRATIONS = {
             item      TEXT    NOT NULL
         )`);
         db.exec('CREATE INDEX IF NOT EXISTS idx_player_mail_player ON player_mail(player_id)');
+    },
+
+    /**
+     * Versión 8: LA LISTA VIP EN EL SERVIDOR, la `account_viplist` de TFS. Es de la CUENTA, no del
+     * personaje (todos los personajes de una cuenta ven la misma lista), y apunta a personajes por
+     * id: si uno cambia de nombre, sigue en la lista. `description`, `icon` y `notify` son los
+     * campos de TFS para la nota, el icono y si avisar al entrar.
+     */
+    8: (db) => {
+        db.exec(`CREATE TABLE IF NOT EXISTS account_viplist (
+            account_id  INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+            description TEXT    NOT NULL DEFAULT '',
+            icon        INTEGER NOT NULL DEFAULT 0,
+            notify      INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (account_id, player_id)
+        )`);
+    },
+
+    /**
+     * Versión 9: LOS GREMIOS, con las tablas de TFS: `guilds` (el dueño, cuándo se fundó y el
+     * mensaje del día), `guild_ranks` (`level` 3 = líder, 2 = vicelíder, 1 = miembro), `guild_membership`
+     * (un personaje está en un gremio como mucho: la clave es el personaje) y `guild_invites`.
+     * `guild_wars` también, aunque las guerras se dejen para más adelante: así no hará falta otra
+     * migración para empezarlas.
+     */
+    9: (db) => {
+        db.exec(`CREATE TABLE IF NOT EXISTS guilds (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+            ownerid      INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+            creationdata INTEGER NOT NULL,
+            motd         TEXT    NOT NULL DEFAULT ''
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS guild_ranks (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild_id INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+            name     TEXT    NOT NULL,
+            level    INTEGER NOT NULL
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS guild_membership (
+            player_id INTEGER PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+            guild_id  INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+            rank_id   INTEGER NOT NULL REFERENCES guild_ranks(id) ON DELETE CASCADE,
+            nick      TEXT    NOT NULL DEFAULT ''
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS guild_invites (
+            player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+            guild_id  INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+            PRIMARY KEY (player_id, guild_id)
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS guild_wars (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            guild1  INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+            guild2  INTEGER NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+            name1   TEXT    NOT NULL,
+            name2   TEXT    NOT NULL,
+            status  INTEGER NOT NULL DEFAULT 0,
+            started INTEGER NOT NULL DEFAULT 0,
+            ended   INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec('CREATE INDEX IF NOT EXISTS idx_guild_membership_guild ON guild_membership(guild_id)');
+    },
+
+    /**
+     * Versión 10: LOS CASTIGOS, con las tablas de TFS: `account_bans` (uno vigente por cuenta),
+     * `account_ban_history` (todos los que hubo), `ip_bans` y `player_namelocks` (un personaje que
+     * tiene que cambiar de nombre antes de volver a jugar). Las horas van en SEGUNDOS, como TFS, y
+     * `expires_at` 0 es para siempre.
+     */
+    10: (db) => {
+        db.exec(`CREATE TABLE IF NOT EXISTS account_bans (
+            account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+            reason     TEXT    NOT NULL DEFAULT '',
+            banned_at  INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL DEFAULT 0,
+            banned_by  INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS account_ban_history (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            reason     TEXT    NOT NULL DEFAULT '',
+            banned_at  INTEGER NOT NULL,
+            expired_at INTEGER NOT NULL DEFAULT 0,
+            banned_by  INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS ip_bans (
+            ip         TEXT    PRIMARY KEY,
+            reason     TEXT    NOT NULL DEFAULT '',
+            banned_at  INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL DEFAULT 0,
+            banned_by  INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS player_namelocks (
+            player_id     INTEGER PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+            reason        TEXT    NOT NULL DEFAULT '',
+            namelocked_at INTEGER NOT NULL,
+            namelocked_by INTEGER NOT NULL DEFAULT 0
+        )`);
+    },
+
+    /**
+     * Versión 11: `players.lastip`, LA ÚLTIMA IP desde la que entró cada personaje (la columna de
+     * TFS). Sin ella, `/ipban` sólo podía con quien estuviera dentro, porque la IP la sabe la conexión.
+     */
+    11: (db) => {
+        try {
+            db.exec("ALTER TABLE players ADD COLUMN lastip TEXT NOT NULL DEFAULT ''");
+        } catch (error) {
+            if (!/duplicate column name/i.test(String(error.message))) {
+                throw error;
+            }
+        }
     }
 };
 
@@ -1108,6 +1221,348 @@ class Database {
         }
         const borrar = this.db.prepare('DELETE FROM player_mail WHERE id = ?');
         return this.transaction(() => lista.reduce((n, id) => n + Number(borrar.run(id).changes), 0));
+    }
+
+    // -----------------------------------------------------------------------
+    // La lista VIP (versión 8)
+    // -----------------------------------------------------------------------
+
+    // Lo que usa `engine/world/vip.js`: la lista es de la CUENTA y apunta a personajes por su id.
+
+    /**
+     * La lista VIP de una cuenta, por nombre.
+     *
+     * @returns {Array<{playerId: number, name: string, description: string, icon: number, notify: boolean}>}
+     */
+    listVip(accountId) {
+        return this.db.prepare(
+            `SELECT v.player_id, p.name, v.description, v.icon, v.notify
+             FROM account_viplist v JOIN players p ON p.id = v.player_id
+             WHERE v.account_id = ? ORDER BY p.name COLLATE NOCASE`
+        ).all(Number(accountId)).map((row) => ({
+            playerId: Number(row.player_id),
+            name: row.name,
+            description: row.description,
+            icon: Number(row.icon) || 0,
+            notify: !!row.notify
+        }));
+    }
+
+    /** Añade un personaje a la lista de una cuenta. Devuelve si no estaba. */
+    addVip(accountId, playerId, options) {
+        const o = options || {};
+        const r = this.db.prepare(
+            `INSERT OR IGNORE INTO account_viplist (account_id, player_id, description, icon, notify)
+             VALUES (?, ?, ?, ?, ?)`
+        ).run(Number(accountId), Number(playerId), String(o.description || '').slice(0, 128),
+            Number(o.icon) || 0, o.notify ? 1 : 0);
+        return Number(r.changes) > 0;
+    }
+
+    /** Quita un personaje de la lista de una cuenta. Devuelve si estaba. */
+    removeVip(accountId, playerId) {
+        const r = this.db.prepare('DELETE FROM account_viplist WHERE account_id = ? AND player_id = ?')
+            .run(Number(accountId), Number(playerId));
+        return Number(r.changes) > 0;
+    }
+
+    /** Las cuentas que tienen a ese personaje en su lista (a quién avisar cuando entra o sale). */
+    vipFollowers(playerId) {
+        return this.db.prepare('SELECT account_id FROM account_viplist WHERE player_id = ?')
+            .all(Number(playerId)).map((row) => Number(row.account_id));
+    }
+
+    // -----------------------------------------------------------------------
+    // Los gremios (versión 9)
+    // -----------------------------------------------------------------------
+
+    // Lo que usa `engine/world/gremios.js`. Las reglas (quién puede invitar, echar, ascender) son del
+    // mundo; aquí sólo se lee y se escribe. Las horas, en SEGUNDOS, como en TFS.
+
+    /**
+     * Funda un gremio: la fila, sus tres rangos (`rangos`: `[{name, level}]`, del líder al miembro)
+     * y al fundador como líder, todo en una transacción. Lanza si el nombre ya existe.
+     *
+     * @returns {number} el id del gremio
+     */
+    createGuild(name, ownerId, creationTime, rangos) {
+        return this.transaction(() => {
+            const r = this.db.prepare('INSERT INTO guilds (name, ownerid, creationdata, motd) VALUES (?, ?, ?, ?)')
+                .run(String(name), Number(ownerId), Math.floor(Number(creationTime) || 0), '');
+            const guildId = Number(r.lastInsertRowid);
+            const insertar = this.db.prepare('INSERT INTO guild_ranks (guild_id, name, level) VALUES (?, ?, ?)');
+            let lider = 0;
+            (rangos || []).forEach((rango) => {
+                const id = Number(insertar.run(guildId, String(rango.name), Number(rango.level)).lastInsertRowid);
+                if (Number(rango.level) === 3) {
+                    lider = id;
+                }
+            });
+            this.db.prepare('DELETE FROM guild_invites WHERE player_id = ?').run(Number(ownerId));
+            this.db.prepare(
+                `INSERT INTO guild_membership (player_id, guild_id, rank_id, nick) VALUES (?, ?, ?, '')
+                 ON CONFLICT (player_id) DO UPDATE SET guild_id = excluded.guild_id, rank_id = excluded.rank_id, nick = ''`
+            ).run(Number(ownerId), guildId, lider);
+            return guildId;
+        });
+    }
+
+    /** Un gremio por su id (un número) o su nombre (sin mayúsculas), o null. */
+    findGuild(idOrName) {
+        const porId = typeof idOrName === 'number';
+        const row = porId
+            ? this.db.prepare('SELECT * FROM guilds WHERE id = ?').get(Number(idOrName))
+            : this.db.prepare('SELECT * FROM guilds WHERE name = ? COLLATE NOCASE').get(String(idOrName || '').trim());
+        return row ? {
+            id: Number(row.id),
+            name: row.name,
+            ownerId: Number(row.ownerid),
+            creationData: Number(row.creationdata) || 0,
+            motd: row.motd || ''
+        } : null;
+    }
+
+    /** Los rangos de un gremio, del más alto al más bajo: `[{id, name, level}]`. */
+    guildRanks(guildId) {
+        return this.db.prepare('SELECT id, name, level FROM guild_ranks WHERE guild_id = ? ORDER BY level DESC, id')
+            .all(Number(guildId)).map((row) => ({ id: Number(row.id), name: row.name, level: Number(row.level) }));
+    }
+
+    /** El gremio de un personaje: `{guildId, rankId, nick}`, o null si no está en ninguno. */
+    guildMembership(playerId) {
+        const row = this.db.prepare('SELECT guild_id, rank_id, nick FROM guild_membership WHERE player_id = ?')
+            .get(Number(playerId));
+        return row ? { guildId: Number(row.guild_id), rankId: Number(row.rank_id), nick: row.nick || '' } : null;
+    }
+
+    /**
+     * Los miembros de un gremio, del rango más alto al más bajo y por nombre:
+     * `[{playerId, name, sex, rankId, rankName, rankLevel, nick}]`.
+     */
+    guildMembers(guildId) {
+        return this.db.prepare(
+            `SELECT m.player_id, p.name, p.sex, m.rank_id, r.name AS rank_name, r.level AS rank_level, m.nick
+             FROM guild_membership m
+             JOIN players p ON p.id = m.player_id
+             JOIN guild_ranks r ON r.id = m.rank_id
+             WHERE m.guild_id = ? ORDER BY r.level DESC, p.name COLLATE NOCASE`
+        ).all(Number(guildId)).map((row) => ({
+            playerId: Number(row.player_id),
+            name: row.name,
+            sex: row.sex,
+            rankId: Number(row.rank_id),
+            rankName: row.rank_name,
+            rankLevel: Number(row.rank_level),
+            nick: row.nick || ''
+        }));
+    }
+
+    /**
+     * Mete a un personaje en un gremio con un rango (o le cambia el gremio). Al entrar se borran sus
+     * invitaciones, como en TFS: ya no le sirven.
+     */
+    setGuildMembership(playerId, guildId, rankId, nick) {
+        return this.transaction(() => {
+            this.db.prepare('DELETE FROM guild_invites WHERE player_id = ?').run(Number(playerId));
+            this.db.prepare(
+                `INSERT INTO guild_membership (player_id, guild_id, rank_id, nick) VALUES (?, ?, ?, ?)
+                 ON CONFLICT (player_id) DO UPDATE SET guild_id = excluded.guild_id, rank_id = excluded.rank_id,
+                 nick = excluded.nick`
+            ).run(Number(playerId), Number(guildId), Number(rankId), String(nick || ''));
+            return true;
+        });
+    }
+
+    /** Lo saca de su gremio. Devuelve si estaba en alguno. */
+    removeGuildMembership(playerId) {
+        return this.db.prepare('DELETE FROM guild_membership WHERE player_id = ?').run(Number(playerId)).changes > 0;
+    }
+
+    setGuildRank(playerId, rankId) {
+        return this.db.prepare('UPDATE guild_membership SET rank_id = ? WHERE player_id = ?')
+            .run(Number(rankId), Number(playerId)).changes > 0;
+    }
+
+    setGuildNick(playerId, nick) {
+        return this.db.prepare('UPDATE guild_membership SET nick = ? WHERE player_id = ?')
+            .run(String(nick || ''), Number(playerId)).changes > 0;
+    }
+
+    setGuildMotd(guildId, motd) {
+        return this.db.prepare('UPDATE guilds SET motd = ? WHERE id = ?')
+            .run(String(motd || ''), Number(guildId)).changes > 0;
+    }
+
+    setGuildOwner(guildId, ownerId) {
+        return this.db.prepare('UPDATE guilds SET ownerid = ? WHERE id = ?')
+            .run(Number(ownerId), Number(guildId)).changes > 0;
+    }
+
+    /** Disuelve un gremio: con él se van sus rangos, sus miembros y sus invitaciones (ON DELETE CASCADE). */
+    deleteGuild(guildId) {
+        return this.db.prepare('DELETE FROM guilds WHERE id = ?').run(Number(guildId)).changes > 0;
+    }
+
+    addGuildInvite(playerId, guildId) {
+        return this.db.prepare('INSERT OR IGNORE INTO guild_invites (player_id, guild_id) VALUES (?, ?)')
+            .run(Number(playerId), Number(guildId)).changes > 0;
+    }
+
+    removeGuildInvite(playerId, guildId) {
+        return this.db.prepare('DELETE FROM guild_invites WHERE player_id = ? AND guild_id = ?')
+            .run(Number(playerId), Number(guildId)).changes > 0;
+    }
+
+    hasGuildInvite(playerId, guildId) {
+        return !!this.db.prepare('SELECT 1 AS si FROM guild_invites WHERE player_id = ? AND guild_id = ?')
+            .get(Number(playerId), Number(guildId));
+    }
+
+    /** Los gremios que han invitado a un personaje: `[{id, name}]`. */
+    guildInvitesOf(playerId) {
+        return this.db.prepare(
+            `SELECT g.id, g.name FROM guild_invites i JOIN guilds g ON g.id = i.guild_id
+             WHERE i.player_id = ? ORDER BY g.name COLLATE NOCASE`
+        ).all(Number(playerId)).map((row) => ({ id: Number(row.id), name: row.name }));
+    }
+
+    // -----------------------------------------------------------------------
+    // Los castigos (versión 10)
+    // -----------------------------------------------------------------------
+
+    // Lo que usa `engine/world/castigos.js`: suspender una cuenta o una IP, y bloquear un personaje
+    // por su nombre. Las horas en SEGUNDOS, como en TFS; `expires_at` 0 es para siempre, y
+    // `banned_by` es el id del personaje que castigó (0 si fue el sistema).
+
+    /** La suspensión vigente de una cuenta (con el nombre de quien la puso), o null. */
+    getAccountBan(accountId) {
+        const row = this.db.prepare(
+            `SELECT b.*, p.name AS banned_by_name FROM account_bans b
+             LEFT JOIN players p ON p.id = b.banned_by WHERE b.account_id = ?`
+        ).get(Number(accountId));
+        return row ? {
+            accountId: Number(row.account_id),
+            reason: row.reason || '',
+            bannedAt: Number(row.banned_at) || 0,
+            expiresAt: Number(row.expires_at) || 0,
+            bannedBy: Number(row.banned_by) || 0,
+            bannedByName: row.banned_by_name || ''
+        } : null;
+    }
+
+    /** Suspende una cuenta (o cambia la suspensión que ya tenía). */
+    banAccount(accountId, ban) {
+        const b = ban || {};
+        this.db.prepare(
+            `INSERT INTO account_bans (account_id, reason, banned_at, expires_at, banned_by) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (account_id) DO UPDATE SET reason = excluded.reason, banned_at = excluded.banned_at,
+             expires_at = excluded.expires_at, banned_by = excluded.banned_by`
+        ).run(Number(accountId), String(b.reason || '').slice(0, 255), Math.floor(Number(b.bannedAt) || 0),
+            Math.max(0, Math.floor(Number(b.expiresAt) || 0)), Number(b.bannedBy) || 0);
+        return true;
+    }
+
+    /**
+     * Quita la suspensión de una cuenta y la pasa al HISTORIAL (`account_ban_history`) con la hora en
+     * que acabó (`endedAt`, en segundos): la levante un GM o caduque, queda constancia.
+     *
+     * @returns {boolean} si tenía una
+     */
+    liftAccountBan(accountId, endedAt) {
+        return this.transaction(() => {
+            const row = this.db.prepare('SELECT * FROM account_bans WHERE account_id = ?').get(Number(accountId));
+            if (!row) {
+                return false;
+            }
+            this.db.prepare(
+                `INSERT INTO account_ban_history (account_id, reason, banned_at, expired_at, banned_by)
+                 VALUES (?, ?, ?, ?, ?)`
+            ).run(Number(row.account_id), row.reason || '', Number(row.banned_at) || 0,
+                Math.floor(Number(endedAt) || 0), Number(row.banned_by) || 0);
+            this.db.prepare('DELETE FROM account_bans WHERE account_id = ?').run(Number(accountId));
+            return true;
+        });
+    }
+
+    /** Las suspensiones que tuvo una cuenta, de la más nueva a la más vieja. */
+    accountBanHistory(accountId) {
+        return this.db.prepare(
+            `SELECT h.*, p.name AS banned_by_name FROM account_ban_history h
+             LEFT JOIN players p ON p.id = h.banned_by WHERE h.account_id = ? ORDER BY h.banned_at DESC, h.id DESC`
+        ).all(Number(accountId)).map((row) => ({
+            reason: row.reason || '',
+            bannedAt: Number(row.banned_at) || 0,
+            expiredAt: Number(row.expired_at) || 0,
+            bannedBy: Number(row.banned_by) || 0,
+            bannedByName: row.banned_by_name || ''
+        }));
+    }
+
+    /** La suspensión vigente de una IP, o null. */
+    getIpBan(ip) {
+        const row = this.db.prepare(
+            `SELECT b.*, p.name AS banned_by_name FROM ip_bans b
+             LEFT JOIN players p ON p.id = b.banned_by WHERE b.ip = ?`
+        ).get(String(ip || ''));
+        return row ? {
+            ip: row.ip,
+            reason: row.reason || '',
+            bannedAt: Number(row.banned_at) || 0,
+            expiresAt: Number(row.expires_at) || 0,
+            bannedBy: Number(row.banned_by) || 0,
+            bannedByName: row.banned_by_name || ''
+        } : null;
+    }
+
+    /** Apunta la IP desde la que ha entrado un personaje (`players.lastip`, versión 11). */
+    setLastIp(characterId, ip) {
+        this.db.prepare('UPDATE players SET lastip = ? WHERE id = ?').run(String(ip || ''), Number(characterId));
+    }
+
+    banIp(ip, ban) {
+        const b = ban || {};
+        this.db.prepare(
+            `INSERT INTO ip_bans (ip, reason, banned_at, expires_at, banned_by) VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (ip) DO UPDATE SET reason = excluded.reason, banned_at = excluded.banned_at,
+             expires_at = excluded.expires_at, banned_by = excluded.banned_by`
+        ).run(String(ip), String(b.reason || '').slice(0, 255), Math.floor(Number(b.bannedAt) || 0),
+            Math.max(0, Math.floor(Number(b.expiresAt) || 0)), Number(b.bannedBy) || 0);
+        return true;
+    }
+
+    /** Quita la suspensión de una IP. Las de IP no tienen historial en TFS. */
+    liftIpBan(ip) {
+        return this.db.prepare('DELETE FROM ip_bans WHERE ip = ?').run(String(ip || '')).changes > 0;
+    }
+
+    /** El bloqueo de nombre de un personaje (con el nombre de quien lo puso), o null. */
+    getNamelock(playerId) {
+        const row = this.db.prepare(
+            `SELECT n.*, p.name AS by_name FROM player_namelocks n
+             LEFT JOIN players p ON p.id = n.namelocked_by WHERE n.player_id = ?`
+        ).get(Number(playerId));
+        return row ? {
+            playerId: Number(row.player_id),
+            reason: row.reason || '',
+            namelockedAt: Number(row.namelocked_at) || 0,
+            namelockedBy: Number(row.namelocked_by) || 0,
+            namelockedByName: row.by_name || ''
+        } : null;
+    }
+
+    namelockPlayer(playerId, lock) {
+        const l = lock || {};
+        this.db.prepare(
+            `INSERT INTO player_namelocks (player_id, reason, namelocked_at, namelocked_by) VALUES (?, ?, ?, ?)
+             ON CONFLICT (player_id) DO UPDATE SET reason = excluded.reason, namelocked_at = excluded.namelocked_at,
+             namelocked_by = excluded.namelocked_by`
+        ).run(Number(playerId), String(l.reason || '').slice(0, 255), Math.floor(Number(l.namelockedAt) || 0),
+            Number(l.namelockedBy) || 0);
+        return true;
+    }
+
+    removeNamelock(playerId) {
+        return this.db.prepare('DELETE FROM player_namelocks WHERE player_id = ?').run(Number(playerId)).changes > 0;
     }
 
     // -----------------------------------------------------------------------

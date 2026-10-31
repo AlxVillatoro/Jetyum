@@ -290,7 +290,8 @@ copias temporales):
 2. **Casas en el motor**: alquiler, dueños y puertas con `doorId` (el mapa ya las describe).
 3. **El resto de RME**: bordes `inner`/`friend`/`specific`, variantes en los compuestos y plantas
    en fantasma ([docs/MAPAS.md §5](docs/MAPAS.md#5-lo-que-queda-por-hacer-roadmap-de-mapas)).
-4. **Importadores** de OTBM y de `.dat`/`.spr` 8.60.
+4. **Importadores** de `.dat`/`.spr` 8.60. (OTBM ya se importa y se exporta, con los materiales de
+   RME: [docs/MAPAS.md §5.1](docs/MAPAS.md#51-importar-y-exportar-otbm).)
 
 ---
 

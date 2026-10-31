@@ -146,7 +146,8 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Contenedores, ranuras y arrastrar | hecho y probado |
 | Muerte del jugador y reaparición | hecho y probado |
 | NPCs: definiciones, diálogo y paseo | hecho y probado |
-| Importadores OTBM/OTB/DAT/SPR | pendiente |
+| Importador y exportador OTBM (con OTB) y materiales de RME | hecho y probado |
+| Importadores DAT/SPR 8.60 | pendiente |
 | Comercio con NPC (comprar y vender) | hecho y probado |
 | Peso y capacidad | hecho y probado |
 
@@ -394,6 +395,14 @@ En contra para el runtime, y son razones técnicas concretas:
 **El `.otb` no es opcional.** Está documentado por el propio autor del parser de
 OTBM: sin él no se puede leer correctamente un mapa.
 
+**Implementada.** La frontera ya existe: `editor/lib/otbm.js` lee y escribe OTBM (1 a 4) y
+`items.otb` sin dependencias (el formato es pequeño; se escribió desde el formato, sin código de
+RME), recorriendo el árbol de un solo paso y saltando las zonas que no interesan.
+`tools/importar-otbm.mjs` y `tools/exportar-otbm.mjs` convierten en los dos sentidos, y el editor
+importa desde «Importar OTBM…». Lo difícil no es el binario sino los IDS: el catálogo de Jetyum no
+es el de Tibia, y se traducen con `data/editor/equivalencias-otbm.json` (capas: manual, papel en un
+pincel de RME, función, nombre, clase, color de minimapa y respaldo). Detalle en docs/MAPAS.md §5.1.
+
 ### 3.7 Las licencias son una trampa, y ya está resuelta
 
 | Proyecto | Licencia | ¿Se puede reutilizar? |
@@ -501,7 +510,7 @@ almacenamiento disperso, tiles con apilado (*stackpos*), coste de paso con la
 fórmula real de Tibia, reglas de paso incluidas las esquinas, visibilidad entre
 plantas, validador de mapas, criaturas, movimiento con cooldown, planificador de
 eventos, spawns con reaparición y limpieza de los tiles que el tránsito materializa.
-El importador de OTBM sigue pendiente.
+El importador y el exportador de OTBM están hechos (§3.6 y docs/MAPAS.md §5.1).
 
 **Fase 4 — Combate e IA.** *Hecha, con una salvedad.* Daño con armadura y
 resistencias elementales, muerte, botín, experiencia con la fórmula cúbica
@@ -772,8 +781,28 @@ cogibles que trae el mapa y se ponen los guardados (TFS hace lo mismo al borrar 
 del OTBM en las casillas de casa). El estado se guarda al cambiar; lo de dentro, con el guardado
 periódico y al apagar, y sólo si ha cambiado.
 
+**Los gremios** (`engine/world/gremios.js`, versión 9 de la base) usan las tablas de TFS: `guilds`
+(nombre único sin mayúsculas, dueño, fundación en segundos y mensaje del día), `guild_ranks` (tres por
+gremio, `level` 3/2/1), `guild_membership` (la clave es el personaje: uno está en un gremio como
+mucho) y `guild_invites`; `guild_wars` existe pero las guerras no. **La base es la verdad**: cada
+orden lee de ella el gremio y el rango de quien la da (otro pudo echarle hace un momento) y escribe
+al momento, también a quien no está conectado. En memoria sólo hay una caché —el gremio de cada
+jugador conectado (`player.gremio`, cargado al entrar) y los datos de cada gremio— que se rehace en
+cuanto algo cambia. Fundar y pasar el mando van en una transacción; disolver es un `DELETE` y el
+resto cae por `ON DELETE CASCADE`.
+
+**Los castigos** (`engine/world/castigos.js`, versión 10) también son las tablas de TFS, con las
+horas en segundos y `expires_at` 0 para siempre: `account_bans` (una vigente por cuenta),
+`account_ban_history` (adonde pasa la que se levanta, se sustituye o caduca), `ip_bans` y
+`player_namelocks`. Se miran **al entrar**: la IP en la sesión, antes de autenticar (la IP la pone
+`server.js` en `createSession(send, { ip })`); la cuenta y el namelock en el repositorio, ya con la
+contraseña comprobada, para no contarle nada a quien no la sabe. Lo caducado se limpia ahí mismo.
+Silenciar no va a la base sino a un storage del personaje (la hora del reloj del mundo hasta la que
+dura), que se guarda con él como la condición «muted» de TFS.
+
 Lo que falta: la web de creación de cuentas (hoy se crean solas, que es cómodo en
-desarrollo e inseguro en producción) y los gremios.
+desarrollo e inseguro en producción), cambiar el nombre a un personaje con namelock y las guerras
+entre gremios.
 
 **Fase 8 — Herramientas.** *Hecha la parte propia.* Editor de mapas y de objetos, con
 escritor de mapas y edición quirúrgica de `items.xml`.
@@ -799,9 +828,8 @@ archivo. Un formato cuyo diff da miedo es un formato que nadie mantiene.
 cliente. Si tuviera los suyos, acabarían discrepando, y un mapa que se ve bien en el
 editor y mal en el juego cuesta horas porque cada mitad parece correcta.
 
-Lo que falta: el importador y exportador de OTBM (para hablar con Remere's y con los
-mapas de Tibia), `otb2json` y el atlas de `.spr`. Sólo lo que no cubran las herramientas
-MIT.
+El importador y exportador de OTBM ya hablan con Remere's y con los mapas de Tibia
+(docs/MAPAS.md §5.1). Lo que falta: el atlas de `.spr` y leer un `.dat`/`.spr` 8.60.
 
 **Fase 9 — Render 2.5D.** Hecho lo estructural (desplazamiento y orden). Falta la
 altura de sprite por item, las sombras proyectadas de verdad y el atlas.

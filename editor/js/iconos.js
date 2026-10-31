@@ -81,6 +81,8 @@ const ICONOS = {
     'guardar-como': '<path d="M11 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v3"/><path d="M7 3v5h8V3"/><path d="m14 21 .8-3.2 5-5a1.6 1.6 0 0 1 2.4 2.4l-5 5z"/>',
     'propiedades-mapa': '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/>',
     copias: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/>',
+    // Importar un .otbm: un mapa plegado con una flecha que entra.
+    'importar-otbm': '<path d="M21 13V3l-6 3-6-3-6 3v15l6-3 3 1.5"/><path d="M9 3v15M15 6v5"/><path d="M19 15v6M16 18l3 3 3-3"/>',
 
     // El diagnóstico: un triángulo de aviso, como el de cualquier lista de problemas.
     diagnostico: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17v.01"/>',

@@ -217,6 +217,44 @@ export const SERVER = {
     TRADE_CLOSE: 0x48,
 
     /**
+     * LOS CANALES DEL CHAT que puedes abrir (la lista de «Channels» de Tibia): `[0x51, [[id, nombre],
+     * ...]]`. Responde a `CLIENT.CHANNEL_LIST`. Los ids son los de TFS: 0 tu gremio, 1 tu grupo, 3
+     * «Juego», 5 «Comercio», 7 «Ayuda» y del 100 en adelante los privados. El nombre llega en español
+     * (el del gremio y el de un privado, «Canal de Ana», también): el cliente lo traduce.
+     */
+    CHANNEL_LIST: 0x51,
+
+    /**
+     * Se abre un canal (lo pediste, o creaste tu canal privado): `[0x52, id, nombre, propio]`. `propio`
+     * 1 si es TU canal privado (puedes invitar y excluir). El 1 (grupo) es la pestaña de siempre.
+     */
+    CHANNEL_OPEN: 0x52,
+
+    /**
+     * Una línea en un canal: `[0x53, id, autor, nivel, texto, tipo]`. Con `autor`, la dijo un jugador
+     * de ese `nivel` y se pinta «Autor [nivel]: texto», sin traducir; sin autor (''), es del
+     * servidor (el mensaje del día del gremio, un anuncio) y se traduce. `tipo`: '' (un jugador),
+     * 'sistema' o 'rojo'.
+     */
+    CHANNEL_MESSAGE: 0x53,
+
+    /** El servidor te saca de un canal (te excluyeron, el dueño lo cerró, saliste del gremio): `[0x54, id]`. */
+    CHANNEL_CLOSE: 0x54,
+
+    /**
+     * TU LISTA VIP, entera (es de la cuenta y vive en la base): `[0x55, [[id, nombre, enLinea], ...]]`.
+     * Llega al entrar y cada vez que cambia. `id` es el del personaje; `enLinea` 1 si está dentro.
+     * Sin persistencia no llega nunca, y el cliente se queda con la lista de su navegador.
+     */
+    VIP_LIST: 0x55,
+
+    /**
+     * Uno de tu lista ha entrado o salido: `[0x56, id, nombre, enLinea]`. El cliente lo dice en el
+     * registro del servidor («Ana ha entrado en el juego.») y pone el punto verde o gris.
+     */
+    VIP_STATE: 0x56,
+
+    /**
      * Latido del servidor: el instante del motor y cuántos mensajes se enviaron.
      * Sirve para que el cliente pueda medir su latencia y para saber que la
      * conexión sigue viva aunque no pase nada.
@@ -437,6 +475,36 @@ export const CLIENT = {
 
     /** Un mensaje privado a otro jugador: `[nombre, texto]`. */
     PRIVATE_MESSAGE: 0x97,
+
+    /** Pedir la lista de canales: `[0x9B]`. Contesta `SERVER.CHANNEL_LIST`. */
+    CHANNEL_LIST: 0x9B,
+
+    /** Abrir (entrar en) un canal: `[0x98, id]` (el 0x98 de Tibia). Contesta `SERVER.CHANNEL_OPEN` o un texto. */
+    CHANNEL_OPEN: 0x98,
+
+    /** Salir de un canal (cerrar su pestaña): `[0x99, id]` (el 0x99 de Tibia). */
+    CHANNEL_CLOSE: 0x99,
+
+    /**
+     * Hablar en un canal: `[0x9A, id, texto]`. Lo oyen todos los que lo tienen abierto, tú incluido;
+     * si no se puede (no estás, el nivel, la espera de Comercio, estás silenciado), llega un texto.
+     */
+    CHANNEL_SAY: 0x9A,
+
+    /** Abrir TU canal privado (o volver al que tenías): `[0xAA]` (el de Tibia). */
+    CHANNEL_CREATE_PRIVATE: 0xAA,
+
+    /** Invitar a alguien conectado a tu canal privado: `[0xAB, nombre]` (el de Tibia). */
+    CHANNEL_INVITE: 0xAB,
+
+    /** Excluirlo (si estaba dentro, se le cierra): `[0xAC, nombre]` (el de Tibia). */
+    CHANNEL_EXCLUDE: 0xAC,
+
+    /** Añadir a tu lista VIP un personaje que exista: `[0xDC, nombre]` (el de Tibia). Contesta `SERVER.VIP_LIST`. */
+    VIP_ADD: 0xDC,
+
+    /** Quitarlo: `[0xDD, id]` (o el nombre). Contesta `SERVER.VIP_LIST`. */
+    VIP_REMOVE: 0xDD,
 
     /** El cliente ya terminó de cargar y quiere entrar al mundo. */
     ENTER_WORLD: 0x0F,

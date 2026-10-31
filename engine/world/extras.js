@@ -307,7 +307,8 @@ const extras = {
     /** Los del grupo de un jugador que están cerca (con él), para repartir la experiencia. */
     partyMembersNear(player) {
         const grupo = this.partyOf(player);
-        if (!grupo) {
+        // Sin grupo, o con la experiencia compartida apagada (`party.setSharedExperience(false)`), cada uno la suya.
+        if (!grupo || grupo.compartir === false) {
             return [player];
         }
         return grupo.members.filter((m) => this.players.has(m.id) && !m.isDead() &&

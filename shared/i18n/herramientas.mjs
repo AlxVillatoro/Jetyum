@@ -15,6 +15,7 @@ import editorSeleccion from './en/editor-seleccion.mjs';
 import editorMapas from './en/editor-mapas.mjs';
 import editorDiagnostico from './en/editor-diagnostico.mjs';
 import editorInterfaz from './en/editor-interfaz.mjs';
+import editorOtbm from './en/editor-otbm.mjs';
 
 registrar('en', motor);
 registrar('en', contenido);
@@ -26,3 +27,4 @@ registrar('en', editorSeleccion);
 registrar('en', editorMapas);
 registrar('en', editorDiagnostico);
 registrar('en', editorInterfaz);
+registrar('en', editorOtbm);

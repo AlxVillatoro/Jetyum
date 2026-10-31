@@ -131,6 +131,17 @@ module.exports = {
     talkSpamMessages: 6,
     talkSpamWindowMs: 5000,
 
+    // LOS CANALES DEL CHAT (engine/world/canales.js), como los de TFS: el nivel que piden para entrar
+    // y hablar (`level`) y, en Comercio, cada cuánto se puede poner una oferta (`cooldownMs`: dos
+    // minutos). `name` cambia el nombre que se ve. El personal no tiene ni nivel ni espera.
+    chatChannels: {
+        juego: { level: 1 },
+        comercio: { level: 1, cooldownMs: 2 * 60 * 1000 },
+        ayuda: { level: 1 }
+    },
+    // LA LISTA VIP (engine/world/vip.js): cuántos amigos caben en la de cada cuenta (TFS: 20).
+    vipLimit: 20,
+
     // -----------------------------------------------------------------------
     // Persistencia
     // -----------------------------------------------------------------------
@@ -222,6 +233,11 @@ module.exports = {
     houseLevel: 1,
     houseRentPeriod: 'monthly',
     bedItems: [{ head: 21050, foot: 21051, headOccupied: 21052, footOccupied: 21053 }],
+
+    // LOS GREMIOS (engine/world/gremios.js): el nivel para fundar uno con `!createguild`.
+    guildCreateLevel: 8,
+    // LOS CASTIGOS (engine/world/castigos.js): los días de un `/ban` o un `/ipban` que no los dice.
+    banDays: 7,
 
     // PvP: matar a `redSkullKills` jugadores sin calavera en `redSkullTime` da la calavera ROJA, que
     // dura eso mismo. Atacar a quien no la lleva pone la BLANCA durante `whiteSkullTime`.

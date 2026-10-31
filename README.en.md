@@ -296,7 +296,8 @@ it writes to temporary copies):
 2. **Houses in the engine**: rent, owners and doors with `doorId` (the map already describes them).
 3. **The rest of RME**: `inner`/`friend`/`specific` borders, variants in composites and ghost
    floors ([docs/MAPAS.md §5](docs/MAPAS.md#5-lo-que-queda-por-hacer-roadmap-de-mapas)).
-4. **Importers** for OTBM and 8.60 `.dat`/`.spr`.
+4. **Importers** for 8.60 `.dat`/`.spr`. (OTBM is already imported and exported, along with RME
+   materials: [docs/MAPAS.md §5.1](docs/MAPAS.md#51-importar-y-exportar-otbm).)
 
 ---
 

@@ -73,9 +73,10 @@ function createNetworkServer(options) {
     wss.on('connection', (socket, request) => {
         const queue = [];
 
+        // La IP del cliente va a la sesión: con ella se mira si está suspendida (castigos.js).
         const session = engine.createSession((message) => {
             queue.push(message);
-        });
+        }, { ip: request && request.socket ? String(request.socket.remoteAddress || '') : '' });
 
         const entry = { session: session, queue: queue, socket: socket, ventana: 0, cuenta: 0 };
         connections.set(socket, entry);

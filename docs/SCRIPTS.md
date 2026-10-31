@@ -14,10 +14,10 @@ toque, y al arrancar el motor lo carga solo. Para recargarlos sin reiniciar el s
 | `action` | `actions` | `data/scripts/actions/` | `onUse(player, item, fromPos, target, toPos, isHotkey)` |
 | `movement` | `movements` | `data/scripts/movements/` | `onStepIn`, `onStepOut`, `onEquip`, `onDeEquip`, `onAddItem`, `onRemoveItem` |
 | `talkaction` | `talkactions` | `data/scripts/talkactions/` | `onSay(player, words, param, type)` |
-| `event` | `creaturescripts` | `data/scripts/events/` | `onKill`, `onDeath`, `onAdvance`, `onLogin`, `onLogout`, `onAttack`, `onTradeRequest`, `onTradeAccept` |
+| `event` | `creaturescripts` | `data/scripts/events/` | `onKill`, `onDeath`, `onAdvance`, `onLogin`, `onLogout`, `onAttack`, `onTradeRequest`, `onTradeAccept`, los de los canales: `onJoin`, `onLeave`, `onSpeak`, y los de TFS: `onThink`, `onHealthChange`, `onManaChange`, `onPrepareDeath`, `onTextEdit` |
 | `spell` | `spells` | `data/scripts/spells/` | `onCastSpell(player, target, param)` |
 | `quest` | `quests.xml` | `data/scripts/quests/` | (definición: misiones por storages) |
-| `globalevent` | `globalevents` | `data/scripts/globalevents/` | `onStartup`, `onShutdown`, `onThink(interval)`, `onTime(hora)` |
+| `globalevent` | `globalevents` | `data/scripts/globalevents/` | `onStartup`, `onShutdown`, `onThink(interval)`, `onTime(hora)`, `onSave()`, `onRecord(current, old)` |
 | `raid` | `raids` (XML) | `data/scripts/raids/` | etapas: `announce`, `spawn`, `run(Game)` |
 | `monster` | `monster/*.xml` | `data/monsters/` | (definición, no callback) |
 | `npc` | `npc/scripts/*.lua` | `data/npc/` | `onSay`, palabras clave, comercio |
@@ -200,6 +200,17 @@ module.exports = {
 };
 ```
 
+**Como en TFS**, también valen `access: true` (el `talk:access(true)`: sólo el personal, los grupos con
+`access: true`) y `accountType: ACCOUNT_TYPE_GOD` (el `talk:accountType`: el id del grupo tiene que
+llegar a ese número; los ids de `groups.js` coinciden con los `ACCOUNT_TYPE_*` de TFS, 1 normal ... 4
+gamemaster ... 6 god). Los comandos de moderación (`talkactions/castigos.js`) piden `access:
+'gamemaster'`, que es lo mismo que `accountType: ACCOUNT_TYPE_GAMEMASTER`; cualquiera de las dos formas
+vale para un comando nuevo.
+
+`separator` (el de TFS) dice qué separa las palabras del parámetro: por defecto un espacio
+(`/item 3031`); con `''` vale pegado (`/t3031`, `param` = `'3031'`); con otro (`'"'`) el parámetro
+tiene que empezar por él (`!casa "Bob`, `param` = `'Bob'`), y sin él el comando no casa.
+
 Los **hechizos** se escriben igual, sin barra (`exura`, `exori flam`…), pero tienen su propio
 tipo, `spell`, más abajo.
 
@@ -229,6 +240,10 @@ module.exports = [
 
 - `think`: cada `interval` milisegundos (100 como mínimo).
 - `time`: todos los días a la hora `HH:MM` del reloj del servidor.
+- `save`: en cada guardado periódico (`autosaveIntervalMs`), con todo ya guardado. Sin base de datos
+  no hay guardado y no se lanza.
+- `record`: `onRecord(current, old)` cuando hay más jugadores a la vez que nunca. El récord se guarda
+  en la base (tabla `meta`) y `Game.getPlayersRecord()` lo da.
 
 El ejemplo que viene hecho está en `data/scripts/globalevents/arranque.js`.
 
@@ -317,6 +332,76 @@ module.exports = [{
 `target`; `onTradeAccept` llega con `player` el último en aceptar. Las reglas que pone el motor
 antes de preguntar: a dos casillas en la misma planta, que se pueda coger, que no sea el depósito ni
 tenga `uniqueId`, como mucho 100 objetos y que ninguno comercie con otro.
+
+## Los canales del chat (`onJoin`, `onLeave`, `onSpeak`)
+
+Los canales (`engine/world/canales.js`, los de TFS 1.x): **0** el del gremio de cada uno, **1** el del
+grupo, **3** «Juego», **5** «Comercio», **7** «Ayuda» y del **100** en adelante los privados. El
+nivel que pide cada público y la espera de Comercio están en `config.js`:
+
+```js
+chatChannels: {
+    juego: { level: 1 },
+    comercio: { level: 1, cooldownMs: 2 * 60 * 1000 },   // «Sólo puedes poner una oferta cada dos minutos.»
+    ayuda: { level: 1 }                                   // `name` cambia el nombre que se ve
+},
+vipLimit: 20,                                             // cuántos caben en la lista VIP de una cuenta
+```
+
+Por debajo del nivel, el canal no sale en la lista, no se puede abrir y no se puede hablar en él. El
+personal (GM y más) no tiene ni nivel ni espera.
+
+Los eventos de los canales de TFS llegan a los scripts como eventos de criatura, para **todos** los
+canales, con el id al final; `false` en `onSpeak` impide el mensaje:
+
+```js
+module.exports = [{
+    type: 'event',
+    event: 'channelspeak',
+    onSpeak(player, type, message, channelId) {     // type: 5, el TALKTYPE_CHANNEL_Y de Tibia 8.60
+        if (channelId === 5 && /http/i.test(message)) {
+            player.sendCancelMessage('Nada de enlaces en Comercio.');
+            return false;
+        }
+        return true;
+    }
+}, {
+    type: 'event',
+    event: 'channeljoin',
+    onJoin(player, channelId) {}                     // también `channelleave` → onLeave(player, channelId)
+}];
+```
+
+Para un canal propio con sus eventos (como un `<channel>` de `chatchannels.xml` con su script), el
+motor tiene `world.registrarCanal({ id, nombre, nivel, espera, onJoin(player), onLeave(player),
+onSpeak(player, texto) })`, con un id entre 2 y 99.
+
+**Mandar una línea del servidor** a un canal (sin autor; el cliente la traduce):
+
+| Función | Qué hace |
+|---|---|
+| `Game.sendChannelMessage(channelId, type, texto)` | A todos los que tienen abierto un canal público o privado. `type`: `'sistema'` o `'rojo'` (o el número de TFS: 10 y 14 son rojos) |
+| `Game.sendGuildChannelMessage(guildId, type, texto)` | Lo mismo en el canal de un gremio |
+
+**Lo que los demás sistemas enganchan** (en el mundo):
+
+- `world.gremioDe(player)` → `{ id, nombre, rango, nivel, motd }` o null. La pone el sistema de
+  gremios; sin ella no hay canal 0. Sólo los de ese gremio lo ven, y al abrirlo la primera línea es
+  «Mensaje del día: …» si hay `motd`.
+- `world.mensajeAlCanalDeGremio(guildId, texto)` → una línea del servidor a los de ese gremio que
+  tienen el canal abierto («Ana se ha unido al gremio.»). Devuelve a cuántos llegó.
+- `world.silenciado(player)` → el **hook de moderación**: se pregunta antes de cualquier mensaje en
+  un canal. Aquí devuelve `false`; el sistema de castigos lo sustituye (`engine/world/castigos.js`
+  añade el silencio de un GM). Si devuelve un texto, es lo que se le dice al jugador; con `true`, «No
+  puedes hablar ahora.».
+
+## La lista VIP
+
+Es de la **cuenta** (tabla `account_viplist`, `engine/world/vip.js`): se añade por nombre (un
+personaje que exista en la base) y caben `vipLimit`. Al entrar, cada jugador recibe su lista con
+quién está dentro, y quien le tiene en la suya recibe que ha entrado (o salido, al irse). En el
+mundo: `world.listaVip(player)`, `world.anadirVip(player, nombre)`, `world.quitarVip(player,
+idONombre)` y `world.avisarVip(player, enLinea)`. Sin persistencia no hay lista en el servidor.
 
 ## Usar con una hotkey (`target` es una criatura)
 
@@ -581,6 +666,274 @@ de abajo). Una casa (`getHouse()`) tiene `getId()`, `getName()`, `getTownId()`, 
 `getRentWarnings()`, `getExitPosition()`, `getDoors()`, `getAccessList(256|257|puerta)` y
 `getAccessLevel(player)` (0 nada, 1 invitado, 2 subdueño, 3 dueño).
 
+## Los gremios
+
+Como en los servidores de TFS 8.60 que los llevan por comandos (`engine/world/gremios.js`, tablas
+`guilds`, `guild_ranks`, `guild_membership` y `guild_invites`, versión 9 de la base). Un gremio nace
+con tres rangos —**Líder** (3), **Vicelíder** (2) y **Miembro** (1)— y quien lo funda es su líder.
+Sin base de datos no hay gremios. Los comandos (`data/scripts/talkactions/gremios.js`):
+
+| Comando | Quién | Qué hace |
+|---|---|---|
+| `!createguild Nombre` | cualquiera desde `guildCreateLevel` (8) | Funda un gremio: de 3 a 20 letras y espacios, nombre único (sin mayúsculas), y no estar ya en uno |
+| `!joinguild Nombre` | invitado | Entra como miembro (sin nombre: las invitaciones que tienes). Al entrar se borran las demás invitaciones |
+| `!leaveguild` | vicelíder, miembro | Sale. El líder no puede: antes pasa el mando o disuelve |
+| `!guildinvite nombre` | líder, vicelíder | Invita, esté dentro o no |
+| `!guildkick nombre` | líder (a todos), vicelíder (a miembros) | Echa, esté dentro o no; a quien sólo está invitado le retira la invitación |
+| `!guildpromote nombre` / `!guilddemote nombre` | líder | De miembro a vicelíder y al revés |
+| `!guildleader nombre` | líder | Le pasa el mando (y el gremio, `guilds.ownerid`); el antiguo líder queda de vicelíder |
+| `!disbandguild` | líder | Disuelve el gremio: rangos, miembros e invitaciones |
+| `!guildmotd [texto]` | líder, vicelíder | El mensaje del día: sin texto lo enseña (a cualquiera), `-` lo quita |
+| `!guildnick [nombre,] apodo` | cada uno el suyo; vicelíder, el de los miembros; líder, el de todos | El apodo (hasta 15 caracteres); sin apodo, lo quita |
+| `!guild` | miembro | El gremio, su mensaje del día y quién está conectado, en una ventana de texto |
+
+Los avisos («Pepe se ha unido al gremio.», el mensaje del día, ascensos, quién sale) van por el
+**canal del gremio** (`world.mensajeAlCanalDeGremio`) si alguien lo tiene abierto, y si no, como
+mensaje a cada miembro conectado. **Al mirar** a un jugador sale, como en TFS, «Él es Líder del
+gremio Dragones (apodo).» —«Ella es…» según el sexo del personaje, «Eres…» si te miras—. El gremio
+de cada jugador conectado se carga al entrar y se guarda en memoria hasta que algo cambia.
+
+Para los demás sistemas: `world.gremioDe(player)` → `{ id, nombre, rango, nivel, motd, apodo }` o
+`null`, `world.gremioPorId(id)`, `world.gremioPorNombre(nombre)`, `world.jugadoresDeGremio(id)` y
+`world.miembrosDeGremio(id)`; al cambiarle el gremio a alguien conectado, el mundo avisa
+`onGuildChange(player, gremio)`.
+
+Desde un script (los de TFS): `player.getGuild()` (un gremio o `null`), `player.getGuildLevel()` (0
+sin gremio), `player.getGuildNick()`, `player.setGuildNick(apodo)` y `player.getGuildInvites()`. Un
+gremio tiene `getId()`, `getName()`, `getMotd()`, `setMotd(texto)`, `getOwnerGuid()`,
+`getMembersOnline()` (envoltorios de jugador), `getMembers()` (todos, conectados o no), `getRanks()`,
+`getRankById(id)` y `getRankByLevel(nivel)` (`{ id, name, level }`). Y las órdenes de los comandos,
+que comprueban los permisos y devuelven `{ ok, reason, ... }`: `createGuild(nombre)`,
+`joinGuild(nombre)`, `leaveGuild()`, `inviteToGuild(nombre)`, `kickFromGuild(nombre)`,
+`promoteInGuild(nombre)`, `demoteInGuild(nombre)`, `passGuildLeadership(nombre)`, `disbandGuild()`,
+`changeGuildMotd(texto)`, `changeGuildNick(nombre, apodo)` y `getGuildInfo()`
+(`engine/scripting/gremios-api.js`). Las guerras (`guild_wars`) no están.
+
+## Moderación: suspensiones, namelock, echar y silenciar
+
+Comandos del personal (`data/scripts/talkactions/castigos.js`, `access: 'gamemaster'`): para un
+jugador no existen y se dicen en voz alta, como `/grupo`. A alguien del personal sólo le castiga
+quien tenga un grupo **mayor** (un GM no castiga a otro GM ni a un god). Las reglas, en
+`engine/world/castigos.js`; lo que se guarda, en las tablas de TFS (versión 10), con las horas en
+segundos:
+
+| Comando | Qué hace |
+|---|---|
+| `/ban nombre[, días[, motivo]]` | Suspende la **cuenta** (`account_bans`), esté dentro o no; 0 o sin días son `banDays` (7), negativo es para siempre. Saca del juego a sus personajes conectados, aunque estén en combate |
+| `/unban nombre` | Levanta la suspensión; pasa a `account_ban_history` (también la que se sustituye con otro `/ban`, y la que caduca) |
+| `/ipban nombre[, días[, motivo]]` | Suspende la **IP** desde la que juega (`ip_bans`): la de su conexión o, si no está dentro, la última desde la que entró (`players.lastip`). Saca a todos los de esa IP |
+| `/namelock nombre[, motivo]` | No entra hasta que se le cambie el nombre (`player_namelocks`) |
+| `/kick nombre` | Le saca del juego |
+| `/mute nombre[, minutos]` | No habla en voz alta ni en los canales (5 minutos si no se dice): «Estás silenciado durante N minutos.». Los comandos y los hechizos sí. Va en un storage del personaje, así que salir y volver no lo quita |
+| `/unmute nombre` | Le devuelve la palabra |
+| `/baninfo nombre` | La suspensión vigente, el namelock y el historial, en una ventana de texto |
+
+**Al entrar**: una IP suspendida no llega a autenticarse; una cuenta suspendida, con la contraseña
+bien, recibe «Tu cuenta ha sido suspendida hasta el 2026-11-02 18:05 por Gema. Motivo: spam.» (o
+«…para siempre…»), también al pedir la lista de personajes; un personaje con namelock, «Tu personaje
+tiene el nombre bloqueado…». Lo que ya caducó se limpia en ese momento y deja entrar.
+
+El silencio de un GM llega a los canales por `world.silenciado(player)`, que devuelve el texto del
+aviso (o lo que diga el hook de los canales si no hay silencio), y a hablar en voz alta por
+`creatureSay`. Desde un script: `banPlayer(nombre, días, motivo)`, `unbanPlayer(nombre)`,
+`ipBanPlayer(...)`, `namelockPlayer(nombre, motivo)`, `kickPlayer(nombre)`, `mutePlayer(nombre,
+minutos)`, `unmutePlayer(nombre)`, `getBanInfo(nombre)` y `getMutedTime()`, con el jugador que las
+llama como quien castiga.
+
+**Configuración** (`config.js`): `guildCreateLevel` (8) y `banDays` (7).
+
+---
+
+## Compatibilidad con TFS
+
+Quien porta un datapack de The Forgotten Server (1.x con revscripts, o 0.x / 8.60) encuentra los
+nombres que espera. Los scripts siguen siendo módulos JavaScript (`type: 'action'`...), pero dentro
+de los callbacks valen las clases, las constantes y las funciones sueltas de TFS, todas como
+globales (como `Game`):
+
+- **Constructores** de TFS 1.x: `Player(cid | nombre)`, `Creature(...)`, `Monster(cid)`,
+  `Npc(cid | nombre)`, `Item(uid)`, `Container(uid)`, `Tile(pos)` (o `Tile(x, y, z)`),
+  `ItemType(id | nombre)`, `Town(id | nombre)`, `Group(id)`, `Vocation(id | nombre)`, `House(id)`,
+  `Condition(CONDITION_*)` y `Position(x, y, z)` (sin `new`, como en TFS; es la `Position` del motor).
+- **Constantes** (`engine/scripting/enums.js`), con los números de TFS 1.x: `MESSAGE_*`,
+  `TALKTYPE_*`, `CONST_SLOT_*`, `SLOTP_*`, `CONST_ME_*` / `CONST_ANI_*` (los que el pack no tiene caen
+  en el efecto más parecido), `COMBAT_*`, `ORIGIN_*`, `CONDITION_*`, `CONDITION_PARAM_*`, `CONDITIONID_*`,
+  `SKILL_*`, `SKULL_*`, `PLAYERSEX_*`, `ACCOUNT_TYPE_*`, `PlayerFlag_*`, `DIRECTION_*` (y los `NORTH`...
+  de 0.x), `ZONE_*`, `TILESTATE_*`, `CONST_PROP_*`, `ITEM_TYPE_*`, `ITEM_ATTRIBUTE_*`, `RETURNVALUE_*`
+  (los 27 primeros), `WORLD_TYPE_*`, `GAME_STATE_*`, `GUEST_LIST` / `SUBOWNER_LIST`, `LUA_ERROR` /
+  `LUA_NO_ERROR`. Las que no significan nada aquí existen igual, para que el script cargue: en
+  JavaScript una global que falta es un `ReferenceError`, no un `nil`.
+- **Funciones de 0.x** (`engine/scripting/compat.js`): la tabla de abajo.
+
+Donde la API admite un tipo, admite también el número de TFS: `getSkillLevel(SKILL_SWORD)`,
+`addCondition(Condition(...))`, `hasCondition(CONDITION_POISON)`, `getAttribute(ITEM_ATTRIBUTE_ACTIONID)`,
+`Game.doTargetCombat(a, b, { type: COMBAT_FIREDAMAGE, ... })`, `getSlotItem(CONST_SLOT_RIGHT)`.
+
+**Lo que se hace distinto a propósito** (porque los scripts de Jetyum ya lo usaban así):
+
+| TFS | Jetyum |
+|---|---|
+| `player:getVocation()` → `Vocation` | `getVocation()` da el **nombre**; el objeto es `getVocationInfo()` o `Vocation(...)` |
+| `player:getSex()` → 0/1 | `'male'` / `'female'`; `setSex` acepta las dos formas y `getPlayerSex(cid)` da el número |
+| `creature:getSkull()` → `SKULL_*` | `''`, `'blanca'` o `'roja'`; `getCreatureSkullType(cid)` da el número |
+| `player:getStorageValue(k)` → -1 sin valor | `null` sin valor; `getPlayerStorageValue(cid, k)` da -1 |
+| `tile:queryAdd(thing)` → `RETURNVALUE_*` | `true` / `false` |
+| `creature:getCondition(type)` → `Condition` | sus datos: `{ type, value, ticks, ms }` |
+| `house:getDoors()` → objetos | `[{ id, x, y, z }]` (el id es el de su lista de acceso) |
+| `creature:registerEvent(name)` | No hace falta (los eventos son de todos): existe y devuelve `true` |
+| `player:getIp()` | El número de TFS (a + b·256 + c·256² + d·256³), de la IP de su sesión (`world.ipDe`); 0 sin sesión o con IPv6 |
+| `player:getStamina()` | Se guarda pero no se gasta: 2520 (llena) salvo que un script use `setStamina` |
+| `player:getPremiumDays()` | 65535 si la cuenta es premium (el jugador no sabe hasta cuándo), 0 si no |
+| `player:getLastLoginSaved()` | 0 (la visita anterior no se carga con el personaje) |
+| `player:getInbox()` | El 8.60 no tiene buzón: es el depósito de su ciudad, que es donde llega el correo |
+| `getWorldTime()` (0.x) | Minutos del día del juego, como en TFS; `Game.getWorldTime()` sigue dando los segundos de mundo |
+| `player:sendTextMessage(type, text)` | Hay una sola consola: el tipo se acepta y no cambia nada |
+
+### Cobertura por clase
+
+Porcentajes aproximados de los métodos de la clase de TFS 1.x que existen en Jetyum.
+
+| Clase | Antes | Ahora | Dónde | Lo que falta |
+|---|---|---|---|---|
+| `Game` | ~30 % | ~55 % | `game.js` | `getExperienceStage`, `createContainer`, `getReturnMessage`, `startRaid` por objeto, `loadMap` |
+| `Position` | ~17 % | ~90 % | `tfs.js` (en `Position.prototype`) | `getPathTo` (está en `Creature` en TFS 1.x+) |
+| `Tile` | ~0 % | ~80 % | `tfs.js` | `getItemByTopOrder`, `getItemCountById`, `getThingIndex`, `get*VisibleCreature`, `getBottomVisibleCreature` |
+| `Item` | ~17 % | ~80 % | `entities.js` | `getSpecialDescription`, `serializeAttributes`, `setStoreItem`; `getText` es un atributo (`text`), no hay `writer`/`date` automáticos |
+| `Container` | ~18 % | ~85 % | `entities.js` | `getContentDescription`; `getCorpseOwner` da 0 (Jetyum no tiene dueño del botín) |
+| `ItemType` | ~4 % | ~70 % | `tfs.js` | `getWeaponType` (como número), `getElementType`, `getAbsorbPercent`, `getFluidSource`, `getLevelDoor`, `getRequiredLevel`... |
+| `Creature` | ~40 % | ~75 % | `entities.js` | `getDamageMap`, `getPathTo`, `isHealthHidden`, `getEvents`, `canSee`; sin invocaciones (`getMaster` null, `getSummons` vacío) |
+| `Player` | ~35 % | ~65 % | `entities.js` | `getContainerById`, `openChannel`, `learnSpell` / `canLearnSpell`, `getClient`, `setGhostMode`, `addMapMark`, `getStoreInbox`; lo de los gremios está en `gremios-api.js` |
+| `Monster` | ~30 % | ~35 % | `entities.js` | `getType` (como `MonsterType`), `selectTarget`, `isIdle`, `addFriend`... (`getMonsterType()` da la definición) |
+| `Town` | 0 % | 100 % | `tfs.js` | — |
+| `House` | ~45 % | ~85 % | `entities.js` | `getDoorIdByPosition`, `startTrade`; `getDoors` da datos, no objetos |
+| `Group` | 0 % | 100 % | `tfs.js` | — (`flags`, `maxDepotItems` y `maxVipEntries` se pueden declarar en `groups.js`) |
+| `Vocation` | 0 % | ~85 % | `tfs.js` | `getMinSoul`, `getMagicShield`, los multiplicadores de daño por separado (están en `v.formula`) |
+| `Party` | ~25 % | ~90 % | `tfs.js` | `canUseSharedExperience`, `updateSharedExperience` (en Jetyum se reparte siempre entre los que están cerca, salvo `setSharedExperience(false)`) |
+| `Condition` | 0 % | ~60 % | `tfs.js` | `setOutfit` (no hay condición de aspecto), las condiciones que Jetyum no tiene (invisible, manashield, drunk, muted...) se crean pero no se ponen |
+| `Guild` | — | — | `gremios-api.js` (`GuildWrapper`) | ver [Los gremios](#los-gremios) |
+
+**No se cubren**: `NetworkMessage` (los scripts no escriben el protocolo: el motor no expone sus bytes),
+`ModalWindow` (el cliente 8.60 no tiene ventanas modales; `popupFYI` y `showTextDialog` son lo que hay)
+y `Weapon` (las armas de Jetyum son datos de `items.xml` que usa el combate, no scripts).
+
+### Eventos de TFS
+
+| Evento | Callback | Cuándo |
+|---|---|---|
+| `event: 'think'` | `onThink(creature, interval)` | Cada segundo, por cada jugador conectado |
+| `event: 'healthchange'` | `onHealthChange(creature, attacker, primaryDamage, primaryType, secondaryDamage, secondaryType, origin)` | Antes de quitar vida (todo el daño pasa por `combat.applyDamage`). El daño llega en positivo y el script puede devolver otro: un número, `[daño, tipo, ...]` o `{ primaryDamage }`. `origin` es `ORIGIN_MELEE` en un golpe cuerpo a cuerpo y `ORIGIN_NONE` en lo demás |
+| `event: 'manachange'` | `onManaChange(...)` | Lo mismo, con el maná que se drena (`manadrain`) |
+| `event: 'preparedeath'` | `onPrepareDeath(creature, killer)` | Antes de morir. Con `false` no muere: durante el aviso tiene 1 de vida (así `creature.addHealth(...)` le cura, como en las arenas de TFS) y se queda con lo que el script le deje |
+| `event: 'textedit'` | `onTextEdit(player, item, text)` | Al guardar lo escrito en un objeto (`showTextDialog(item, ...)` o `item` en las opciones). Con `false` no se guarda |
+| `globalevent`, `event: 'save'` | `onSave()` | En cada guardado periódico |
+| `globalevent`, `event: 'record'` | `onRecord(current, old)` | Más jugadores a la vez que nunca |
+
+Los enganches están en `engine/world/combat.js` (`world.alCambiarVida`, `world.alCambiarMana`,
+`world.antesDeMorir`), `engine/scripting/globals.js` (`onThink`, `onRecord`) y `engine/core/engine.js`
+(`onSave`); los pone `engine/scripting/game.js` (`engancharEventosTfs`).
+
+### Storage global
+
+`Game.getStorageValue(clave)` / `Game.setStorageValue(clave, valor)` (y `getGlobalStorageValue` /
+`setGlobalStorageValue`) son del servidor, no de un jugador. Con base de datos se escriben al momento
+en la tabla `meta` (clave `global_storage`) y duran entre reinicios; sin base viven lo que viva el
+proceso. El récord de jugadores va en la misma tabla (`players_record`).
+
+### Funciones de 0.x
+
+Cada una es una llamada a la API de objetos. Una criatura es su `cid` y un objeto su `uid` (vale
+también el envoltorio); lo que no existe devuelve `false`; las «cosas» son `{ uid, itemid, type,
+actionid }`.
+
+| Función de 0.x | Equivale a |
+|---|---|
+| `doPlayerSendTextMessage(cid, type, text)` | `player.sendTextMessage(type, text)` |
+| `doPlayerSendCancel(cid, text)` | `player.sendCancelMessage(text)` |
+| `doCreatureSay(cid, text)` | `creature.say(text)` |
+| `doSendMagicEffect(pos, effect)` | `Game.sendMagicEffect(pos, effect)` / `pos.sendMagicEffect(effect)` |
+| `doSendDistanceShoot(from, to, type)` | `Game.sendDistanceEffect(from, to, type)` |
+| `doSendAnimatedText(pos, text, color)` | `Game.sendAnimatedText(pos, text)` (el número que sube; el color no se usa) |
+| `broadcastMessage(text)`, `doBroadcastMessage(text)` | `Game.broadcastMessage(text)` |
+| `sendChannelMessage(channelId, type, text)`, `sendGuildChannelMessage(guildId, type, text)` | `Game.sendChannelMessage(...)`, `Game.sendGuildChannelMessage(...)` |
+| `doTeleportThing(cid \| uid, pos)` | `creature.teleportTo(pos)` / `item.moveTo(pos)` |
+| `doCreateItem(id, count, pos)` → uid | `Game.createItem(id, count, x, y, z)` |
+| `doCreateItemEx(id, count)` → uid | `Game.createItem(id, count)` (suelto, para `addItemEx`) |
+| `doRemoveItem(uid[, count])` | `item.remove(count)` |
+| `doTransformItem(uid, id[, count])` | `item.transform(id)` (+ `setCount`) |
+| `doItemSetAttribute(uid, key, value)`, `getItemAttribute(uid, key)`, `doItemSetActionId(uid, aid)` | `item.setAttribute`, `item.getAttribute`, `item.setActionId` |
+| `getThing(uid)`, `getThingPos(uid)`, `getThingPosition(uid)` | `{ uid, itemid, type, actionid }` / `getPosition()` |
+| `getItemName(id)`, `getItemNameById(id)`, `getItemWeight(id, n)`, `getItemIdByName(nombre)` | `ItemType(id).getName()`, `.getWeight(n)`, `ItemType(nombre).getId()` |
+| `getTileItemById(pos, id)`, `getTopCreature(pos)`, `getTileHouseInfo(pos)` | `Tile(pos).getItemById(id)`, `.getTopCreature()`, `.getHouse()` (el id, o false) |
+| `doPlayerAddItem(cid, id, count[, canDropOnMap])` | `player.addItem(id, count)`; si no cabe, a sus pies (salvo `canDropOnMap` false) |
+| `doPlayerRemoveItem(cid, id, count)` | `player.removeItem(id, count)` |
+| `getPlayerItemCount(cid, id)` | `player.getItemCount(id)` |
+| `doPlayerAddMoney`, `doPlayerRemoveMoney`, `getPlayerMoney` | `addMoney`, `removeMoney`, `getMoney` |
+| `getPlayerSlotItem(cid, slot)`, `getPlayerItemById(cid, deep, id)`, `getPlayerWeapon(cid)`, `getPlayerFreeCap(cid)` | `getSlotItem(slot)`, `getItemById(id, deep)`, `getSlotItem(CONST_SLOT_RIGHT)`, `getFreeCapacity()` |
+| `getPlayerStorageValue(cid, k)` (-1 sin valor), `setPlayerStorageValue(cid, k, v)` | `getStorageValue`, `setStorageValue` |
+| `getGlobalStorageValue(k)` (-1 sin valor), `setGlobalStorageValue(k, v)` | `Game.getStorageValue`, `Game.setStorageValue` |
+| `getPlayerLevel`, `getPlayerExperience`, `getPlayerMagLevel`, `getPlayerSkillLevel(cid, skill)` | `getLevel`, `getExperience`, `getMagicLevel`, `getSkillLevel` |
+| `getPlayerVocation(cid)` (el número), `doPlayerSetVocation(cid, voc)` | `getVocationInfo().getId()`, `setVocation` |
+| `getPlayerName`, `getCreatureName`, `getPlayerGUID`, `getPlayerAccountId`, `getPlayerIp` | `getName`, `getGuid`, `getAccountId`, `getIp` |
+| `getPlayerSex` (0/1), `doPlayerSetSex`, `getPlayerPremiumDays`, `isPremium` | `getSex`, `setSex`, `getPremiumDays`, `isPremium` |
+| `getPlayerSoul`, `doPlayerAddSoul`, `getPlayerMana`, `getPlayerMaxMana` | `getSoul`, `addSoul`, `getMana`, `getMaxMana` |
+| `getPlayerTown`, `doPlayerSetTown(cid, townId)` | `getTown().getId()`, `setTown` |
+| `getPlayerGroupId`, `doPlayerSetGroupId`, `getPlayerAccess` (grupo − 1), `getPlayerFlagValue(cid, flag)` | `getGroup().getId()`, `setGroup`, `getGroup().hasFlag(flag)` |
+| `getPlayerBlessing(cid, n)`, `doPlayerAddBlessing(cid, n)` | `hasBlessing`, `addBlessing` |
+| `doPlayerAddExp`, `doPlayerAddExperience`, `doPlayerAddSkillTry`, `doPlayerAddManaSpent` | `addExperience`, `addSkillTries`, `addManaSpent` |
+| `getPlayerPosition`, `getCreaturePosition`, `getPlayerLookDir`, `getCreatureLookDirection`, `doSetCreatureDirection` | `getPosition`, `getDirection`, `setDirection` |
+| `getPlayerParty(cid)` | `getParty().getLeader().getId()` |
+| `getPlayerByName(nombre)`, `getPlayerByNameWildcard(nombre~)` → cid | `Game.getPlayerByName(nombre)` |
+| `getPlayersOnline()` (cids), `getOnlinePlayers()` (nombres) | `Game.getPlayers()` |
+| `isPlayer`, `isMonster`, `isNpc`, `isCreature`, `isItem`, `isContainer` | `isPlayer()`, `isMonster()`, `isNpc()`... |
+| `getCreatureHealth`, `getCreatureMaxHealth`, `getCreatureMana`, `getCreatureMaxMana`, `doCreatureAddHealth`, `doCreatureAddMana` | `getHealth`, `getMaxHealth`, `getMana`, `getMaxMana`, `addHealth`, `addMana` |
+| `getCreatureSpeed`, `getCreatureBaseSpeed`, `doChangeSpeed`, `doCreatureSetNoMove` | `getSpeed`, `getBaseSpeed`, `changeSpeed`, `setNoMove` |
+| `getCreatureOutfit`, `doSetCreatureOutfit(cid, outfit)` | `getOutfit`, `setOutfit` (el tiempo no se usa) |
+| `getCreatureSkullType` (`SKULL_*`), `getCreatureTarget`, `getCreatureMaster`, `getCreatureSummons` | `getSkull`, `getTarget`, la propia criatura, `[]` |
+| `getCreatureCondition(cid, type)`, `doAddCondition(cid, condition)`, `doRemoveCondition(cid, type)` | `hasCondition`, `addCondition`, `removeCondition` |
+| `createConditionObject(type[, ticks])`, `setConditionParam`, `addDamageCondition`, `setConditionFormula` | `Condition(type)`, `setParameter`, `addDamage`, `setFormula` |
+| `doSummonCreature(nombre, pos)`, `doCreateMonster(nombre, pos)` → cid | `Game.createMonster(nombre, x, y, z)` |
+| `doCreateNpc(nombre, pos)` → cid | `Game.createNpc(nombre, x, y, z)` (los de `data/npc`) |
+| `doRemoveCreature(cid)` | `monster.remove()` / `player.remove()` |
+| `getWorldCreatures(type)` (0 jugadores, 1 monstruos, 2 NPC, 3 todos) | `Game.getPlayerCount()`, `Game.getMonsterCount()`, `Game.getNpcCount()` |
+| `getTownTemplePosition(id)`, `getTownName(id)`, `getTownId(nombre)` | `Town(id).getTemplePosition()`, `.getName()`, `.getId()` |
+| `getHouseOwner(id)` (guid), `getHouseName`, `getHouseRent`, `getHouseTown`, `setHouseOwner(id, guid)`, `getHouseByPlayerGUID(guid)` | `House(id).getOwnerGuid()`, `.getName()`, `.getRent()`, `.getTownId()`, `.setOwnerGuid()`, `player.getHouse()` |
+| `getWorldTime()` (minutos del día), `getWorldLight()`, `getWorldType()`, `getWorldUpTime()` | `Game.getWorldHour()`, `Game.getWorldLight()`, `Game.getWorldType()`, `Game.getWorldTime()` |
+| `getConfigValue(clave)`, `getConfigInfo(clave)`, `configManager.getNumber/getString/getBoolean(configKeys.X)` | `config.js` (las `configKeys` de TFS se traducen: `RATE_EXPERIENCE` → `rateExperience`...) |
+| `getDistanceBetween(a, b)`, `isSightClear(a, b)`, `isInRange(pos, from, to)` | `Position.getDistanceBetween`, `pos.isSightClear`, `pos.isInRange` |
+| `isInArray(array, value)` | `array.includes` (los textos sin mayúsculas, como en TFS) |
+| `addEvent(fn, ms, ...)`, `stopEvent(id)` | `Game.addEvent`, `Game.stopEvent` |
+
+### Un script de TFS, portado
+
+```js
+// data/scripts/talkactions/premio.js: un !premio de 0.x, casi línea por línea.
+module.exports = {
+    type: 'talkaction',
+    words: '!premio',
+    onSay(player, words, param) {
+        const cid = player.getId();
+        if (!Tile(getCreaturePosition(cid)).hasFlag(TILESTATE_PROTECTIONZONE)) {
+            doPlayerSendCancel(cid, 'Sólo en el templo.');
+            return true;
+        }
+        if (getPlayerStorageValue(cid, 50001) !== -1) {
+            doPlayerSendCancel(cid, 'Ya tienes tu premio.');
+            return true;
+        }
+        doPlayerAddItem(cid, ItemType('crystal coin').getId(), 2);
+        setPlayerStorageValue(cid, 50001, 1);
+        doPlayerSendTextMessage(cid, MESSAGE_INFO_DESCR, 'Has recibido tu premio.');
+        doSendMagicEffect(getCreaturePosition(cid), CONST_ME_GIFT_WRAPS);
+        return true;
+    }
+};
+```
+
+Lo que cambia al portar: la sintaxis (`player:getName()` → `player.getName()`, `local` → `const`,
+`~=` → `!==`, `..` → `+`), el registro (`type` y `words` en el objeto, en vez de
+`talk:register()`) y lo de la tabla «Lo que se hace distinto». Las pruebas de todo esto están en
+`tools/test-api-tfs.mjs`.
+
 ---
 
 ## Lo que un script puede usar
@@ -601,6 +954,7 @@ de abajo). Una casa (`getHouse()`) tiene `getId()`, `getName()`, `getTownId()`, 
 | `area.circulo(r)`, `area.cuadrado(r)`, `area.onda(dir, largo)`, `area.rayo(dir, largo)`, `area.desdeMatriz([...])` | Áreas |
 | `addCondition(criatura, condicion)` | Una condición |
 | `broadcastMessage(texto)` | Mensaje a todos los jugadores |
+| `sendChannelMessage(canal, tipo, texto)`, `sendGuildChannelMessage(gremio, tipo, texto)` | Una línea del servidor en un canal del chat (ver «Los canales del chat») |
 | `startRaid(nombre)`, `getRaids()` | Lanzar y listar raids |
 | `getWaypoint(nombre)`, `getWaypointNames()` | Los lugares con nombre del mapa |
 | `isWalkable(x, y, z)`, `getCreatureCount(x, y, z)`, `getTileStack(x, y, z)`, `getTileItemIds(x, y, z)` | Preguntar por una casilla |
@@ -626,23 +980,25 @@ Los tipos de daño (`type`): `physical`, `fire`, `energy`, `earth`, `ice`, `holy
 | `getBankBalance()`, `setBankBalance(n)` | El saldo del banco, en monedas de oro (`player:getBankBalance` de TFS). `setBankBalance` lo pone sin mover monedas y se escribe en la base al momento |
 | `depositMoney(n)`, `withdrawMoney(n)`, `transferMoney(nombre, n)` → `{ ok, reason, balance }` | Mover dinero entre la mochila y el banco, o a otro personaje (conectado o no). `reason`: `badAmount`, `notEnough`, `cannotPay` (el cambio no cabe), `cannotCarry`, `notFound`, `self`, `noDatabase` |
 | `getHouse()`, `getTileHouse()` | La casa de la que es dueño, y la casa en la que está (o `null`): ver [Las casas y el banco](#las-casas-y-el-banco) |
+| `getGuild()`, `getGuildLevel()`, `getGuildNick()` | Su gremio (o `null`), su rango (3 líder, 2 vicelíder, 1 miembro, 0 sin gremio) y su apodo: ver [Los gremios](#los-gremios) |
+| `banPlayer(...)`, `kickPlayer(nombre)`, `mutePlayer(nombre, min)`... | Los castigos de un GM, con este jugador como quien castiga: ver [Moderación](#moderación-suspensiones-namelock-echar-y-silenciar) |
 | `buyHouse()`, `leaveHouse()`, `editHouseList(tipo)`, `kickFromHouse(nombre)`, `sleepInBed(item)` → `{ ok, reason }` | Lo de los comandos de las casas y las camas. `reason`: `noDoor`, `level`, `alreadyOwner`, `hasOwner`, `noMoney`, `notInside`, `notOwner`, `cannotEdit`, `notFound`, `cannot`, `notInvited`, `inFight`, `occupied` |
 | `getExperience()`, `addExperience(n)` | La experiencia (sube de nivel si llega) |
 | `getItemCountById(id)`, `getInventory()`, `getEquipment()`, `equipItem`, `unequipItem`, `dropItem` | Lo que lleva |
 | `getWeight()`, `getCapacity()`, `getFreeCapacity()`, `getItemWeight(id, n)` | El peso |
 | `getStorageValue(clave)`, `setStorageValue(clave, n)` | La memoria del contenido (se guarda con el personaje) |
 | `hasBlessing(n)`, `addBlessing(n)`, `removeBlessing(n)`, `getBlessingCount()`, `getBlessings()`, `getBlessingCost()`, `getDeathPenalty()`, `getDeathList(n, nombre)` | Las cinco bendiciones de TFS (1 a 5, storages `bendicion:<n>`; se gastan al morir), su precio por nivel, lo que se perdería al morir y el historial de muertes (`engine/world/muerte.js`) |
-| `sendTextMessage(texto)`, `sendCancelMessage(texto)`, `sendPrivateMessage(nombre, texto)` | Mensajes |
+| `sendTextMessage(texto)`, `sendCancelMessage(texto)`, `sendPrivateMessage(nombre, texto)` | Mensajes. También con la firma de TFS: `sendTextMessage(MESSAGE_INFO_DESCR, texto)` (el tipo no cambia nada: hay una sola consola) y `sendCancelMessage(RETURNVALUE_NOTENOUGHROOM)` |
 | `getOutfit()`, `setOutfit(...)`, `addOutfit(id)`, `hasOutfit(id)` | Aspectos (`addOutfit` desbloquea uno) |
 | `addMount(id)`, `removeMount(id)`, `hasMount(id)`, `isMounted()` | Monturas de `data/XML/mounts.js` (`addMount` da una bloqueada) |
-| `getGroup()`, `hasGroup(nombre)` | Su grupo de acceso (`{ id, name, access }`) y si tiene ese o uno mayor |
+| `getGroup()`, `hasGroup(nombre)` | Su grupo de acceso (un `Group` de TFS que lleva también `id`, `name` y `access`) y si tiene ese o uno mayor |
 | `isInFight()`, `isPzLocked()` | En combate (no puede salir) y con PZ lock (no puede entrar en una zona de protección) |
 | `isTrading()`, `getTradePartner()` | Si está en un intercambio con otro jugador (ofreció algo o se lo ofrecieron) y con quién (su jugador, o `null`) |
-| `getParty()`, `partyInvite(nombre)`, `partyJoin(nombre)`, `partyLeave()` | El grupo |
+| `getParty()`, `partyInvite(nombre)`, `partyJoin(nombre)`, `partyLeave()` | El grupo: `getParty()` es un `Party` de TFS (ver «Compatibilidad con TFS») que lleva también `leader` y `members` (nombres, el líder incluido) |
 | `getSkull()` | `''`, `'blanca'` o `'roja'` |
 | `getWeaponType()` | El tipo del arma de la mano (`weaponType` de items.xml: `'sword'`, `'axe'`, `'club'`, `'distance'`...) o `'fist'` |
 | `popupFYI(texto)`, `sendPopup(titulo, texto)` | Le abre un **diálogo** con el texto y un botón «Aceptar» (el `popupFYI` de TFS); los `\n` son saltos de línea |
-| `showTextDialog({ titulo, texto, editable, maximo }, alGuardar)` | Le abre una **ventana de texto**: para leer, o para escribir con `editable: true` (como el `showTextDialog` + `onTextEdit` de TFS). Lo que guarde llega a `alGuardar(texto)`, recortado a `maximo` (1000 si no se dice); sólo puede contestarla ese jugador y una sola vez. Devuelve el id de la ventana |
+| `showTextDialog({ titulo, texto, editable, maximo }, alGuardar)` | Le abre una **ventana de texto**: para leer, o para escribir con `editable: true` (como el `showTextDialog` + `onTextEdit` de TFS). Lo que guarde llega a `alGuardar(texto)`, recortado a `maximo` (1000 si no se dice); sólo puede contestarla ese jugador y una sola vez. Devuelve el id de la ventana. También con la firma de TFS, `showTextDialog(item, texto, canWrite, length)`: lo escrito va al atributo `text` del objeto. Con un objeto (esa firma, o `item` en las opciones) avisa a `onTextEdit` |
 | `sendMail(item)` → `true/false` | Manda por correo una carta o un paquete (el `item` que recibe `onUse`), como si lo echara en un buzón. Las reglas y los mensajes, en [El depósito y el correo](#el-depósito-y-el-correo) |
 | `collectMail()` → n | Le entrega el correo que le esperaba (lo hace `events/correo.js` al entrar) |
 | `getSpells()` | Los hechizos de su vocación, por nivel: `[{ words, name, group, level, mana, soul }]` (lo usa `/spells`) |
@@ -664,10 +1020,13 @@ Y lo de la vocación (ver [VOCACIONES.md](VOCACIONES.md)):
 contenedor del suelo `getItems()` y `addItem(id, n)`. Uno que lleva el jugador (al usarlo desde la
 mochila) tiene además `getSlot()` y `isInInventory()`.
 
+Y todo lo de las clases de TFS (`getActionId`, `getParent`, `clone`, `split`, `getType`, los métodos
+de `Container`, `Tile`, `ItemType`...): ver [Compatibilidad con TFS](#compatibilidad-con-tfs).
+
 El cliente se entera solo de los cambios: el motor le manda las estadísticas, el inventario y
 los efectos cuando cambian.
 
 Las pruebas de todo esto están en `tools/test-scripts.mjs` (la API, los eventos, los hechizos, las
 condiciones, el comercio, los grupos, las calaveras, la munición, el depósito y la luz),
-`tools/test-otsp.mjs` (puertas, eventos globales y raids), `tools/test-correo.mjs` (el depósito por
+`tools/test-otsp.mjs` (puertas, eventos globales y raids), `tools/test-api-tfs.mjs` (la compatibilidad con TFS), `tools/test-correo.mjs` (el depósito por
 ciudad y el correo) y `tools/test-engine.js` (acciones, movimientos, comandos y eventos).

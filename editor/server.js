@@ -33,6 +33,7 @@ const { Item } = require('../engine/world/item');
 const { FLAG_NAMES } = require('../engine/world/writer');
 const { AssetStore } = require('./lib/assetstore');
 const MapFiles = require('./lib/mapfiles');
+const ConvertirOtbm = require('./lib/convertirotbm');
 const Assets = require('../shared/js/assets.mjs');
 const Compuestos = require('../shared/js/compuestos.mjs');
 const Config = require('../engine/core/config');
@@ -93,7 +94,11 @@ const PATHS = {
     /** Las plantillas de objetos compuestos (docs/MAPAS.md). */
     compuestosFile: path.join(ROOT, 'data', 'editor', 'compuestos.json'),
     /** Los pinceles de terreno, muros, alfombras y mesas (docs/MAPAS.md). */
-    pincelesFile: path.join(ROOT, 'data', 'editor', 'pinceles.json')
+    pincelesFile: path.join(ROOT, 'data', 'editor', 'pinceles.json'),
+    /** De ids de Tibia a ids de Jetyum, para importar OTBM (docs/MAPAS.md §5). */
+    equivalenciasFile: path.join(ROOT, 'data', 'editor', 'equivalencias-otbm.json'),
+    /** Donde quedan los archivos que se suben para importar (fuera del repositorio). */
+    subidasDir: path.join(require('os').tmpdir(), 'jetyum-subidas')
 };
 
 /**
@@ -135,6 +140,12 @@ function configurePaths(options) {
     if (opts.pincelesFile) {
         PATHS.pincelesFile = path.resolve(opts.pincelesFile);
     }
+    if (opts.equivalenciasFile) {
+        PATHS.equivalenciasFile = path.resolve(opts.equivalenciasFile);
+    }
+    if (opts.subidasDir) {
+        PATHS.subidasDir = path.resolve(opts.subidasDir);
+    }
     return PATHS;
 }
 
@@ -159,6 +170,50 @@ function leerCompuestos() {
         return Compuestos.vacio();
     }
     return JSON.parse(fs.readFileSync(PATHS.compuestosFile, 'utf8'));
+}
+
+/**
+ * LOS PAQUETES de pinceles o de compuestos: los `<base>-*.json` junto al archivo base
+ * (`pinceles-rme.json` junto a `pinceles.json`). Los escribe `tools/importar-materiales-rme.mjs`.
+ *
+ * Se cargan JUNTO a los del archivo base y son de SOLO LECTURA para el editor: la pestaña
+ * Compuestos edita y guarda solo `compuestos.json`, así que un paquete no se mezcla con lo propio
+ * al guardar. Un paquete que no es JSON válido se apunta y se salta.
+ *
+ * @returns {Array<{archivo: string, datos: Object|null, error?: string}>}
+ */
+function leerPaquetes(archivoBase) {
+    const carpeta = path.dirname(archivoBase);
+    const prefijo = path.basename(archivoBase, '.json') + '-';
+    if (!fs.existsSync(carpeta)) {
+        return [];
+    }
+    return fs.readdirSync(carpeta)
+        .filter((archivo) => archivo.startsWith(prefijo) && archivo.endsWith('.json'))
+        .sort()
+        .map((archivo) => {
+            try {
+                return { archivo: archivo, datos: JSON.parse(fs.readFileSync(path.join(carpeta, archivo), 'utf8')) };
+            } catch (error) {
+                return { archivo: archivo, datos: null, error: archivo + ': ' + error.message };
+            }
+        });
+}
+
+/** Las plantillas de todos los paquetes de compuestos, normalizadas, con sus problemas. */
+function compuestosDePaquetes(itemTypes) {
+    const salida = { compuestos: [], paquetes: [], problemas: [] };
+    leerPaquetes(PATHS.compuestosFile).forEach((paquete) => {
+        if (!paquete.datos) {
+            salida.problemas.push(paquete.error);
+            return;
+        }
+        const { data, problemas } = Compuestos.normalizarCompuestos(paquete.datos, itemTypes);
+        salida.paquetes.push({ archivo: paquete.archivo, compuestos: data.compuestos.length });
+        problemas.forEach((p) => salida.problemas.push(paquete.archivo + ': ' + p));
+        data.compuestos.forEach((t) => salida.compuestos.push(Object.assign({ paquete: paquete.archivo }, t)));
+    });
+    return salida;
 }
 
 /** Los objetos de items.xml como lista, que es lo que espera la comprobación de coherencia. */
@@ -839,7 +894,9 @@ function aplicarGuardado(loaded, body) {
     }
 
     if (body.composites !== undefined) {
-        const plantillas = Compuestos.normalizarCompuestos(leerCompuestos()).data.compuestos;
+        // Las plantillas de los paquetes (`compuestos-*.json`) también valen: se colocan igual.
+        const plantillas = Compuestos.normalizarCompuestos(leerCompuestos()).data.compuestos
+            .concat(compuestosDePaquetes().compuestos);
         const resultado = applyComposites(loaded.map, body.composites, plantillas);
         if (resultado.problems.length > 0) {
             return {
@@ -1093,6 +1150,182 @@ function copiarMapa(origen, body) {
             stats: loaded.map.stats()
         }
     };
+}
+
+// ---------------------------------------------------------------------------
+// Importar OTBM (docs/MAPAS.md §5)
+// ---------------------------------------------------------------------------
+
+/** Lo más grande que se deja subir: un mapa de Tibia entero pasa de sobra de los 4 MB del JSON. */
+const MAX_SUBIDA_BYTES = 128 * 1024 * 1024;
+
+/** Las extensiones que se aceptan, al subir y al leer una ruta: lo que importa un mapa y nada más. */
+const EXTENSIONES_DE_IMPORTACION = ['.otbm', '.otb', '.xml'];
+
+/**
+ * SUBIR UN ARCHIVO para importarlo: el cuerpo de la petición son los bytes tal cual (no JSON, que
+ * no cabe en los 4 MB de `readBody` ni conviene pasar a base64). Se escribe en una carpeta
+ * temporal, fuera del repositorio, y se devuelve su ruta para pasársela a la importación.
+ */
+function subirArchivo(request, nombreOriginal) {
+    return new Promise((resolve) => {
+        const base = path.basename(String(nombreOriginal || 'archivo')).replace(/[^a-zA-Z0-9._-]/g, '_');
+        const extension = path.extname(base).toLowerCase();
+        if (!EXTENSIONES_DE_IMPORTACION.includes(extension)) {
+            request.resume();
+            resolve(fallo(400, 'solo se suben archivos ' + EXTENSIONES_DE_IMPORTACION.join(', ') + ': ' + base));
+            return;
+        }
+        fs.mkdirSync(PATHS.subidasDir, { recursive: true });
+        const destino = path.join(PATHS.subidasDir, Date.now().toString(36) + '-' +
+            Math.random().toString(36).slice(2, 8) + '-' + base);
+        const salida = fs.createWriteStream(destino);
+        let bytes = 0;
+        let demasiado = false;
+        request.on('data', (trozo) => {
+            bytes += trozo.length;
+            if (bytes > MAX_SUBIDA_BYTES) {
+                demasiado = true;
+                return;
+            }
+            salida.write(trozo);
+        });
+        request.on('end', () => {
+            salida.end(() => {
+                if (demasiado) {
+                    fs.rmSync(destino, { force: true });
+                    resolve(fallo(413, 'el archivo pasa de ' + (MAX_SUBIDA_BYTES / 1024 / 1024) + ' MB'));
+                    return;
+                }
+                resolve({ status: 201, payload: { ok: true, ruta: destino, bytes: bytes } });
+            });
+        });
+        request.on('error', (error) => resolve(fallo(400, 'la subida se corto: ' + error.message)));
+    });
+}
+
+/** Una ruta de archivo de la petición: tiene que existir, ser un archivo y tener su extensión. */
+function rutaDeImportacion(valor, etiqueta, extensiones, obligatorio) {
+    const texto = String(valor === undefined || valor === null ? '' : valor).trim();
+    if (!texto) {
+        return obligatorio ? { error: 'falta ' + etiqueta } : { ruta: null };
+    }
+    const ruta = path.resolve(ROOT, texto);
+    if (!extensiones.includes(path.extname(ruta).toLowerCase())) {
+        return { error: etiqueta + ' tiene que ser un archivo ' + extensiones.join(' o ') + ': ' + texto };
+    }
+    if (!fs.existsSync(ruta) || !fs.statSync(ruta).isFile()) {
+        return { error: 'no existe ' + etiqueta + ': ' + texto };
+    }
+    return { ruta: ruta };
+}
+
+/**
+ * Las fuentes de la importación (items.otb y items.xml de Tibia, el catálogo de Jetyum y la tabla)
+ * tardan un par de segundos en leerse: se guardan las últimas, y se reutilizan mientras ninguno de
+ * los archivos cambie. Así «Analizar» e «Importar» seguidos no leen todo dos veces.
+ */
+let fuentesDeImportacion = null;
+
+function fuentesParaImportar(rutas) {
+    const firma = [rutas.itemsOtb, rutas.itemsXml, rutas.materiales, PATHS.equivalenciasFile, PATHS.itemsFile,
+        PATHS.pincelesFile]
+        .map((ruta) => (ruta && fs.existsSync(ruta) ? ruta + '@' + fs.statSync(ruta).mtimeMs : '-')).join('|');
+    if (!fuentesDeImportacion || fuentesDeImportacion.firma !== firma) {
+        fuentesDeImportacion = {
+            firma: firma,
+            fuentes: ConvertirOtbm.cargarFuentes({
+                itemsOtb: rutas.itemsOtb, itemsXml: rutas.itemsXml, materiales: rutas.materiales,
+                equivalencias: PATHS.equivalenciasFile, itemsJetyum: PATHS.itemsFile, pinceles: PATHS.pincelesFile,
+                things: path.join(PATHS.assetsDir, 'things.json')
+            })
+        };
+    }
+    return fuentesDeImportacion.fuentes;
+}
+
+/**
+ * IMPORTAR UN OTBM: lee el `.otbm` (con su items.otb y su items.xml, y opcionalmente su house.xml,
+ * su spawn.xml y los materiales de RME), lo convierte con `lib/convertirotbm.js` y CREA un mapa
+ * nuevo en `data/world/` por el mismo camino que «Nuevo mapa»: validado por el cargador del motor,
+ * con la ida y vuelta comprobada, y sin pisar ningún mapa que exista.
+ *
+ * Los archivos se dan por RUTA en el servidor (las que devuelve `POST /api/subidas`, o cualquiera
+ * del disco: la herramienta es local). Con `dryRun` no escribe nada y solo devuelve el informe:
+ * es el «Analizar» del diálogo, para elegir el área antes de importar.
+ */
+function importarOtbmAlEditor(body) {
+    const tieneNombre = body.nombre !== undefined && body.nombre !== null && String(body.nombre).trim() !== '';
+    const validado = tieneNombre || body.dryRun !== true ? MapFiles.validarNombreNuevo(body.nombre) : { nombre: 'analisis' };
+    if (validado.error) {
+        return fallo(400, validado.error);
+    }
+    const nombre = validado.nombre;
+
+    const rutas = {};
+    const problemas = [];
+    [['otbm', 'el mapa .otbm', ['.otbm'], true], ['itemsOtb', 'el items.otb', ['.otb'], true],
+        ['itemsXml', 'el items.xml', ['.xml'], false], ['casas', 'el house.xml', ['.xml'], false],
+        ['spawns', 'el spawn.xml', ['.xml'], false], ['materiales', 'el materials.xml', ['.xml'], false]]
+        .forEach(([clave, etiqueta, extensiones, obligatorio]) => {
+            const r = rutaDeImportacion(body[clave], etiqueta, extensiones, obligatorio);
+            if (r.error) {
+                problemas.push(r.error);
+            } else {
+                rutas[clave] = r.ruta;
+            }
+        });
+    let area = null;
+    try {
+        area = ConvertirOtbm.leerArea(body.area);
+    } catch (error) {
+        problemas.push(error.message);
+    }
+    if (problemas.length > 0) {
+        return fallo(400, 'la importacion no es valida', problemas);
+    }
+    if (body.dryRun !== true) {
+        const existente = MapFiles.mapaExistente(mapsDirectory(), nombre);
+        if (existente) {
+            return fallo(409, 'ya existe un mapa llamado ' + existente);
+        }
+    }
+
+    let fuentes;
+    try {
+        fuentes = fuentesParaImportar(rutas);
+    } catch (error) {
+        return fallo(422, 'no se pudieron leer los archivos de items: ' + error.message);
+    }
+    const tipos = tiposParaValidar();
+    let resultado;
+    try {
+        resultado = ConvertirOtbm.importar({
+            otbm: rutas.otbm, fuentes: fuentes, nombre: nombre, area: area, desplazar: body.desplazar !== false,
+            casas: rutas.casas, spawns: rutas.spawns, monsterTypes: tipos.monsterTypes, npcTypes: tipos.npcTypes
+        });
+    } catch (error) {
+        return fallo(422, 'el .otbm no se pudo leer: ' + error.message);
+    }
+    const informe = resultado.informe;
+    if (!resultado.map || !informe.carga.ok) {
+        return { status: 422, payload: { error: 'el mapa importado no carga en el motor', problems: informe.carga.errores,
+            informe: informe } };
+    }
+    if (body.dryRun === true) {
+        return { status: 200, payload: { ok: true, dryRun: true, nombre: nombre, informe: informe } };
+    }
+
+    const loaded = Object.assign({ name: nombre, raw: resultado.raw, map: resultado.map,
+        extras: documentationKeys(resultado.raw) }, tipos);
+    const written = writeMap(nombre, loaded, { nuevo: true });
+    if (!written.ok) {
+        return written.existe
+            ? fallo(409, 'ya existe un mapa llamado ' + nombre)
+            : fallo(422, 'el mapa no se pudo guardar: no se puede volver a leer', written.problems);
+    }
+    return { status: 201, payload: { ok: true, nombre: nombre, bytes: written.bytes, informe: informe,
+        stats: resultado.map.stats() } };
 }
 
 /**
@@ -1534,6 +1767,16 @@ async function handleApi(request, response, pathname, query) {
         return;
     }
 
+    // --- Importar un OTBM: subir sus archivos y crear el mapa (docs/MAPAS.md §5) ---
+    if (pathname === '/api/subidas' && method === 'POST') {
+        responder(response, await subirArchivo(request, queryOf('nombre')));
+        return;
+    }
+    if (pathname === '/api/maps/importar-otbm' && method === 'POST') {
+        responder(response, importarOtbmAlEditor(await readBody(request)));
+        return;
+    }
+
     const sobreArchivo = /^\/api\/maps\/([^/]+)\/(copia|propiedades|copias)(?:\/([^/]+)\/(restaurar))?$/
         .exec(pathname);
     if (sobreArchivo) {
@@ -1877,8 +2120,13 @@ async function handleApi(request, response, pathname, query) {
     // Objetos compuestos (la pestaña Compuestos y la paleta del mapa)
     // =======================================================================
     if (pathname === '/api/compuestos' && method === 'GET') {
-        const { data, problemas } = Compuestos.normalizarCompuestos(leerCompuestos(), loadItemTypes());
-        sendJson(response, 200, { data, problems: problemas, atributos: Compuestos.ATRIBUTOS_CONOCIDOS });
+        const itemTypes = loadItemTypes();
+        const { data, problemas } = Compuestos.normalizarCompuestos(leerCompuestos(), itemTypes);
+        // `data` es SOLO `compuestos.json`, lo que la pestaña Compuestos edita y guarda; las
+        // plantillas de los paquetes van aparte, para la paleta del mapa.
+        const paquetes = compuestosDePaquetes(itemTypes);
+        sendJson(response, 200, { data, problems: problemas, atributos: Compuestos.ATRIBUTOS_CONOCIDOS,
+            paquetes: { plantillas: paquetes.compuestos, archivos: paquetes.paquetes, problems: paquetes.problemas } });
         return;
     }
 
@@ -1904,8 +2152,35 @@ async function handleApi(request, response, pathname, query) {
         const Pinceles = await import('./js/pinceles.js');
         const raw = fs.existsSync(PATHS.pincelesFile)
             ? JSON.parse(fs.readFileSync(PATHS.pincelesFile, 'utf8')) : Pinceles.vacio();
-        const { data, problemas } = Pinceles.normalizarPinceles(raw, loadItemTypes());
-        sendJson(response, 200, { data, problems: problemas });
+        const itemTypes = loadItemTypes();
+        const { data, problemas } = Pinceles.normalizarPinceles(raw, itemTypes);
+        // Los paquetes (`pinceles-*.json`, p. ej. los importados de RME) se suman a las listas. Sus
+        // problemas van aparte: un paquete con un objeto que ya no existe no es un fallo de los
+        // pinceles propios.
+        const paquetes = [];
+        const problemasDePaquetes = [];
+        const ids = new Set(['suelos', 'bordes', 'muros', 'alfombras', 'mesas']
+            .flatMap((lista) => data[lista].map((p) => lista + ':' + p.id)));
+        leerPaquetes(PATHS.pincelesFile).forEach((paquete) => {
+            if (!paquete.datos) {
+                problemasDePaquetes.push(paquete.error);
+                return;
+            }
+            const leido = Pinceles.normalizarPinceles(paquete.datos, itemTypes);
+            leido.problemas.forEach((p) => problemasDePaquetes.push(paquete.archivo + ': ' + p));
+            ['suelos', 'bordes', 'muros', 'alfombras', 'mesas'].forEach((lista) => {
+                leido.data[lista].forEach((p) => {
+                    if (ids.has(lista + ':' + p.id)) {
+                        problemasDePaquetes.push(paquete.archivo + ': ' + p.id + ' repetido, se usa el primero');
+                        return;
+                    }
+                    ids.add(lista + ':' + p.id);
+                    data[lista].push(p);
+                });
+            });
+            paquetes.push(paquete.archivo);
+        });
+        sendJson(response, 200, { data, problems: problemas, paquetes: paquetes, problemasDePaquetes: problemasDePaquetes });
         return;
     }
 
@@ -2007,6 +2282,8 @@ module.exports = {
     applyComposites,
     aplicarGuardado,
     propiedadesDe,
+    importarOtbmAlEditor,
+    leerPaquetes,
     MOUNTS
 };
 

@@ -113,6 +113,43 @@ export class ApiClient {
     }
 
     /**
+     * Sube un archivo (`.otbm`, `.otb` o `.xml`) para importarlo. Va TAL CUAL en el cuerpo, sin
+     * JSON: un mapa de Tibia pasa de los 4 MB que admite el resto del API. Responde `{ruta, bytes}`,
+     * la ruta en el servidor que luego se le da a `importarOtbm`.
+     *
+     * @param {File|Blob} archivo
+     * @param {string} nombre el nombre original (por su extensión)
+     */
+    async subirArchivo(archivo, nombre) {
+        let response;
+        try {
+            response = await fetch(this.base + '/api/subidas?nombre=' + encodeURIComponent(nombre || archivo.name),
+                { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: archivo });
+        } catch (error) {
+            return { error: 'no se pudo hablar con el servidor: ' + error.message };
+        }
+        let payload;
+        try {
+            payload = await response.json();
+        } catch (error) {
+            return { error: 'el servidor devolvio algo que no es JSON (estado ' + response.status + ')' };
+        }
+        return response.ok ? payload
+            : Object.assign({}, payload, { error: payload.error || ('el servidor respondio ' + response.status) });
+    }
+
+    /**
+     * Importar un OTBM: crea `data/world/<nombre>.map.json` a partir de un `.otbm` y sus archivos.
+     *
+     * @param {Object} datos `{nombre, otbm, itemsOtb, itemsXml?, casas?, spawns?, materiales?, area?,
+     *        desplazar?, dryRun?}` (las rutas, en el servidor). Responde `{nombre, informe}`; con
+     *        `dryRun`, solo el informe (es «Analizar»). 409 si el mapa ya existe.
+     */
+    importarOtbm(datos) {
+        return request('POST', this.base + '/api/maps/importar-otbm', datos || {});
+    }
+
+    /**
      * Guardar como: escribe el mapa `nombre` con otro nombre SIN TOCAR EL ORIGINAL.
      *
      * @param {string} nombre el mapa abierto

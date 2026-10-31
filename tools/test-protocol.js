@@ -613,7 +613,12 @@ function main() {
         session.player.attackSkill = 10;
 
         const healthBefore = rat.health;
+        // El azar en la mano: con el combate de TFS, la defensa y la armadura de la rata pueden
+        // parar el golpe entero. Con la tirada alta, el arma pega lo máximo y entra.
+        const azar = engine.combat.random;
+        engine.combat.random = () => 0.999;
         const attack = session.handle(P.message(P.CLIENT.ATTACK, rat.id));
+        engine.combat.random = azar;
 
         check('atacar a un monstruo contiguo le hace daño',
             attack.action === 'attack' && attack.result.hit === true &&

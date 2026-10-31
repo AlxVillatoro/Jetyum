@@ -585,6 +585,10 @@ class World {
         if (creature.removed) {
             return { moved: false, reason: 'removed' };
         }
+        // `creature.setNoMove(true)` de los scripts (TFS): no da pasos, aunque se le puede teletransportar.
+        if (creature.noMove) {
+            return { moved: false, reason: 'noMove' };
+        }
         if (now < creature.nextStepAt) {
             return { moved: false, reason: 'exhausted', waitMs: creature.nextStepAt - now };
         }
@@ -764,6 +768,8 @@ class World {
      */
     adoptItem(item) {
         if (item && !item.instanceId) {
+            // Lo que no tenía instancia vino con el mapa (`item:isLoadedFromMap()` de los scripts).
+            item.loadedFromMap = true;
             item.instanceId = this._allocateItemId();
             this.items.set(item.instanceId, item);
         }
@@ -3491,5 +3497,19 @@ Object.assign(World.prototype, require('./casas').casas);
 Object.assign(World.prototype, require('./correo').correo);
 // El intercambio entre jugadores: ofrecer, contestar, aceptar y cambiar (`intercambio.js`).
 Object.assign(World.prototype, require('./intercambio').intercambio);
+// Los gremios: fundar, invitar, rangos, mensaje del día, apodos y el look (`gremios.js`).
+Object.assign(World.prototype, require('./gremios').gremios);
+// Los castigos de los GM: suspender cuentas e IP, namelock, echar y silenciar (`castigos.js`). Engancha
+// además `silenciado` y `creatureSay`; da igual que los canales se mezclen antes o después.
+Object.assign(World.prototype, require('./castigos').castigos);
+require('./castigos').engancharCastigos(World);
+// Los canales del chat: los públicos, el del gremio, el del grupo y los privados (`canales.js`).
+Object.assign(World.prototype, require('./canales').canales);
+// El hook de moderación `silenciado(player)` (false: nadie), sólo si los castigos no han puesto el suyo.
+if (typeof World.prototype.silenciado !== 'function') {
+    World.prototype.silenciado = require('./canales').silenciadoPorDefecto;
+}
+// La lista VIP de la cuenta, en la base, con los avisos al entrar y al salir (`vip.js`).
+Object.assign(World.prototype, require('./vip').vip);
 
 module.exports = { World, DIRECTION_DELTA, COMPACT_EVERY_TICKS, resetIdCounter };

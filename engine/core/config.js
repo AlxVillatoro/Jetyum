@@ -40,6 +40,13 @@ const DEFAULTS = {
     maxMessageBytes: 64 * 1024,
     talkSpamMessages: 6,
     talkSpamWindowMs: 5000,
+    // Los canales del chat (nivel y espera de cada uno) y la lista VIP: ver config.js.
+    chatChannels: {
+        juego: { level: 1 },
+        comercio: { level: 1, cooldownMs: 2 * 60 * 1000 },
+        ayuda: { level: 1 }
+    },
+    vipLimit: 20,
     scriptingEnabled: true,
     showScriptsLogInConsole: true,
     scriptErrorPolicy: 'abort',
@@ -80,6 +87,9 @@ const DEFAULTS = {
     housePriceEachSQM: 1000,
     houseLevel: 1,
     houseRentPeriod: 'monthly',
+    // Los gremios (nivel para fundar uno) y los castigos (días de un /ban que no los dice).
+    guildCreateLevel: 8,
+    banDays: 7,
     rateExperience: 1,
     rateSkill: 1,
     rateMagic: 1,

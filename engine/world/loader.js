@@ -9,8 +9,10 @@
  *     herramienta delante para saber qué cambió.
  *   - Sólo se declaran las EXCEPCIONES al suelo por defecto de cada planta. Un
  *     mapa de 2048×2048 no enumera ocho millones de celdas de hierba.
- *   - El importador/exportador de OTBM se conectará aquí: OTBM como frontera,
- *     este formato en tiempo de ejecución. Es la estrategia de ARQUITECTURA.md.
+ *   - OTBM es la FRONTERA y este formato, el de tiempo de ejecución (la estrategia de
+ *     ARQUITECTURA.md): `tools/importar-otbm.mjs` y `tools/exportar-otbm.mjs` convierten en
+ *     los dos sentidos (`editor/lib/convertirotbm.js`), y lo importado se carga aquí como
+ *     cualquier otro mapa.
  *
  * UN RESPAWN ES UN AREA: un centro, un radio y la lista de monstruos que viven
  * dentro. Es la forma de Tibia (`<spawn centerx= centery= radius=>` con sus

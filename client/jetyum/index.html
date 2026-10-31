@@ -516,6 +516,11 @@
     .linea.grupo { color: #7fe07f; }
     .consola-pestanas .cerrar-canal { margin-left: 2px; color: #8a8aa0; padding: 0 2px; }
     .consola-pestanas .cerrar-canal:hover { color: #ff8080; }
+    /* El «+» de los canales, siempre al final de la fila; y las líneas de un canal, como en Tibia. */
+    .consola-pestanas button.abrir-canales { margin-left: auto; padding: 2px 8px; font-weight: bold; }
+    .consola-pestanas button.abrir-canales:hover { color: #e8e8f0; }
+    .linea.canal { color: #ffe060; }
+    .linea.canal-sistema { color: #f0a050; }
 
     /* La ventana de comercio de los NPC. */
     .ventana-comercio .ventana-cabecera { background: #1f3326; }
@@ -926,6 +931,7 @@
                     <tr><td>Clic derecho</td><td>sobre un monstruo, atacarlo (otra vez, dejarlo); sobre algo, usarlo (también en la mochila y en los cuerpos); sobre un contenedor, abrirlo o cerrarlo; sobre ti, tu ficha</td></tr>
                     <tr><td>Arrastrar</td><td>coger y mover cosas: al suelo, a tu equipo, a tu mochila o a un contenedor abierto</td></tr>
                     <tr><td>Ctrl + clic derecho</td><td>sobre un objeto, su menú: mirarlo o comerciar con él con otro jugador («Comerciar con…» y clic en el jugador)</td></tr>
+                    <tr><td>+</td><td>junto a las pestañas de la consola: abrir un canal (Juego, Comercio, Ayuda, tu gremio) o tu canal privado; en el tuyo, «/invitar nombre» y «/excluir nombre»</td></tr>
                     <tr><td>E</td><td>usar lo que tienes delante (en modo /wasd)</td></tr>
                     <tr><td>Escape</td><td>dejar de atacar</td></tr>
                     <tr><td>Ctrl+R</td><td>montar o desmontar (la montura se elige en tu ficha; no se monta en una zona de protección)</td></tr>
@@ -973,6 +979,7 @@
         <div class="consola-pestanas" role="tablist">
             <button type="button" class="activa" data-canal="default" title="Lo que se dice a tu alrededor y los avisos">Default</button>
             <button type="button" data-canal="server" title="Sólo los mensajes del servidor">Server Log</button>
+            <button type="button" class="abrir-canales" data-abrir-canales title="Canales: abrir un canal del chat (Juego, Comercio, Ayuda, tu gremio o uno privado)">+</button>
         </div>
         <div id="consola-lineas" role="log" aria-live="polite"></div>
         <form id="chat-bar">

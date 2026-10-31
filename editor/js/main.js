@@ -41,6 +41,7 @@ import { SpritesView } from './spritesview.js';
 import { pintarIconos, ponerIcono } from './iconos.js';
 import { Herramientas, HERRAMIENTAS_PROPIAS } from './herramientas.js';
 import { diagnosticar, resumen, construirPanel } from './diagnostico.js';
+import { dialogoImportarOtbm } from './importarotbm.js';
 import {
     CompuestosView,
     formularioDeValores,
@@ -107,6 +108,11 @@ const state = {
 
     /** Las plantillas de objetos compuestos (`data/editor/compuestos.json`). */
     plantillas: [],
+    /**
+     * Las de los PAQUETES (`data/editor/compuestos-*.json`, p. ej. los doodads importados de RME):
+     * se colocan como las otras, pero no se editan ni se guardan con `compuestos.json`.
+     */
+    plantillasDePaquetes: [],
     /** El compuesto en la mano: `{plantilla, formulario}`, o null. */
     compuestoEnMano: null,
     /** El primer clic de «Capturar», o null. */
@@ -922,7 +928,7 @@ async function openMap(name) {
     });
 
     state.map = new EditorMap(mapResult.raw, itemTypes, state.npcTypes);
-    state.map.setPlantillas(state.plantillas);
+    state.map.setPlantillas(todasLasPlantillas());
     state.itemTypes = itemTypes;
 
     // EL NOMBRE CON EL QUE SE GUARDA ES EL QUE SE PIDIÓ, no el que lleve dentro el
@@ -1825,6 +1831,10 @@ function wireArchivosYVistas() {
     document.getElementById('btn-mapa-guardar-como').addEventListener('click', dialogoGuardarComo);
     document.getElementById('btn-mapa-propiedades').addEventListener('click', dialogoPropiedadesMapa);
     document.getElementById('btn-mapa-copias').addEventListener('click', dialogoCopiasMapa);
+    document.getElementById('btn-mapa-importar-otbm').addEventListener('click', () => dialogoImportarOtbm({
+        api, abrirDialogo, cerrarDialogo, nodo, campoDeDialogo, formularioDeDialogo, botonDeDialogo,
+        pieDeDialogo, mostrarErrorDeDialogo, abrirMapaDeArchivo, setMapStatus, cambiosSinGuardar
+    }));
     document.getElementById('rme-diagnostico').addEventListener('click', abrirDiagnostico);
 
     Object.keys(BOTONES_DE_PLANTAS).forEach((modo) => {
@@ -1887,13 +1897,20 @@ async function cargarPlantillas() {
         setMapStatus('no se pudieron leer los compuestos: ' + r.error, true);
         return;
     }
+    state.plantillasDePaquetes = (r.paquetes && r.paquetes.plantillas) || [];
     ponerPlantillas(r.data.compuestos);
+}
+
+/** Las de `compuestos.json` y las de los paquetes: las que se pueden colocar en el mapa. */
+function todasLasPlantillas() {
+    const propias = new Set(state.plantillas.map((t) => t.id));
+    return state.plantillas.concat(state.plantillasDePaquetes.filter((t) => !propias.has(t.id)));
 }
 
 function ponerPlantillas(lista) {
     state.plantillas = lista;
     if (state.map) {
-        state.map.setPlantillas(lista);
+        state.map.setPlantillas(todasLasPlantillas());
     }
     if (state.compuestosView) {
         state.compuestosView.setPlantillas(lista);
@@ -1994,7 +2011,7 @@ function pintarPaletaDeCompuestos() {
     }
     caja2.innerHTML = '';
     const porCategoria = new Map();
-    state.plantillas.forEach((t) => {
+    todasLasPlantillas().forEach((t) => {
         if (!porCategoria.has(t.categoria)) {
             porCategoria.set(t.categoria, []);
         }
@@ -2130,7 +2147,7 @@ async function terminarCaptura(desde, cell) {
         setMapStatus('el recuadro está vacío: no hay nada que capturar', true);
         return null;
     }
-    while (state.plantillas.some((t) => t.id === plantilla.id)) {
+    while (todasLasPlantillas().some((t) => t.id === plantilla.id)) {
         plantilla.id += '-2';
     }
     const lista = state.plantillas.concat([normalizarPlantilla(plantilla, [])]);

@@ -32,6 +32,12 @@ const { EFECTO, PROYECTIL, CONST_ME, CONST_ANI, EFECTO_DE_ELEMENTO } = require('
 // hechizos de los monstruos.
 const { AREA } = require('../world/areas');
 
+// Lo de TFS: las constantes (enums.js), las clases que no son criaturas ni objetos (tfs.js) y las
+// funciones de 0.x con los constructores globales (compat.js).
+const Enums = require('./enums');
+const Tfs = require('./tfs');
+const { crearCompat } = require('./compat');
+
 function createGame(deps) {
     const world = deps.world;
     const registry = deps.registry;
@@ -55,11 +61,15 @@ function createGame(deps) {
     };
     const eventos = new Map();
     let siguienteEvento = 1;
+    // Los storages globales y el récord de jugadores (`Game.getStorageValue`, `onRecord`).
+    const almacenGlobal = crearAlmacenGlobal(world);
 
     /** Golpea (o cura) a una criatura con un tipo de daño. Es el corazón de los dos combates. */
     function golpear(atacante, objetivo, opciones) {
         const o = opciones || {};
-        const tipo = String(o.type || 'physical').toLowerCase();
+        // El tipo, por nombre ('fire') o por COMBAT_* de TFS (COMBAT_FIREDAMAGE).
+        const tipo = typeof o.type === 'number' ? (Enums.ELEMENTO_DE_COMBATE[o.type] || 'physical')
+            : String(o.type || 'physical').toLowerCase();
         const cantidad = azar(o.min, o.max);
         if (!objetivo || objetivo.isDead()) {
             return { hit: false, damage: 0 };
@@ -86,7 +96,7 @@ function createGame(deps) {
         });
     }
 
-    return {
+    const game = {
         // -------------------------------------------------------------------
         // Tiempo
         // -------------------------------------------------------------------
@@ -422,6 +432,20 @@ function createGame(deps) {
         },
 
         /**
+         * UNA LÍNEA DEL SERVIDOR EN UN CANAL del chat (el `sendChannelMessage(channelId, type, message)`
+         * de TFS): a todos los que lo tienen abierto (engine/world/canales.js). `type`: 'sistema' o
+         * 'rojo', o el número de TFS (10 y 14, los rojos). Devuelve a cuántos llegó.
+         */
+        sendChannelMessage(channelId, type, text) {
+            return world.enviarAlCanal(channelId, text, (type === 10 || type === 14 || type === 'rojo') ? 'rojo' : 'sistema');
+        },
+
+        /** Lo mismo en el canal de un gremio (`sendGuildChannelMessage` de TFS). */
+        sendGuildChannelMessage(guildId, type, text) {
+            return world.mensajeAlCanalDeGremio(guildId, text, (type === 10 || type === 14 || type === 'rojo') ? 'rojo' : 'sistema');
+        },
+
+        /**
          * CAMBIA EL GRUPO DE ACCESO de un personaje (data/XML/groups.js), esté dentro o no: el de
          * dentro lo nota ya, y se guarda en la base. `grupo` es el nombre (`'gamemaster'`) o el id.
          *
@@ -519,8 +543,259 @@ function createGame(deps) {
                 map: world.map ? world.map.name : null,
                 worldType: config.worldType
             };
+        },
+
+        // -------------------------------------------------------------------
+        // Lo que TFS da a `Game` (las clases están en tfs.js y entities.js)
+        // -------------------------------------------------------------------
+
+        /** `Game.getTile(pos)` o `Game.getTile(x, y, z)`: la casilla (`Tile`), o null fuera del mapa. */
+        getTile(a, b, c) {
+            return Tfs.crearTile(world, a, b, c);
+        },
+
+        /** `Game.getTowns()`: las ciudades del mapa (`Town`). */
+        getTowns() {
+            return ((world.map && world.map.towns) || []).map((t) => new Tfs.TownWrapper(world, t));
+        },
+
+        /** `Game.getTown(id | nombre)` (en TFS es `Town(...)`, que también existe). */
+        getTown(idONombre) {
+            return Tfs.buscarCiudad(world, idONombre);
+        },
+
+        /** `Game.getHouses()`: las casas del mapa (`House`). */
+        getHouses() {
+            const { HouseWrapper } = require('./entities');
+            return world.casas ? Array.from(world.casas.keys()).map((id) => new HouseWrapper(world, id)) : [];
+        },
+
+        /** `Game.getHouse(id)`, o null. */
+        getHouse(id) {
+            const { HouseWrapper } = require('./entities');
+            return world.houseById && world.houseById(id) ? new HouseWrapper(world, Number(id)) : null;
+        },
+
+        /** `Game.getVocations()`: todas las vocaciones (`Vocation`). */
+        getVocations() {
+            return world.vocations ? Array.from(world.vocations.values()).map((v) => new Tfs.VocationWrapper(world, v)) : [];
+        },
+
+        /**
+         * `Game.getStorageValue(key)`: un STORAGE GLOBAL (del servidor, no de un jugador), o null si no
+         * tiene. Con base de datos se guarda (tabla `meta`) y dura entre reinicios; sin ella, vive lo
+         * que viva el proceso.
+         */
+        getStorageValue(clave) {
+            return almacenGlobal.leer(clave);
+        },
+
+        /** `Game.setStorageValue(key, value)`: se escribe en la base al momento (cambian poco). */
+        setStorageValue(clave, valor) {
+            return almacenGlobal.escribir(clave, valor);
+        },
+
+        /** `Game.getWorldType()`: WORLD_TYPE_NO_PVP, WORLD_TYPE_PVP o WORLD_TYPE_PVP_ENFORCED. */
+        getWorldType() {
+            return Enums.tipoDeMundo(world.worldType || config.worldType);
+        },
+
+        /** `Game.getGameState()`: en marcha (GAME_STATE_NORMAL); Jetyum no tiene otros estados. */
+        getGameState() {
+            return Enums.GAME_STATE.GAME_STATE_NORMAL;
+        },
+
+        /** `Game.getMonsterCount()`. */
+        getMonsterCount() {
+            return world.monsters.size;
+        },
+
+        /** `Game.getNpcCount()`. */
+        getNpcCount() {
+            return world.npcs ? world.npcs.size : 0;
+        },
+
+        /** `Game.getPlayersRecord()`: el máximo de jugadores a la vez (el de `onRecord`). */
+        getPlayersRecord() {
+            return almacenGlobal.record();
         }
     };
+
+    // Lo que necesitan los envoltorios y los eventos de TFS (ver `engancharEventosTfs`).
+    engancharEventosTfs(world, registry);
+
+    // Las funciones de 0.x y los constructores de TFS 1.x (compat.js), para `installGame`. No se
+    // enumeran: `Game` sigue siendo lo que era.
+    Object.defineProperty(game, '_compat', {
+        value: crearCompat({ world: world, registry: registry, game: game, config: config }),
+        enumerable: false
+    });
+    Object.defineProperty(game, '_world', { value: world, enumerable: false });
+    Object.defineProperty(game, '_almacenGlobal', { value: almacenGlobal, enumerable: false });
+    return game;
+}
+
+/**
+ * EL ALMACÉN DE LOS STORAGES GLOBALES (`Game.getStorageValue`, `getGlobalStorageValue`) y el récord
+ * de jugadores a la vez (`onRecord`).
+ *
+ * Con base de datos van a la tabla `meta` (clave → JSON), que ya existe para la versión del esquema:
+ * no hace falta una tabla nueva para dos filas. La base se abre DESPUÉS de crear `Game`, así que se
+ * busca al usarse (`world.baseDeCasas`, la que el motor da a las casas) y se lee la primera vez que
+ * está. Sin base, todo vive en memoria.
+ */
+function crearAlmacenGlobal(world) {
+    const valores = new Map();
+    let leido = false;
+    let maximo = 0;
+
+    const base = () => {
+        const db = world.baseDeCasas || world.baseDeGremios || null;
+        return db && db.isOpen !== false && db.db ? db.db : null;
+    };
+    const leerFila = (db, clave) => {
+        const fila = db.prepare('SELECT value FROM meta WHERE key = ?').get(clave);
+        return fila ? JSON.parse(fila.value) : null;
+    };
+    const escribirFila = (db, clave, valor) => {
+        db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+            .run(clave, JSON.stringify(valor));
+    };
+    /** La primera vez que hay base, se trae lo guardado (lo puesto antes, en memoria, manda). */
+    const cargar = () => {
+        const db = leido ? null : base();
+        if (!db) {
+            return;
+        }
+        leido = true;
+        try {
+            const guardados = leerFila(db, 'global_storage') || {};
+            Object.keys(guardados).forEach((k) => {
+                if (!valores.has(k)) {
+                    valores.set(k, guardados[k]);
+                }
+            });
+            maximo = Math.max(maximo, Number(leerFila(db, 'players_record')) || 0);
+        } catch (error) {
+            // Una base sin la tabla (o rota) no impide jugar: se sigue en memoria.
+        }
+    };
+    const guardar = (clave, valor) => {
+        const db = base();
+        if (!db) {
+            return false;
+        }
+        try {
+            escribirFila(db, clave, valor);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    };
+
+    return {
+        leer(clave) {
+            cargar();
+            const v = valores.get(String(clave));
+            return v === undefined ? null : v;
+        },
+        escribir(clave, valor) {
+            cargar();
+            if (valor === undefined || valor === null) {
+                valores.delete(String(clave));
+            } else {
+                valores.set(String(clave), typeof valor === 'number' || typeof valor === 'string' ? valor : Number(valor));
+            }
+            guardar('global_storage', Object.fromEntries(valores));
+            return true;
+        },
+        record() {
+            cargar();
+            return maximo;
+        },
+        /** Si `ahora` jugadores es un récord, lo apunta y devuelve el anterior; si no, null. */
+        nuevoRecord(ahora) {
+            cargar();
+            if (ahora <= maximo) {
+                return null;
+            }
+            const anterior = maximo;
+            maximo = ahora;
+            guardar('players_record', maximo);
+            return anterior;
+        }
+    };
+}
+
+/**
+ * LOS ENGANCHES QUE NECESITAN LOS EVENTOS DE TFS. El mundo no conoce el registro (ver engine.js): se
+ * le dejan funciones que el combate y las ventanas de texto llaman en su momento, y aquí se decide
+ * qué scripts se enteran. Si nadie escucha un evento, el enganche no cuesta más que mirarlo.
+ *
+ *   - `onPrepareDeath(creature, killer)`: antes de morir; con `false` no muere (combat.js).
+ *   - `onHealthChange(creature, attacker, primaryDamage, primaryType, secondaryDamage,
+ *      secondaryType, origin)`: antes de quitarle vida; puede devolver el daño cambiado (combat.js).
+ *   - `onManaChange(...)`: lo mismo con el maná que se le drena (combat.js).
+ *   - `onTextEdit(player, item, text)`: al guardar lo escrito en un objeto; con `false` no se guarda
+ *      (`player.showTextDialog`, entities.js).
+ */
+function engancharEventosTfs(world, registry) {
+    const envolver = (c) => (c && world.getCreature(c.id) ? registry.entities.creature(c.id) : null);
+
+    // Los envoltorios de tfs.js usan la caché del registro: `tile.getTopCreature() === player`.
+    world.fabricaDeEnvoltorios = registry.entities;
+
+    world.antesDeMorir = (creature, killer) => {
+        const lista = registry.events.get('preparedeath');
+        if (!lista || lista.length === 0) {
+            return true;
+        }
+        // Durante el aviso tiene 1 de vida: así un `creature.addHealth(...)` del script (lo que hacen las
+        // arenas de TFS) funciona, porque a una criatura muerta no se la cura. Si muere igual, a 0.
+        creature.health = Math.max(1, creature.health);
+        const salvada = !!registry.dispatchEvent('preparedeath', [envolver(creature), envolver(killer)]).blocked;
+        if (!salvada) {
+            creature.health = 0;
+        }
+        return !salvada;
+    };
+
+    /** Lo que devuelve un `onHealthChange` / `onManaChange`: un número, `[daño, tipo, ...]` o `{primaryDamage}`. */
+    const danoDevuelto = (resultado, antes) => {
+        if (typeof resultado === 'number' && Number.isFinite(resultado)) {
+            return resultado;
+        }
+        if (Array.isArray(resultado) && Number.isFinite(Number(resultado[0]))) {
+            return Number(resultado[0]);
+        }
+        if (resultado && typeof resultado === 'object' && Number.isFinite(Number(resultado.primaryDamage))) {
+            return Number(resultado.primaryDamage);
+        }
+        return antes;
+    };
+    const cambio = (evento, nombre) => (creature, atacante, dano, elemento, opciones) => {
+        const lista = registry.events.get(evento);
+        if (!lista || lista.length === 0) {
+            return dano;
+        }
+        const o = opciones || {};
+        const origen = o.bloqueable ? Enums.ORIGIN.ORIGIN_MELEE : Enums.ORIGIN.ORIGIN_NONE;
+        const tipo = Enums.COMBATE_DE_ELEMENTO[elemento || 'physical'] || Enums.COMBAT.COMBAT_PHYSICALDAMAGE;
+        let actual = dano;
+        lista.forEach((entry) => {
+            const r = registry._invoke(entry, nombre, [envolver(creature), envolver(atacante), actual, tipo,
+                0, Enums.COMBAT.COMBAT_NONE, origen]);
+            if (!r.error) {
+                actual = Math.max(0, Math.trunc(danoDevuelto(r.result, actual)));
+            }
+        });
+        return actual;
+    };
+    world.alCambiarVida = cambio('healthchange', 'onHealthChange');
+    world.alCambiarMana = cambio('manachange', 'onManaChange');
+
+    world.eventoDeTexto = (player, item, texto) =>
+        !registry.dispatchEvent('textedit', [player, item, String(texto)]).blocked;
 }
 
 /**
@@ -530,14 +805,26 @@ function createGame(deps) {
 function installGame(game) {
     // Con `Game` van las constantes de los efectos: `EFECTO`, `PROYECTIL` y los alias de TFS
     // (`CONST_ME_*`, `CONST_ANI_*`), para escribir `EFECTO.FUEGO` sin importar nada.
-    const globales = { Game: game, EFECTO: EFECTO, PROYECTIL: PROYECTIL, ...CONST_ME, ...CONST_ANI };
+    //
+    // Y LO DE TFS, para que un script portado encuentre lo que espera: las constantes (`MESSAGE_*`,
+    // `CONST_SLOT_*`, `CONDITION_*`... de enums.js), los constructores (`Player(...)`, `Tile(pos)`,
+    // `ItemType(2400)`, `Position(x, y, z)`...) y las funciones de 0.x (`doPlayerAddItem`... de
+    // compat.js). Son muchas globales, pero con nombres que sólo usa TFS, y se restauran igual.
+    const globales = {
+        ...Enums.ENUMS,
+        ...(game._compat || {}),
+        Game: game, EFECTO: EFECTO, PROYECTIL: PROYECTIL, ...CONST_ME, ...CONST_ANI
+    };
     const previos = {};
     Object.keys(globales).forEach((k) => {
         previos[k] = globalThis[k];
         globalThis[k] = globales[k];
     });
+    // Los métodos de TFS en `Position` (`pos.sendMagicEffect`, `pos.getTile`) usan el mundo de este motor.
+    const restaurarMundo = game._world ? Tfs.activarMundo(game._world) : () => {};
 
     return function restore() {
+        restaurarMundo();
         Object.keys(globales).forEach((k) => {
             if (previos[k] === undefined) {
                 delete globalThis[k];

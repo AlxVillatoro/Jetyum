@@ -20,6 +20,7 @@ aquí están en la [sección 4](#4-las-herramientas-de-rme).
 | doodads de RME (`doodads.xml`) | `data/editor/compuestos.json` + `composites` en el mapa |
 | `grounds.xml`, `borders.xml`, `walls.xml` y carpets/tables de RME | `data/editor/pinceles.json` |
 | towns del OTBM y `houses.xml` | `towns`, `houses` y el `houseId` de cada casilla, dentro del mapa |
+| ids de servidor (`items.otb`) de un `.otbm` | `data/editor/equivalencias-otbm.json` ([§5.1](#51-importar-y-exportar-otbm)) |
 | `actions.xml` / `movements.xml` con `actionid=` / `uniqueid=` | módulos JS con `aids: [...]` / `uids: [...]` |
 
 ---
@@ -377,8 +378,84 @@ El historial funciona **por diferencias**, no por comandos:
 - **Puertas con llave, de misión y mágicas** (los tipos de puerta de RME). Antes hacen falta
   sus mecánicas en el motor.
 - **Luces** en la vista del editor (las plantas de abajo y la de arriba en fantasma ya están: §4.7).
-- **Importar y exportar OTBM.** El formato interno ya tiene todo lo que hace falta: casillas,
-  atributos, spawns, NPC, ciudades y casas.
+- **OTBM:** el contenido de los contenedores (el formato de mapa no lo guarda), las variantes de
+  los doodads al importar materiales (un compuesto no sortea) y un `.dat`/`.spr` 8.60 para ver el
+  arte original al revisar las equivalencias. Lo demás está hecho: §5.1.
+
+### 5.1 Importar y exportar OTBM
+
+Hecho. OTBM es la FRONTERA (ARQUITECTURA.md §3.6): el motor sigue con su JSON y un `.otbm` se
+convierte al entrar y al salir. Sin dependencias: el lector y el escritor son `editor/lib/otbm.js`
+(el árbol de nodos `0xFE`/`0xFF` con el escape `0xFD`, OTBM 1 a 4 y el `items.otb`).
+
+```sh
+# importar una región (siempre a un archivo NUEVO; sin --salida solo da el informe)
+node tools/importar-otbm.mjs ../forserver-downgrade/data/world/world.otbm \
+     --items-otb ../forserver-downgrade/data/items/items.otb \
+     --items-xml ../forserver-downgrade/data/items/items.xml \
+     --area 950,940,1060,1060,5,7 --salida data/world/classic.map.json [--informe]
+# (--houses/--spawns: si no se dan, los que nombra el propio .otbm, junto a él)
+
+# regenerar la tabla de equivalencias con los materiales de RME
+node tools/importar-otbm.mjs --equivalencias --items-otb … --items-xml … \
+     --materiales ../NexaMap-Editor/data/editor/materials.xml
+
+# exportar (con la tabla al revés; deshace el desplazamiento de --area)
+node tools/exportar-otbm.mjs data/world/classic.map.json --salida /tmp/classic.otbm
+
+# pinceles y doodads de RME -> data/editor/pinceles-rme.json y compuestos-rme.json
+node tools/importar-materiales-rme.mjs ../NexaMap-Editor/data/editor/materials.xml [--fusionar]
+```
+
+En el editor, **Importar OTBM…** (junto a *Nuevo mapa*): se suben los archivos (o se escribe su
+ruta en el servidor), se elige el área y el nombre, *Analizar* enseña el informe sin escribir e
+*Importar y abrir* crea el mapa por el mismo camino que *Nuevo mapa*.
+
+**Lo que se convierte:** casillas con su pila en orden, banderas (PZ, sin PvP, sin logout, zona
+PvP) y casa; los atributos `actionId`, `uniqueId`, `text`, `description`, `teleportDestination`,
+`depotId`, `doorId` y `charges`; ciudades con su templo; casas de `house.xml` (nombre, ciudad,
+alquiler, salida); waypoints; respawns y NPC de `spawn.xml`. Con `--area` la región se lleva al
+origen (`--sin-desplazar` para no hacerlo) y el desplazamiento queda en `_otbm.origen`, que la
+exportación deshace. Lo que no se puede se quita y va al informe: objetos sin equivalencia
+(ordenados por cuántas veces salen), monstruos y NPC que no existen en este datapack, contenidos
+de contenedores, waypoints sobre casillas que no se pisan. El mapa resultante se valida con el
+cargador del motor antes de escribirse.
+
+**Las equivalencias** (`data/editor/equivalencias-otbm.json`, código en
+`editor/lib/equivalencias.js`). Un `.otbm` guarda ids de servidor de Tibia; el catálogo de Jetyum
+es el del OpenTibia Sprite Pack, con otros números y nombres genéricos. Cada id se resuelve con la
+primera capa que lo casa:
+
+1. `manual` del archivo (manda siempre; `0` = quitar);
+2. **pincel**: con los materiales de RME, cada pieza va a la misma pieza del pincel de Jetyum que
+   le corresponde (la horizontal del muro de piedra a la horizontal de `otsp-piedra-gris`, la
+   esquina `dnw` del borde de hierba a la suya…). La correspondencia de pinceles sale de
+   `pinceles` (explícita), de `palabras` (palabras clave del nombre) o del color de minimapa;
+3. **funcional**: teleports, depósitos, buzones, escaleras y agujeros (`floorchange`), escaleras
+   de mano, sitios de cuerda, campos;
+4. **nombre** normalizado igual, con la misma clase (suelo con suelo);
+5. **clase**: palabras clave del nombre (`palabras.clases`: «tree», «bush»…) a una clase de
+   Jetyum, eligiendo por color de minimapa;
+6. **color** (suelos): el suelo de Jetyum de color de minimapa más cercano que bloquee igual;
+7. **respaldo** (suelos): `respaldo.suelo`, o `respaldo.sueloQueBloquea` si el de Tibia bloquea.
+
+Los bordes de suelo sin equivalente se quitan a propósito (`omitido`). `automatico` es la tabla
+calculada, una entrada por línea (`"4515": [10101, "pincel", "grass"]`), para revisarla; la
+reescribe `--equivalencias`, así que las correcciones van en `manual`. Si el archivo se hizo con
+otro `items.otb` (su `origen` no coincide), la tabla se recalcula en el momento.
+
+Con el mapa de muestra de TFS 8.60 (564 264 objetos), el ~83 % de los objetos se traduce, el
+~15,5 % se quita a propósito (bordes, `void`) y el ~1,5 % queda sin equivalencia. Leer el mapa
+entero cuesta ~0,4 s; un área de 41x41, ~50 ms (las zonas de 256x256 de fuera se saltan sin
+leerlas); cargar `items.otb` y `items.xml` de Tibia, ~1-2 s.
+
+**Paquetes de pinceles y compuestos.** El editor carga, además de `pinceles.json` y
+`compuestos.json`, todo `pinceles-*.json` y `compuestos-*.json` de `data/editor/` (los que escribe
+`importar-materiales-rme.mjs`). Son de solo lectura: la pestaña Compuestos edita y guarda solo
+`compuestos.json`. Con `--fusionar` se añaden a los propios (prefijo `rme-`, repetible).
+
+Pruebas: `node tools/test-otbm.mjs` y `node tools/test-materiales-rme.mjs` (usan las muestras de
+`../forserver-downgrade` y `../NexaMap-Editor`, y se saltan sin ellas).
 
 ---
 
