@@ -34,6 +34,10 @@ import {
     INVENTORY_FIELD as I,
     SLOT_INSIDE
 } from '../../../shared/js/protocol.mjs';
+import { traducir } from '../../../shared/js/i18n.mjs';
+
+/** El `kind` de una criatura que es un jugador (ver `creatureMessage` en el protocolo). */
+const KIND_JUGADOR = 0;
 
 /**
  * Una criatura que se está moviendo.
@@ -226,8 +230,8 @@ export class ClientWorld {
                     // El motor dice POR QUE no se pudo entrar, y el cliente tiene que
                     // poder enseñarlo: una pantalla en negro sin explicación es lo
                     // peor que se le puede hacer a alguien que intenta entrar.
-                    this.loginError = message[1];
-                    events.push({ type: 'loginError', error: message[1] });
+                    this.loginError = traducir(message[1]);
+                    events.push({ type: 'loginError', error: this.loginError });
                     break;
 
                 case P.SERVER.TILE_ADD:
@@ -266,7 +270,7 @@ export class ClientWorld {
 
                 case P.SERVER.ANIMATED_TEXT:
                     events.push({ type: 'animatedText', x: message[1], y: message[2], z: message[3],
-                        tipo: message[4], text: message[5] });
+                        tipo: message[4], text: traducir(message[5]) });
                     break;
 
                 case P.SERVER.MAGIC_EFFECT:
@@ -295,7 +299,7 @@ export class ClientWorld {
                     break;
 
                 case P.SERVER.POPUP:
-                    events.push({ type: 'popup', titulo: message[1], texto: message[2] });
+                    events.push({ type: 'popup', titulo: traducir(message[1]), texto: traducir(message[2]) });
                     break;
 
                 case P.SERVER.WORLD_LIGHT:
@@ -317,19 +321,31 @@ export class ClientWorld {
                     events.push({ type: 'party', lider: this.grupo.lider, miembros: this.grupo.miembros });
                     break;
 
-                case P.SERVER.CREATURE_SAY:
+                case P.SERVER.CREATURE_SAY: {
+                    /*
+                     * EL MOTOR HABLA EN ESPAÑOL Y AQUÍ SE TRADUCE, cada cliente a su idioma: dos
+                     * jugadores en el mismo mundo pueden jugar cada uno en el suyo. Lo que dice un
+                     * JUGADOR no se toca: es lo que escribió, y «traducirlo» le cambiaría las palabras.
+                     */
+                    const quien = this.creatures.get(message[1]);
+                    const delJuego = !quien || quien.kind !== KIND_JUGADOR;
+                    const texto = delJuego ? traducir(message[3]) : message[3];
                     this.says.push({
                         creatureId: message[1],
                         name: message[2],
-                        text: message[3]
+                        text: texto
                     });
-                    events.push({ type: 'say', creatureId: message[1], name: message[2], text: message[3] });
+                    events.push({ type: 'say', creatureId: message[1], name: message[2], text: texto,
+                        delJuego: delJuego });
                     break;
+                }
 
-                case P.SERVER.TEXT:
-                    this.texts.push(message[2]);
-                    events.push({ type: 'text', text: message[2] });
+                case P.SERVER.TEXT: {
+                    const texto = traducir(message[2]);
+                    this.texts.push(texto);
+                    events.push({ type: 'text', text: texto });
                     break;
+                }
 
                 case P.SERVER.FLOOR_CHANGE:
                     // El motor avisa de que hay que olvidar todo lo anterior. Si no

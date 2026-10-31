@@ -1,7 +1,6 @@
 {
   "format": "jetyum-compuestos",
   "version": 1,
-  "_comment": ["PLANTILLAS DE OBJETOS COMPUESTOS (los doodads de RME). Se editan en la pestaña Compuestos del editor; formato en docs/MAPAS.md.","dx/dy/dz son relativos al ANCLA (la casilla que se pincha al colocar). Los parámetros se aplican a los objetos de sus destinos al colocar."],
   "compuestos": [
     {
       "id": "teleport",
@@ -2779,6 +2778,38 @@
         {"dx":0,"dy":-1,"dz":0,"items":[{"id":11116}]},
         {"dx":-1,"dy":0,"dz":0,"items":[{"id":11110}]},
         {"dx":0,"dy":0,"dz":0,"items":[{"id":11185}]}
+      ],
+      "parametros": []
+    },
+    {
+      "id": "capturado",
+      "nombre": "Capturado",
+      "categoria": "Capturados",
+      "celdas": [
+        {"dx":-21,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-19,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-18,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-17,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-20,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-20,"dz":0,"items":[{"id":1948,"attributes":{"actionId":100}}]},
+        {"dx":-19,"dy":-20,"dz":0,"items":[{"id":112}]},
+        {"dx":-18,"dy":-20,"dz":0,"items":[{"id":1387}]},
+        {"dx":-17,"dy":-20,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-19,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-19,"dz":0,"items":[{"id":3031,"count":50}]},
+        {"dx":-17,"dy":-19,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-18,"dz":0,"items":[{"id":111}]},
+        {"dx":-17,"dy":-18,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-19,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-18,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-17,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-11,"dy":-11,"dz":0,"items":[],"suelo":105},
+        {"dx":-10,"dy":-11,"dz":0,"items":[],"suelo":105},
+        {"dx":-1,"dy":-1,"dz":0,"items":[{"id":111}]},
+        {"dx":0,"dy":0,"dz":0,"items":[{"id":111}]}
       ],
       "parametros": []
     }

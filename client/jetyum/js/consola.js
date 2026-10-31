@@ -12,18 +12,23 @@
  * Una pestaña que no se está mirando y recibe algo se pone en amarillo, para que se note.
  */
 
+import { traducir } from '../../../shared/js/i18n.mjs';
+
 const MAX_LINEAS = 300;
 
 function hora(fecha) {
     return String(fecha.getHours()).padStart(2, '0') + ':' + String(fecha.getMinutes()).padStart(2, '0');
 }
 
-/** La clase de color de un mensaje del servidor, por lo que dice. */
+/**
+ * La clase de color de un mensaje del servidor, por lo que dice. En los DOS idiomas: el mensaje
+ * llega ya traducido (ver `world.js`).
+ */
 function claseDeAviso(texto) {
-    if (/^Has subido|subes? de nivel|advanced/i.test(texto)) {
+    if (/^Has subido|subes? de nivel|advanced|level up/i.test(texto)) {
         return 'avance';
     }
-    if (/no puedes|demasiado lejos|no tienes|necesitas|rechaz|no se pudo|muerto/i.test(texto)) {
+    if (/no puedes|demasiado lejos|no tienes|necesitas|rechaz|no se pudo|muerto|you can(no|')t|too far|you do(n't| not) have|you need|reject|could not|dead|killed/i.test(texto)) {
         return 'aviso';
     }
     return 'servidor';
@@ -82,6 +87,10 @@ export function crearConsola(opciones) {
     function pintarLinea(entrada) {
         const div = document.createElement('div');
         div.className = 'linea ' + entrada.clase;
+        // Lo que escribe un jugador es suyo: la traducción de la página no lo toca.
+        if (entrada.deJugador) {
+            div.setAttribute('translate', 'no');
+        }
         if (conHora) {
             const h = document.createElement('span');
             h.className = 'hora';
@@ -101,8 +110,9 @@ export function crearConsola(opciones) {
         lineas.scrollTop = lineas.scrollHeight;
     }
 
-    function anadir(canal, texto, clase) {
-        const entrada = { hora: hora(new Date()), texto: String(texto), clase: clase || 'servidor' };
+    function anadir(canal, texto, clase, deJugador) {
+        const entrada = { hora: hora(new Date()), texto: String(texto), clase: clase || 'servidor',
+            deJugador: !!deJugador };
         const lista = canales[canal];
         lista.push(entrada);
         if (lista.length > MAX_LINEAS) {
@@ -156,9 +166,15 @@ export function crearConsola(opciones) {
     }
 
     return {
-        /** Alguien dice algo (amarillo, en Default). */
-        hablar(nombre, texto) {
-            anadir('default', (nombre ? nombre + ': ' : '') + texto, 'hablar');
+        /**
+         * Alguien dice algo (amarillo, en Default). El texto ya llega traducido si es del juego (ver
+         * `world.js`); aquí se traduce el NOMBRE de un NPC o un monstruo, y la línea entera se deja
+         * fuera de la traducción de la página: lo de un jugador es suyo y lo demás ya está hecho.
+         * `delJuego` es `false` cuando habla un jugador.
+         */
+        hablar(nombre, texto, delJuego) {
+            const quien = nombre && delJuego !== false ? traducir(nombre) : nombre;
+            anadir('default', (quien ? quien + ': ' : '') + texto, 'hablar', true);
         },
         /** Un mensaje del servidor: en Default y en Server Log. */
         servidor(texto) {
@@ -174,12 +190,12 @@ export function crearConsola(opciones) {
         privado(con, de, texto) {
             const canal = 'pm:' + String(con).toLowerCase();
             asegurarCanal(canal, con);
-            anadir(canal, de + ': ' + texto, 'privado');
+            anadir(canal, de + ': ' + texto, 'privado', true);
         },
         /** Un mensaje del grupo. */
         grupo(de, texto) {
             asegurarCanal('grupo', 'Grupo');
-            anadir('grupo', de + ': ' + texto, 'grupo');
+            anadir('grupo', de + ': ' + texto, 'grupo', true);
         },
         /** Abre (y pone delante) la conversación con alguien. */
         abrirPrivado(con) {

@@ -14,6 +14,9 @@
  */
 
 import { CLIENT, SERVER, OFFSET_TO_WALK, MOVE_ITEM_FIELD } from '/shared/js/protocol.mjs';
+import { IDIOMAS, idioma, idiomaDelServidor, setIdioma } from '/shared/js/i18n.mjs';
+import { montarSelectorDeIdioma, traducirPagina } from '/shared/js/i18n-dom.mjs';
+import '/shared/i18n/juego.mjs';
 
 import { Connection, pedirPersonajes } from './connection.js';
 import { ClientWorld } from './world.js';
@@ -363,7 +366,7 @@ class Game {
             } else if (event.type === 'text') {
                 this.consola.servidor(event.text);
             } else if (event.type === 'say') {
-                this.consola.hablar(event.name, event.text);
+                this.consola.hablar(event.name, event.text, event.delJuego);
                 this._addSay(event.name, event.text, event.creatureId);
             } else if (event.type === 'login') {
                 this._setStatus('dentro del mundo como ' + event.player.name);
@@ -1189,6 +1192,29 @@ function objetoMovible(tile) {
 }
 
 function boot() {
+    /*
+     * EL IDIOMA, LO PRIMERO: la página está escrita en español y se traduce entera —también lo que
+     * se escriba en ella después— si el idioma puesto es otro. Ver `shared/js/i18n-dom.mjs`.
+     */
+    document.documentElement.lang = idioma();
+    traducirPagina();
+    ['login-idioma', 'op-idioma'].forEach((id) => {
+        const select = document.getElementById(id);
+        if (select) {
+            montarSelectorDeIdioma(select, IDIOMAS, idioma(), setIdioma);
+        }
+    });
+    // El idioma por defecto lo decide el servidor (`defaultLanguage` en `config.js`): manda sobre
+    // el de serie, pero no sobre el que haya elegido el jugador.
+    fetch('/jetyum/motor.json', { cache: 'no-store' })
+        .then((respuesta) => (respuesta.ok ? respuesta.json() : null))
+        .then((datos) => {
+            if (datos && datos.idioma) {
+                idiomaDelServidor(datos.idioma);
+            }
+        })
+        .catch(() => {});
+
     const canvas = document.getElementById('game');
     const diagnostics = document.getElementById('diagnostics');
     const form = document.getElementById('login');

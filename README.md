@@ -1,5 +1,10 @@
 # Jetyum
 
+<p align="center">
+  <a href="README.md"><img alt="Español" src="https://img.shields.io/badge/Espa%C3%B1ol-c60b1e?style=for-the-badge"></a>
+  <a href="README.en.md"><img alt="English" src="https://img.shields.io/badge/English-3a3a46?style=for-the-badge"></a>
+</p>
+
 **MMORPG 2D multijugador en el navegador, estilo Tibia con perspectiva 2.5D.** Está construido
 como un servidor de Tibia:
 
@@ -36,7 +41,7 @@ como un servidor de Tibia:
 
 ## 1. Cómo ejecutarlo
 
-Requiere **Node.js 20.19+ o 22.12+**.
+Requiere **Node.js 24.22.1+ o 26.12.1+** (las líneas LTS con los parches de seguridad de octubre de 2026).
 
 ```bash
 npm install
@@ -45,6 +50,18 @@ npm start         # EL JUEGO: motor (ws://localhost:8081) y cliente web (http://
 npm run editor    # LAS HERRAMIENTAS (http://localhost:8090)
 npm test          # todas las pruebas
 ```
+
+**Idiomas: español e inglés.** El juego y las herramientas se pueden usar en los dos: el cliente
+tiene el selector en la pantalla de entrada y en *Opciones*, y el editor arriba a la derecha. Se
+recuerda la elección; **por defecto, inglés**, y se cambia para todo el servidor con
+`defaultLanguage` en `config.js` (`'en'` o `'es'`). Cada jugador ve el juego en su
+idioma —los mensajes del motor y lo que dicen los NPC se traducen en su cliente— y los NPC entienden
+las palabras clave en los dos (`hola`/`hi`, `comprar espada`/`buy sword`...).
+
+El texto original es el español y la traducción vive en `shared/i18n/en/`: una frase en español por
+clave, con huecos entre llaves para lo que el código compone (`'Has recogido {n} {objeto}.'`). Una
+frase sin entrada se queda en español. Cómo funciona, en `shared/js/i18n.mjs`; las pruebas, en
+`npm run test:i18n`.
 
 | Para… | Abre |
 |---|---|
@@ -101,7 +118,8 @@ rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.
 - **La pantalla** es la de Tibia: minimapa, vida y maná y equipo en ventanas que se mueven y se
   minimizan; Skills, Batalla, VIP, Opciones, Ayuda, Misiones y Mochila; contenedores que se
   cierran solos si no caben; y la consola con pestañas. En **Opciones** están, entre otras, los
-  nombres, las barras de vida y el **suavizado de los píxeles** (Scale2x, bilineal o nítido).
+  nombres, las barras de vida, el **suavizado de los píxeles** (Scale2x, bilineal o nítido) y el
+  **idioma**.
 - **Vocaciones y aspectos.** Las reglas salen de `data/XML/vocations.js` y la ropa de
   `data/XML/outfits.js`. Las skills se entrenan peleando y el nivel mágico con hechizos. `/spells`
   lista los hechizos de tu vocación. Ver [docs/VOCACIONES.md](docs/VOCACIONES.md).
@@ -177,7 +195,8 @@ config.js         configuración del motor
 engine/           MOTOR: núcleo, scripting, persistencia, red (WebSocket y servidor web) y mundo
 data/             DATAPACK: items.xml, XML/, scripts/, monsters/, npc/, world/, editor/, arte-hd/
 client/jetyum/    CLIENTE WEB: index.html, js/ y assets/ (things.json, sprites/, objetos.json)
-shared/js/        CONTRATOS compartidos: protocolo, formato de assets, compuestos y efectos
+shared/js/        CONTRATOS compartidos: protocolo, formato de assets, compuestos, efectos e idiomas
+shared/i18n/      TRADUCCIONES: los diccionarios en inglés
 editor/           HERRAMIENTAS: server.js (API), lib/ y js/ (interfaz)
 tools/            pruebas, generadores e importadores
 docs/             documentación de detalle y guías
@@ -226,6 +245,7 @@ copias temporales):
 | `test:vocaciones` | Vocaciones y aspectos |
 | `test:scripts` | La API de scripts y el juego hecho con ella |
 | `test:arte` | El arte HD: plantillas, importador y la aldea |
+| `test:i18n` | Los idiomas: traducción, diccionarios y que todo el texto de las páginas tenga traducción |
 
 `npm run check:jetyum` comprueba además que el cliente y el editor cargan todos sus módulos.
 

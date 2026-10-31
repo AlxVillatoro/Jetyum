@@ -41,6 +41,7 @@ import {
 import { AssetsProvider, hslToRgb } from '/jetyum/js/assets.js';
 import { paletteColor } from '/jetyum/js/sprites.js';
 import { svgDe, ponerIcono } from './iconos.js';
+import { t as conHuecos, traducir } from '../../shared/js/i18n.mjs';
 
 /** El icono de cada categoría de cosas. */
 const ICONO_DE_CATEGORIA = { items: 'objetos', outfits: 'aspectos', effects: 'efectos', missiles: 'proyectiles' };
@@ -346,7 +347,9 @@ export class SpritesView {
             fragmento.appendChild(fila);
         });
         caja.appendChild(fragmento);
-        this.$('spr-cuenta').textContent = this.filas.size + ' de ' + this.things[this.categoria].length;
+        // Con `t()`: «{n} de {total}» no tiene letras bastantes para buscarse como patrón.
+        this.$('spr-cuenta').textContent = conHuecos('{n} de {total}',
+            { n: this.filas.size, total: this.things[this.categoria].length });
     }
 
     _pintarFila(t) {
@@ -363,6 +366,7 @@ export class SpritesView {
             entrada.fila.appendChild(el('em', '', 'sin dibujo'));
         }
         entrada.pintada = -1;
+        this.firmaMiniaturas = null;
     }
 
     /** Las miniaturas se pintan a ritmo de bucle: las hojas cargan solas y no hay que esperarlas. */
@@ -373,6 +377,15 @@ export class SpritesView {
         const caja = this.$('spr-cosas');
         const arriba = caja.scrollTop;
         const abajo = arriba + caja.clientHeight;
+        // Si no se ha movido la lista ni han cambiado los dibujos, no hay nada nuevo que pintar, y
+        // recorrer las filas preguntando por su `offsetTop` obliga al navegador a medir la página
+        // entera en cada fotograma.
+        const firma = arriba + '|' + abajo + '|' + this.provider.version;
+        if (this.filasMiradas === this.filas && this.firmaMiniaturas === firma) {
+            return;
+        }
+        this.filasMiradas = this.filas;
+        this.firmaMiniaturas = firma;
         this.filas.forEach((entrada, id) => {
             const top = entrada.fila.offsetTop - caja.offsetTop;
             if (top + 40 < arriba || top > abajo || entrada.pintada === this.provider.version) {
@@ -624,7 +637,7 @@ export class SpritesView {
 
         ctx.fillStyle = '#6a6a80';
         ctx.font = '11px monospace';
-        ctx.fillText('fotograma ' + frame + ' · ancla en azul · ' + d.width + 'x' + d.height + ' casillas', 8, lienzo.height - 8);
+        ctx.fillText(traducir('fotograma ' + frame + ' · ancla en azul · ' + d.width + 'x' + d.height + ' casillas'), 8, lienzo.height - 8);
     }
 
     _rgb(indice) {

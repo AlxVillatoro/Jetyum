@@ -34,6 +34,7 @@ const { FLAG_NAMES } = require('../engine/world/writer');
 const { AssetStore } = require('./lib/assetstore');
 const Assets = require('../shared/js/assets.mjs');
 const Compuestos = require('../shared/js/compuestos.mjs');
+const Config = require('../engine/core/config');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -93,6 +94,21 @@ const PATHS = {
     /** Los pinceles de terreno, muros, alfombras y mesas (docs/MAPAS.md). */
     pincelesFile: path.join(ROOT, 'data', 'editor', 'pinceles.json')
 };
+
+/**
+ * El idioma con el que se abre el editor para quien no ha elegido otro: `defaultLanguage` de
+ * `config.js`, el mismo que usa el juego. Se lee en cada petición, así que cambiarlo no pide
+ * reiniciar; y si el archivo no se puede leer, el de por defecto.
+ */
+function idiomaPorDefecto() {
+    try {
+        const archivo = path.join(ROOT, 'config.js');
+        delete require.cache[require.resolve(archivo)];
+        return require(archivo).defaultLanguage || Config.DEFAULTS.defaultLanguage;
+    } catch (error) {
+        return Config.DEFAULTS.defaultLanguage;
+    }
+}
 
 function configurePaths(options) {
     const opts = options || {};
@@ -1282,6 +1298,7 @@ async function handleApi(request, response, pathname, query) {
         const itemTypes = loadItemTypes();
         sendJson(response, 200, {
             root: ROOT,
+            idioma: idiomaPorDefecto(),
             items: itemTypes.size,
             monsters: listMonsters().monsters.length,
             npcs: listNpcs().npcs.length,

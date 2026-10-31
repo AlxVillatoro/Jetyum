@@ -33,6 +33,8 @@
  * sin abrir un navegador.
  */
 
+import { traducir } from '../../shared/js/i18n.mjs';
+
 /**
  * Los colores. MORADO PARA EL RESPAWN porque es lo que hace Remere's Map Editor, que es la
  * referencia que pidió el usuario: allí un respawn se ve como un fuego morado, y quien haya
@@ -657,9 +659,11 @@ export function descripcionDeMarcador(marca) {
  * @param {Object} mapa el mapa que se edita
  * @param {number} z la planta que se está mirando
  * @param {{tipo: string, clave: (string|undefined), posicion: (number|undefined)}|null} [seleccion]
+ * @param {Array<Object>} [bloques] las zonas de la planta, si quien llama ya las tiene: el lienzo
+ *        las necesita también para el tinte, y sacarlas es recorrer cada zona casilla a casilla.
  * @returns {Array<Object>}
  */
-export function marcadoresDePlanta(mapa, z, seleccion) {
+export function marcadoresDePlanta(mapa, z, seleccion, bloques) {
     const elegido = seleccion || null;
     const marcas = [];
 
@@ -767,7 +771,7 @@ export function marcadoresDePlanta(mapa, z, seleccion) {
      * encima de las casillas y no al revés. Se dibujan TODAS y no sólo la elegida —igual que los
      * respawns—: una zona que no se ve es una zona que se pisa sin saberlo.
      */
-    bloquesProtegidos(mapa, z).forEach((bloque) => {
+    (bloques || bloquesProtegidos(mapa, z)).forEach((bloque) => {
         const clave = claveDeZona(bloque);
 
         marcas.push({
@@ -1115,7 +1119,8 @@ export function dibujarWaypoint(ctx, marca, vista) {
  */
 export function dibujarEtiqueta(ctx, marca, vista) {
     const paso = vista.paso;
-    const texto = marca.etiqueta;
+    // En el lienzo no hay DOM que traducir solo: la etiqueta se traduce aquí, al pintarla.
+    const texto = traducir(marca.etiqueta);
 
     ctx.save();
     ctx.font = Math.max(9, Math.min(12, paso * 0.34)) + 'px monospace';

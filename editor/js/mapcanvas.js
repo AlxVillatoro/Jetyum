@@ -37,6 +37,7 @@ import {
     fantasmaDeHerramienta
 } from './fantasma.js';
 import { TAMANO_POR_DEFECTO } from './pincel.js';
+import { traducir } from '../../shared/js/i18n.mjs';
 import { COLOR_SIN_SUELO, tinteDeElemento } from './tintes.js';
 import {
     ESCALA_NORMAL,
@@ -366,20 +367,69 @@ export class MapCanvas {
     // Dibujo
     // -----------------------------------------------------------------------
 
-    draw(hoverInfo) {
+    /**
+     * Dibuja el mapa.
+     *
+     * HAY DOS CAPAS, Y SÓLO LA DE ENCIMA SE MUEVE SOLA. La de abajo —el suelo, los sprites y las
+     * banderas— sólo cambia cuando cambia el mapa o la cámara, y en «ver todo» son miles de
+     * operaciones de dibujo. La de encima —los marcadores, la rejilla, el fantasma, el ratón— es
+     * poca cosa, y es la única que tiene animación: el fuego de los respawns. Por eso cada dibujo
+     * completo guarda una copia de la capa de abajo, y con `soloEncima` se pega esa copia en vez
+     * de rehacerla. Es lo que deja animar el fuego sin repintar el mapa entero diez veces por
+     * segundo. Quien decide cuándo vale la copia es `main.js`: en cuanto pasa algo, pide un
+     * dibujo completo.
+     *
+     * @param {string|null} hoverInfo el texto de la casilla bajo el ratón
+     * @param {{soloEncima?: boolean}} [opciones]
+     */
+    draw(hoverInfo, opciones) {
         const ctx = this.ctx;
         const vista = this.vista;
+        const fija = opciones && opciones.soloEncima ? this._capaFijaValida() : null;
 
-        // EL MISMO COLOR CON EL QUE EL JUEGO LIMPIA SU LIENZO. Ver `COLOR_SIN_SUELO`: es lo que
-        // se ve por los píxeles transparentes de un suelo, así que tiene que ser el mismo en el
-        // editor y en el juego o un suelo con transparencia se vería distinto en cada sitio.
-        ctx.fillStyle = COLOR_SIN_SUELO;
-        ctx.fillRect(0, 0, vista.ancho, vista.alto);
+        if (fija) {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.drawImage(fija.lienzo, 0, 0);
+            ctx.restore();
+        } else {
+            // EL MISMO COLOR CON EL QUE EL JUEGO LIMPIA SU LIENZO. Ver `COLOR_SIN_SUELO`: es lo
+            // que se ve por los píxeles transparentes de un suelo, así que tiene que ser el mismo
+            // en el editor y en el juego o un suelo con transparencia se vería distinto en cada
+            // sitio.
+            ctx.fillStyle = COLOR_SIN_SUELO;
+            ctx.fillRect(0, 0, vista.ancho, vista.alto);
+        }
 
         if (!this.map) {
             return;
         }
 
+        const zonas = fija ? fija.zonas : this._drawCapaFija();
+
+        this._drawMarkers(zonas);
+        this._drawGrid();
+        // El fantasma va DESPUÉS de la rejilla —para que las líneas no le cruzen el dibujo— y
+        // ANTES del aviso de la casilla, que es lo último y tiene que leerse siempre.
+        this._drawCompuestos();
+        this._drawFantasma();
+        this._drawFantasmaDeCompuesto();
+        this._drawRecuadro();
+        // Lo que dibujan las herramientas de edición (selección, pegado, casas...): ver
+        // `herramientas.js`. Va antes del aviso de la casilla, que es lo último.
+        if (this.alDibujar) {
+            this.alDibujar(this);
+        }
+        this._drawHover(hoverInfo);
+    }
+
+    /**
+     * La capa de abajo: el suelo, los sprites de la planta y las banderas. Al acabar guarda una
+     * copia para `draw(..., {soloEncima: true})`.
+     *
+     * @returns {Array<Object>} las zonas protegidas de la planta, que también hacen falta arriba
+     */
+    _drawCapaFija() {
         this._drawFloorBackground();
         this._drawMapBorder();
 
@@ -395,10 +445,14 @@ export class MapCanvas {
          * por operación de dibujo. En «ver todo» un mapa de 128x128 son 16.384 casillas, y
          * preguntar por cada una si cae dentro de algún respawn serían 160.000 comprobaciones
          * por fotograma para pintar diez áreas.
+         *
+         * LAS ZONAS, UNA VEZ: sacarlas es recorrer cada zona casilla a casilla, y las usan el
+         * tinte de aquí y los marcadores de encima.
          */
         const elegido = this.map.objetoElegido();
         const enRespawn = this._celdasEnRespawn();
-        const enZona = this._celdasEnZona();
+        const zonas = bloquesProtegidos(this.map, this.z);
+        const enZona = this._celdasEnZona(zonas);
 
         ops.forEach((op) => {
             if (op.kind === DRAW.CREATURE) {
@@ -408,20 +462,51 @@ export class MapCanvas {
         });
 
         this._drawFlags();
-        this._drawMarkers();
-        this._drawGrid();
-        // El fantasma va DESPUÉS de la rejilla —para que las líneas no le cruzen el dibujo— y
-        // ANTES del aviso de la casilla, que es lo último y tiene que leerse siempre.
-        this._drawCompuestos();
-        this._drawFantasma();
-        this._drawFantasmaDeCompuesto();
-        this._drawRecuadro();
-        // Lo que dibujan las herramientas de edición (selección, pegado, casas...): ver
-        // `herramientas.js`. Va antes del aviso de la casilla, que es lo último.
-        if (this.alDibujar) {
-            this.alDibujar(this);
+        this._guardarCapaFija(zonas);
+
+        return zonas;
+    }
+
+    /** Copia lo que hay ahora en el lienzo como la capa de abajo. */
+    _guardarCapaFija(zonas) {
+        if (typeof document === 'undefined' || !document.createElement) {
+            return;
         }
-        this._drawHover(hoverInfo);
+
+        const lienzo = (this.capaFija && this.capaFija.lienzo) || document.createElement('canvas');
+
+        if (lienzo.width !== this.canvas.width || lienzo.height !== this.canvas.height) {
+            lienzo.width = this.canvas.width;
+            lienzo.height = this.canvas.height;
+        }
+
+        const ctx = lienzo.getContext('2d');
+        ctx.globalCompositeOperation = 'copy';
+        ctx.drawImage(this.canvas, 0, 0);
+        ctx.globalCompositeOperation = 'source-over';
+
+        this.capaFija = { lienzo: lienzo, mapa: this.map, zonas: zonas };
+    }
+
+    /** La copia de la capa de abajo, si aún vale para este lienzo y este mapa; si no, null. */
+    _capaFijaValida() {
+        const fija = this.capaFija;
+
+        if (!fija || fija.mapa !== this.map || fija.lienzo.width !== this.canvas.width ||
+            fija.lienzo.height !== this.canvas.height) {
+            return null;
+        }
+
+        return fija;
+    }
+
+    /**
+     * ¿Se mueve algo aunque nadie toque nada? Sólo el fuego de los respawns de la planta, y es
+     * lo que le dice a `main.js` si tiene que seguir dibujando con el editor quieto.
+     */
+    hayAnimacion() {
+        return !!(this.map && this.map.spawns &&
+            this.map.spawns.some((area) => area.z === this.z));
     }
 
     /**
@@ -462,15 +547,17 @@ export class MapCanvas {
      * decide una vez por fotograma y no una vez por operación de dibujo. Se recorren las zonas —que
      * son bloques de casillas contiguas— y no las casillas del mapa, así que cuesta lo que ocupa la
      * protección y no lo que ocupa el mapa.
+     *
+     * @param {Array<Object>} zonas las de `bloquesProtegidos` para esta planta
      */
-    _celdasEnZona() {
+    _celdasEnZona(zonas) {
         const celdas = new Set();
 
         if (!this.map) {
             return celdas;
         }
 
-        bloquesProtegidos(this.map, this.z).forEach((bloque) => {
+        zonas.forEach((bloque) => {
             bloque.celdas.forEach((celda) => celdas.add(clave(celda.x, celda.y, bloque.z)));
         });
 
@@ -809,7 +896,7 @@ export class MapCanvas {
                 const p = this.camera.worldToScreen(ancla.x, ancla.y, this.z);
                 this.ctx.fillStyle = '#ffd24a';
                 this.ctx.font = '10px monospace';
-                this.ctx.fillText(c.nombre, p.x, p.y + paso + 11);
+                this.ctx.fillText(traducir(c.nombre), p.x, p.y + paso + 11);
             }
         });
         this.ctx.restore();
@@ -964,13 +1051,13 @@ export class MapCanvas {
      * aire. Es presentación, así que no se prueba; lo que se prueba es la forma, con un tiempo
      * fijo.
      */
-    _drawMarkers() {
+    _drawMarkers(zonas) {
         const paso = this.tileSize;
         const conEtiqueta = paso >= 16;
         const t = typeof performance !== 'undefined' && performance.now
             ? performance.now() : 0;
 
-        marcadoresDePlanta(this.map, this.z, this.seleccion).forEach((marca) => {
+        marcadoresDePlanta(this.map, this.z, this.seleccion, zonas).forEach((marca) => {
             const pantalla = this.camera.worldToScreen(marca.x, marca.y, this.z);
 
             dibujarMarcador(this.ctx, marca, {
@@ -1026,10 +1113,13 @@ export class MapCanvas {
     }
 
     /** La celda bajo el cursor y lo que hay en ella. */
-    _drawHover(info) {
+    _drawHover(texto) {
         if (!this.hover || !this.map.inBounds(this.hover.x, this.hover.y, this.z)) {
             return;
         }
+
+        // Va pintado en el lienzo, así que se traduce aquí: el DOM se traduce solo, esto no.
+        const info = texto ? traducir(texto) : texto;
 
         const paso = this.tileSize;
         const pantalla = this.camera.worldToScreen(this.hover.x, this.hover.y, this.z);

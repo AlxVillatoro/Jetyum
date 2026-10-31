@@ -63,7 +63,7 @@ flowchart LR
 
 Solo hace falta hacerlo una vez:
 
-1. Ten instalado **Node.js** (versión 20.19 o superior).
+1. Ten instalado **Node.js** (versión 24.22.1+ o 26.12.1+).
 2. Abre una terminal en la carpeta del proyecto y escribe `npm install`.
 3. Para abrir el editor, escribe `npm run editor` y entra en **http://localhost:8090** con
    tu navegador.

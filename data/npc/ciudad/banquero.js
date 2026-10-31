@@ -41,7 +41,8 @@ module.exports = {
 
     keywords: [
         {
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
@@ -56,7 +57,8 @@ module.exports = {
              * banquero contestaria el saldo a quien venia a ingresarlo. Es el mismo orden
              * que hace falta en la tienda con "comprar" y el nombre del objeto.
              */
-            words: ['depositar', 'ingresar', 'guardar', 'deposito', 'meter'],
+            words: ['depositar', 'ingresar', 'guardar', 'deposito', 'meter',
+                'deposit', 'store', 'save'],
             say: (npc) => {
                 npc.say('La caja fuerte esta por abrir: todavia no hay donde dejarlo. Hoy ' +
                     'el dinero se lleva encima, con todo lo que eso tiene.');
@@ -64,28 +66,30 @@ module.exports = {
         },
 
         {
-            words: ['retirar', 'sacar', 'extraer', 'withdraw'],
+            words: ['retirar', 'sacar', 'extraer', 'withdraw', 'take out'],
             say: (npc) => {
                 npc.say('No hay nada tuyo que sacar: no guardo dinero de nadie todavia.');
             }
         },
 
         {
-            words: ['saldo', 'cuenta', 'balance', 'cuanto llevo', 'cuanto tengo'],
+            words: ['saldo', 'cuenta', 'balance', 'cuanto llevo', 'cuanto tengo',
+                'account', 'how much'],
             say: (npc, player) => {
                 npc.say('Llevas ' + player.getMoney() + ' de oro encima, contando platino y cristal.');
             }
         },
 
         {
-            words: ['dinero', 'monedas', 'oro'],
+            words: ['dinero', 'monedas', 'oro', 'money', 'coins', 'gold'],
             say: (npc, player) => {
                 npc.say('En el zurron: ' + player.getMoney() + ' de oro, contando platino y cristal.');
             }
         },
 
         {
-            words: ['cristal', 'moneda de cristal', 'crystal', 'platino', 'cambio', 'cambiar'],
+            words: ['cristal', 'moneda de cristal', 'crystal', 'platino', 'cambio', 'cambiar',
+                'platinum', 'exchange', 'change'],
             say: (npc) => {
                 npc.say('Cien de oro son una de platino, y cien de platino una de cristal. ' +
                     'Usa una pila llena para juntarla, o una moneda grande para partirla.');
@@ -93,7 +97,7 @@ module.exports = {
         },
 
         {
-            words: ['morir', 'muerte', 'caer', 'perder'],
+            words: ['morir', 'muerte', 'caer', 'perder', 'die', 'death', 'dying', 'lose'],
             say: (npc) => {
                 npc.say('Al caer pierdes una decima parte de la experiencia y sueltas TODO ' +
                     'lo que lleves, monedas incluidas. Por eso un banco vale mas de lo que ' +
@@ -102,7 +106,8 @@ module.exports = {
         },
 
         {
-            words: ['interes', 'prestamo', 'deuda', 'credito'],
+            words: ['interes', 'prestamo', 'deuda', 'credito',
+                'interest', 'loan', 'debt', 'credit'],
             say: (npc) => {
                 npc.say('Prestamos no hago. Todavia no hay con que responder si no me los ' +
                     'devolvieras.');
@@ -110,7 +115,7 @@ module.exports = {
         },
 
         {
-            words: ['peso', 'carga', 'capacidad'],
+            words: ['peso', 'carga', 'capacidad', 'weight', 'load', 'capacity'],
             say: (npc, player) => {
                 npc.say('Vas con ' + player.getWeightText() + ' de ' +
                     player.getCapacityText() + '. Y las monedas pesan: cien de oro son ' +
@@ -119,7 +124,7 @@ module.exports = {
         },
 
         {
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Cuida ese zurron.');

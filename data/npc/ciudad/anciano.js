@@ -63,7 +63,8 @@ module.exports = {
 
     keywords: [
         {
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
@@ -73,7 +74,8 @@ module.exports = {
         },
 
         {
-            words: ['historia', 'cuentame', 'origen', 'antano', 'acuerdate'],
+            words: ['historia', 'cuentame', 'origen', 'antano', 'acuerdate',
+                'history', 'story', 'tell me', 'origin', 'remember'],
             say: (npc) => {
                 npc.say('Esto era un descampado con un templo, y nada mas. La gente se ' +
                     'junto alrededor del templo porque era lo unico que no se caia, y asi ' +
@@ -84,7 +86,7 @@ module.exports = {
         },
 
         {
-            words: ['ciudad', 'jetyum', 'pueblo', 'aqui'],
+            words: ['ciudad', 'jetyum', 'pueblo', 'aqui', 'city', 'town'],
             say: (npc) => {
                 npc.say('Jetyum es un punado de casas y un templo. No esperes murallas: ' +
                     'lo unico que nos ha defendido siempre es que no hay nada que robar.');
@@ -92,7 +94,7 @@ module.exports = {
         },
 
         {
-            words: ['mina', 'minas', 'pozo', 'abajo'],
+            words: ['mina', 'minas', 'pozo', 'abajo', 'mine', 'mines', 'below'],
             say: (npc) => {
                 npc.say('La mina esta debajo de todo esto, una planta mas abajo. Esta ' +
                     'abierta y vacia: se dice que abajo hay algo, pero no lo ha visto nadie ' +
@@ -101,7 +103,7 @@ module.exports = {
         },
 
         {
-            words: ['templo', 'dioses', 'rezar', 'reza'],
+            words: ['templo', 'dioses', 'rezar', 'reza', 'temple', 'gods', 'pray'],
             say: (npc) => {
                 npc.say('El templo es lo primero que hubo, y por eso esta donde esta. El ' +
                     'que cae vuelve alli entero, aunque vuelve sin lo que llevaba.');
@@ -109,7 +111,7 @@ module.exports = {
         },
 
         {
-            words: ['rey', 'corona', 'reino', 'gobernador'],
+            words: ['rey', 'corona', 'reino', 'gobernador', 'king', 'crown', 'kingdom', 'governor'],
             say: (npc) => {
                 npc.say('Reyes no hay. Hubo uno, hace tanto que ya no me acuerdo del ' +
                     'nombre, y no dejo heredero ni ganas de tenerlo.');
@@ -117,7 +119,7 @@ module.exports = {
         },
 
         {
-            words: ['ratas', 'bichos', 'monstruos'],
+            words: ['ratas', 'bichos', 'monstruos', 'rats', 'creatures', 'monsters'],
             say: (npc) => {
                 npc.say('Las ratas llevan aqui mas que nosotros. Se crian en el charco y ' +
                     'no se han ido nunca, ni cuando la mina daba de comer.');
@@ -125,7 +127,7 @@ module.exports = {
         },
 
         {
-            words: ['edad', 'anos', 'viejo', 'mayor'],
+            words: ['edad', 'anos', 'viejo', 'mayor', 'age', 'years', 'old'],
             say: (npc) => {
                 npc.say('No te sabria decir cuantos anos tengo. Deje de contarlos cuando ' +
                     'me di cuenta de que nadie me creia.');
@@ -133,7 +135,7 @@ module.exports = {
         },
 
         {
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Vete, vete. Yo me quedo aqui, como siempre.');

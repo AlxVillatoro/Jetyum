@@ -720,9 +720,70 @@ section('15. El servidor web del cliente');
         raiz.headers.get('location') === '/jetyum/' && pagina.status === 200 &&
         /text\/html/.test(pagina.headers.get('content-type')));
     check('dice el puerto del motor (enginePort) y sirve lo compartido', motor.puerto === 8123 && protocolo.status === 200);
+    check('y el idioma por defecto (defaultLanguage), inglés si no se dice otro', motor.idioma === 'en', motor.idioma);
     check('y las vocaciones que se pueden elegir', vocaciones.some((v) => v.name === 'Knight'));
     check('no se sale de sus carpetas', fuera.status === 404, String(fuera.status));
     await web.cerrar();
+}
+
+// ===========================================================================
+section('16. Los NPC entienden inglés, y lo que dicen se traduce');
+// ===========================================================================
+{
+    // El motor habla en español y el cliente traduce; los NPC, además, entienden las palabras en
+    // inglés que dicen sus pistas traducidas («say "offer", "buy sword"...»).
+    const { problemasDeDiccionario, registrar, traducir } = await import('../shared/js/i18n.mjs');
+    const contenido = (await import('../shared/i18n/en/contenido.mjs')).default;
+    check('el diccionario del contenido no tiene problemas', problemasDeDiccionario(contenido).length === 0,
+        problemasDeDiccionario(contenido).slice(0, 3).join(' | '));
+    registrar('en', contenido);
+
+    const herrero = world.getNpc('Herrero');
+    const pj = world.createPlayer('Viajera', { x: herrero.position.x + 1, y: herrero.position.y, z: herrero.position.z });
+    world.giveItem(pj, 3031, 1500);
+    const oye = (npc, texto) => { const r = npc.hear(pj, texto, reloj); return { r, dicho: npc.lastSaid }; };
+
+    const hola = oye(herrero, 'hello');
+    check('«hello» saluda y fija el foco', hola.r.keyword === 'hola' && herrero.isFocusedOn(pj, reloj));
+    check('y el saludo en inglés nombra las palabras en inglés',
+        /"offer".*"buy sword".*"sell sword"/.test(traducir(hola.dicho, 'en')), traducir(hola.dicho, 'en'));
+    const compra = oye(herrero, 'buy sword');
+    check('«buy sword» compra la espada', compra.r.keyword === 'comprar' && world.countOf(pj, 2400) === 1 &&
+        world.countMoney(pj) === 500, traducir(compra.dicho, 'en'));
+    check('y la respuesta compuesta se traduce entera',
+        traducir(compra.dicho, 'en') === 'Here you are: 1x sword. That was 1000 coins.', traducir(compra.dicho, 'en'));
+    const venta = oye(herrero, 'sell sword');
+    check('«sell sword» la vende', venta.r.keyword === 'vender' && world.countOf(pj, 2400) === 0 &&
+        world.countMoney(pj) === 900, traducir(venta.dicho, 'en'));
+    const lista = [];
+    herrero.onSayLine = ((antes) => (t) => { lista.push(t); antes(t); })(herrero.onSayLine);
+    oye(herrero, 'offer');
+    check('«offer» da el listado, traducido línea a línea', lista.length === 5 &&
+        traducir(lista[1], 'en') === '  sword: 1000 coins (I buy them for 400)', lista.map((t) => traducir(t, 'en')).join(' / '));
+    check('«bye» se despide y suelta el foco', oye(herrero, 'bye').r.keyword === 'adios' && herrero.focus === null);
+    check('y en español sigue igual', oye(herrero, 'hola').r.keyword === 'hola' &&
+        oye(herrero, 'comprar espada').r.keyword === 'comprar' && world.countOf(pj, 2400) === 0 &&
+        /Te faltan monedas/.test(herrero.lastSaid));
+    herrero.clearFocus();
+
+    const banquero = world.getNpc('Banquero');
+    world.teleportCreature(pj, { x: banquero.position.x + 1, y: banquero.position.y, z: banquero.position.z });
+    check('el banquero: «hi», «deposit 100», «withdraw» y «balance»', oye(banquero, 'hi').r.keyword === 'hola' &&
+        oye(banquero, 'deposit 100').r.keyword === 'depositar' && oye(banquero, 'withdraw').r.keyword === 'retirar' &&
+        oye(banquero, 'balance').r.keyword === 'saldo');
+    check('y su saldo se traduce con la cifra', traducir(banquero.lastSaid, 'en') ===
+        'You are carrying 900 gold, counting platinum and crystal.', traducir(banquero.lastSaid, 'en'));
+    banquero.clearFocus();
+
+    const sanador = world.getNpc('Sanador');
+    world.teleportCreature(pj, { x: sanador.position.x + 1, y: sanador.position.y, z: sanador.position.z });
+    check('el sanador: «hello», «heal» y «how am i»', oye(sanador, 'hello').r.keyword === 'hola' &&
+        oye(sanador, 'heal').r.keyword === 'curar' && oye(sanador, 'how am i').r.keyword === 'como estoy');
+    check('y lo que no entiende, en inglés, apunta a las palabras en inglés',
+        traducir(oye(sanador, 'xyzzy').dicho, 'en') === 'I don\'t understand. Say "how am I", "heal", "temple" or "poison".');
+    sanador.clearFocus();
+    check('el nombre del NPC también se traduce', traducir('Herrero', 'en') === 'Blacksmith' && traducir('Guia', 'en') === 'Guide');
+    world.removePlayer(pj.id);
 }
 
 e.shutdown();

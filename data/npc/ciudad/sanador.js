@@ -41,7 +41,8 @@ module.exports = {
 
     keywords: [
         {
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
@@ -59,7 +60,8 @@ module.exports = {
              * La respuesta va en el idioma del mundo, no en el del codigo: el jugador no
              * tiene por que saber que existe un envoltorio.
              */
-            words: ['curar', 'cura', 'curas', 'sanar', 'sanacion', 'medico', 'remedio'],
+            words: ['curar', 'cura', 'curas', 'sanar', 'sanacion', 'medico', 'remedio',
+                'heal', 'healing', 'cure', 'remedy', 'medic'],
             say: (npc) => {
                 npc.say('No puedo cerrarte las heridas. Aqui no hay remedio que las ' +
                     'cierre: la salud vuelve entera al templo, cuando caes, y al subir de ' +
@@ -68,7 +70,8 @@ module.exports = {
         },
 
         {
-            words: ['como estoy', 'salud', 'heridas', 'vida', 'estado', 'herido'],
+            words: ['como estoy', 'salud', 'heridas', 'vida', 'estado', 'herido',
+                'how am i', 'health', 'wounds', 'life', 'status', 'hurt', 'wounded'],
             say: (npc, player) => {
                 const salud = player.getHealth();
                 const maxima = player.getMaxHealth() || 1;
@@ -92,7 +95,8 @@ module.exports = {
         },
 
         {
-            words: ['templo', 'reaparecer', 'resucitar', 'morir', 'muerte'],
+            words: ['templo', 'reaparecer', 'resucitar', 'morir', 'muerte',
+                'temple', 'respawn', 'revive', 'resurrect', 'die', 'death'],
             say: (npc) => {
                 npc.say('El templo te rehace entero cuando caes, y por eso es lo unico que ' +
                     'te devuelve la salud de golpe. Eso si: pierdes experiencia y sueltas ' +
@@ -101,7 +105,7 @@ module.exports = {
         },
 
         {
-            words: ['nivel', 'subir', 'experiencia'],
+            words: ['nivel', 'subir', 'experiencia', 'level', 'experience'],
             say: (npc) => {
                 npc.say('Al subir de nivel te rehaces entero, y ademas aguantas mas golpes ' +
                     'que antes. Es la otra manera de curarse que hay.');
@@ -109,7 +113,8 @@ module.exports = {
         },
 
         {
-            words: ['veneno', 'enfermedad', 'maldicion', 'fiebre'],
+            words: ['veneno', 'enfermedad', 'maldicion', 'fiebre',
+                'poison', 'disease', 'curse', 'fever'],
             say: (npc) => {
                 npc.say('Veneno no hay, ni fiebre tampoco. Aqui solo hacen dano: lo que te ' +
                     'abre la piel es un golpe, no un bicho invisible.');
@@ -117,7 +122,7 @@ module.exports = {
         },
 
         {
-            words: ['mina', 'ratas', 'peligro'],
+            words: ['mina', 'ratas', 'peligro', 'mine', 'rats', 'danger'],
             say: (npc) => {
                 npc.say('La mina esta planta abajo y las ratas junto al charco. Las dos ' +
                     'cosas dejan marca, y ninguna de las dos te la quito yo.');
@@ -125,7 +130,7 @@ module.exports = {
         },
 
         {
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Vete con cuidado.');

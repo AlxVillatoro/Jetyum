@@ -34,7 +34,8 @@ module.exports = {
 
     keywords: [
         {
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
@@ -44,7 +45,8 @@ module.exports = {
         },
 
         {
-            words: ['pesca', 'pescar', 'pez', 'peces', 'pescado', 'pican'],
+            words: ['pesca', 'pescar', 'pez', 'peces', 'pescado', 'pican',
+                'fishing', 'fish', 'catch', 'bite'],
             say: (npc) => {
                 npc.say('Ni un pez. Llevo la manana entera con el sedal en el agua y no ha ' +
                     'picado nada, y no es por falta de paciencia.');
@@ -52,7 +54,8 @@ module.exports = {
         },
 
         {
-            words: ['cana', 'cebo', 'anzuelo', 'red', 'sedal'],
+            words: ['cana', 'cebo', 'anzuelo', 'red', 'sedal',
+                'rod', 'bait', 'hook', 'net', 'tackle'],
             say: (npc) => {
                 npc.say('Aparejos tengo los mios, pero no te puedo vender ninguno: no hay ' +
                     'donde comprarlos en toda la ciudad.');
@@ -60,7 +63,8 @@ module.exports = {
         },
 
         {
-            words: ['charco', 'agua', 'charca', 'rio', 'mar', 'lago'],
+            words: ['charco', 'agua', 'charca', 'rio', 'mar', 'lago',
+                'pond', 'water', 'puddle', 'river', 'lake'],
             say: (npc) => {
                 npc.say('Metete en el charco y lo vas a notar: el agua somera se anda a la ' +
                     'mitad de velocidad. Por eso los peces no tienen quien los moleste.');
@@ -68,7 +72,7 @@ module.exports = {
         },
 
         {
-            words: ['ratas', 'rata', 'bichos'],
+            words: ['ratas', 'rata', 'bichos', 'rats', 'rat', 'vermin'],
             say: (npc) => {
                 npc.say('Las ratas vienen al charco a beber, y ya no se asustan de mi. Son ' +
                     'mas duenas del agua que yo.');
@@ -76,7 +80,7 @@ module.exports = {
         },
 
         {
-            words: ['mina', 'peces raros', 'fondo'],
+            words: ['mina', 'peces raros', 'fondo', 'mine', 'bottom'],
             say: (npc) => {
                 npc.say('En la mina no hay agua, que yo sepa. Si la hubiera, seria la unica ' +
                     'pesca tranquila de por aqui.');
@@ -84,7 +88,7 @@ module.exports = {
         },
 
         {
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Que tengas mas suerte que yo.');

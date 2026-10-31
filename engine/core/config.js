@@ -17,6 +17,8 @@ const fs = require('fs');
 
 const DEFAULTS = {
     serverName: 'Jetyum',
+    // El idioma con el que abren el juego y las herramientas quien no ha elegido otro: 'en' | 'es'.
+    defaultLanguage: 'en',
     dataDirectory: 'data',
     clientDirectory: 'client',
     itemsXml: 'data/items/items.xml',

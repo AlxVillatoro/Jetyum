@@ -29,7 +29,8 @@ module.exports = {
     keywords: [
         {
             // `greeting: true` significa que funciona SIN foco, y que lo establece.
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 npc.say('Hola, ' + player.name + '. Soy el guia de la ciudad. ' +
@@ -46,7 +47,7 @@ module.exports = {
         },
 
         {
-            words: ['donde', 'donde esta', 'donde queda'],
+            words: ['donde', 'donde esta', 'donde queda', 'where'],
             say: (npc, player) => {
                 const position = player.getPosition();
                 npc.say('Ahora mismo estas en ' + position + '.');
@@ -54,7 +55,7 @@ module.exports = {
         },
 
         {
-            words: ['salir', 'como salgo', 'ayuda'],
+            words: ['salir', 'como salgo', 'ayuda', 'help', 'controls', 'move', 'exit'],
             say: (npc) => {
                 npc.say('Muevete con las flechas o WASD. Con Intro escribes, y ' +
                     'con el boton derecho del raton recoges lo que haya en el suelo.');
@@ -62,7 +63,7 @@ module.exports = {
         },
 
         {
-            words: ['monstruos', 'peligro', 'ratas'],
+            words: ['monstruos', 'peligro', 'ratas', 'monsters', 'danger', 'rats'],
             say: (npc) => {
                 npc.say('Hay ratas al sur. Son debiles, pero no bajes a la mina ' +
                     'sin subir de nivel.');
@@ -78,7 +79,7 @@ module.exports = {
              * soltar el foco, el que se olvidara se quedaría pegado a un jugador para
              * siempre y no atendería a nadie más.
              */
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Adios. Vuelve cuando quieras.');

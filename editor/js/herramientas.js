@@ -20,6 +20,7 @@ import {
     ponerWaypoint, quitarWaypoint
 } from './edicion.js';
 import { Historial } from './historial.js';
+import { traducir } from '../../shared/js/i18n.mjs';
 import { ponerForma, formaDelPincel, nombreDeTamano } from './pincel.js';
 import { ponerIcono } from './iconos.js';
 
@@ -1141,7 +1142,7 @@ export class Herramientas {
                 if (paso >= 14) {
                     ctx.fillStyle = '#ffffff';
                     ctx.font = '10px monospace';
-                    ctx.fillText('templo ' + t.name, p.x, p.y - 3);
+                    ctx.fillText(traducir('templo ' + t.name), p.x, p.y - 3);
                 }
             });
             ctx.restore();

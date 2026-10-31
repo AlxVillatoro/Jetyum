@@ -64,7 +64,7 @@ module.exports = {
 
     keywords: [
         {
-            words: ['hola', 'hi', 'buenas'],
+            words: ['hola', 'hi', 'buenas', 'hello', 'hey', 'greetings'],
             greeting: true,
             say: (npc) => {
                 npc.say('Buenas. Soy el herrero. Dime "ofrezco" para ver lo que tengo, ' +
@@ -74,7 +74,8 @@ module.exports = {
 
         {
             // El listado de la tienda.
-            words: ['ofrezco', 'ofreces', 'tienes', 'mercancia', 'mercancia', 'tienda', 'trade'],
+            words: ['ofrezco', 'ofreces', 'tienes', 'mercancia', 'mercancia', 'tienda', 'trade',
+                'offer', 'wares', 'goods', 'shop'],
             say: (npc, player) => {
                 const list = npc.shopList();
                 const vendibles = list.filter((entry) => entry.buy > 0);
@@ -98,7 +99,7 @@ module.exports = {
         {
             // COMPRAR. Va antes que la palabra genérica para que "comprar espada" no caiga
             // en el listado: el orden de la lista es lo que decide, y esta es más concreta.
-            words: ['comprar', 'buy', 'quiero'],
+            words: ['comprar', 'buy', 'quiero', 'purchase'],
             say: (npc, player, words) => {
                 const result = npc.buyFor(player, words);
 
@@ -144,28 +145,28 @@ module.exports = {
         },
 
         {
-            words: ['armas', 'espada', 'espadas'],
+            words: ['armas', 'espada', 'espadas', 'weapons', 'weapon', 'sword', 'swords'],
             say: (npc) => {
                 npc.say('Forjo espadas de ataque 48. Se nota mucho contra las ratas.');
             }
         },
 
         {
-            words: ['dinero', 'monedas', 'oro'],
+            words: ['dinero', 'monedas', 'oro', 'money', 'coins', 'gold'],
             say: (npc, player) => {
                 npc.say('Llevas ' + player.getMoney() + ' monedas encima.');
             }
         },
 
         {
-            words: ['trabajo', 'haces', 'oficio'],
+            words: ['trabajo', 'haces', 'oficio', 'job', 'work', 'profession'],
             say: (npc) => {
                 npc.say('Trabajo el hierro. Por eso me ves dando vueltas por aqui.');
             }
         },
 
         {
-            words: ['adios', 'bye', 'chao'],
+            words: ['adios', 'bye', 'chao', 'farewell', 'goodbye'],
             farewell: true,
             say: (npc) => {
                 npc.say('Que te vaya bien.');

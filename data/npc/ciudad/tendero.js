@@ -80,7 +80,8 @@ module.exports = {
             }
         },
         {
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 // `getName()` Y NO `player.name`. El envoltorio que recibe el dialogo expone
@@ -95,7 +96,7 @@ module.exports = {
         {
             // El listado. Se separa lo que VENDE de lo que COMPRA porque son dos listas
             // distintas y confundirlas hace que el jugador no sepa que puede hacer aqui.
-            words: ['ofrezco', 'ofreces', 'tienes', 'mercancia'],
+            words: ['ofrezco', 'ofreces', 'tienes', 'mercancia', 'offer', 'wares', 'goods'],
             say: (npc, player) => {
                 const list = npc.shopList();
                 const vende = list.filter((entry) => entry.buy > 0);
@@ -128,7 +129,7 @@ module.exports = {
             // COMPRAR va antes de las palabras concretas ("anillo") a proposito: quien
             // escribe "comprar anillo" quiere comprar, no que le cuenten la historia del
             // anillo, y gana la PRIMERA palabra clave que casa.
-            words: ['comprar', 'buy', 'quiero'],
+            words: ['comprar', 'buy', 'quiero', 'purchase'],
             say: (npc, player, words) => {
                 const result = npc.buyFor(player, words);
 
@@ -188,7 +189,8 @@ module.exports = {
         {
             // Concreta, asi que va DESPUES de "comprar" y "vender" pero ANTES de la
             // generica de dinero: quien pregunta por el anillo quiere saber del anillo.
-            words: ['anillo', 'anillos', 'joyas', 'joya'],
+            words: ['anillo', 'anillos', 'joyas', 'joya',
+                'ring', 'rings', 'jewels', 'jewel', 'jewelry'],
             say: (npc) => {
                 npc.say('Anillos compro todos los que me traigas. El herrero no te los ' +
                     'cogera: dice que el hierro si y el oro no.');
@@ -207,14 +209,14 @@ module.exports = {
         },
 
         {
-            words: ['dinero', 'monedas', 'oro'],
+            words: ['dinero', 'monedas', 'oro', 'money', 'coins', 'gold'],
             say: (npc, player) => {
                 npc.say('Llevas ' + player.getMoney() + ' monedas de oro encima.');
             }
         },
 
         {
-            words: ['peso', 'carga', 'capacidad', 'espacio'],
+            words: ['peso', 'carga', 'capacidad', 'espacio', 'weight', 'load', 'capacity', 'space'],
             say: (npc, player) => {
                 npc.say('Vas cargado con ' + player.getWeightText() + ' de ' +
                     player.getCapacityText() + '. Lo que no te quepa no te lo puedo vender.');
@@ -222,7 +224,7 @@ module.exports = {
         },
 
         {
-            words: ['trabajo', 'haces', 'oficio'],
+            words: ['trabajo', 'haces', 'oficio', 'job', 'work'],
             say: (npc) => {
                 npc.say('Compro barato y vendo caro. Si te parece mal, prueba a forjar tu ' +
                     'el anillo.');
@@ -230,7 +232,7 @@ module.exports = {
         },
 
         {
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Vuelve cuando tengas algo que soltar.');

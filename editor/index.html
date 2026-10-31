@@ -49,6 +49,17 @@
 
     #global-status { margin-left: auto; color: #6a7a6a; font-size: 11px; }
     #global-status.error { color: #e08080; }
+    #idioma {
+        flex: none;
+        width: auto;
+        background: #1a1a24;
+        color: #c8c8d8;
+        border: 1px solid #2c2c3a;
+        border-radius: 3px;
+        font: inherit;
+        font-size: 11px;
+        padding: 1px 4px;
+    }
 
     .panel { display: none; flex: 1; min-height: 0; }
     .panel.active { display: flex; }
@@ -616,6 +627,7 @@
             <button class="tab" data-tab="items" title="Las definiciones del servidor (data/items/items.xml)">Objetos (items.xml)</button>
         </div>
         <div id="global-status">cargando...</div>
+        <select id="idioma" aria-label="Idioma / Language"></select>
     </header>
 
     <!-- ================= Editor de mapas ================= -->

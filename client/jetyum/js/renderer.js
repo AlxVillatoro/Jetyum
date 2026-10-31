@@ -13,6 +13,7 @@
 
 import { DRAW } from './drawlist.js';
 import { TILE } from './sprites.js';
+import { t, traducir } from '../../../shared/js/i18n.mjs';
 
 /**
  * El reloj del cliente: `performance.now()`.
@@ -559,13 +560,16 @@ export class Renderer {
                 ctx.fillStyle = op.health > 50 ? '#4ac04a' : (op.health > 25 ? '#c0c04a' : '#c04a4a');
                 ctx.fillRect(arriba.x - ancho / 2, arriba.y - 8, Math.round(ancho * op.health / 100), 4);
             }
-            if (this.showNames && op.name) {
+            // El nombre de un NPC o de un monstruo es del juego y va en el idioma puesto («Herrero»,
+            // «Blacksmith»); el de un jugador es suyo y no se toca.
+            const nombre = op.creature && op.creature.kind === 0 ? op.name : traducir(op.name);
+            if (this.showNames && nombre) {
                 ctx.font = 'bold 12px monospace';
                 ctx.textAlign = 'center';
                 ctx.fillStyle = 'rgba(0,0,0,0.75)';
-                ctx.fillText(op.name, arriba.x + 1, arriba.y - 11);
+                ctx.fillText(nombre, arriba.x + 1, arriba.y - 11);
                 ctx.fillStyle = op.isPlayer ? '#cfe6ff' : '#ffd0c0';
-                ctx.fillText(op.name, arriba.x, arriba.y - 12);
+                ctx.fillText(nombre, arriba.x, arriba.y - 12);
             }
             // La calavera (PvP) y el escudo de grupo, a la derecha de la barra de vida.
             const marca = this._marcas ? this._marcas.get(op.id) : null;
@@ -585,7 +589,9 @@ export class Renderer {
             if (dice) {
                 ctx.font = 'bold 12px monospace';
                 ctx.textAlign = 'center';
-                const lineas = [dice.name + ' dice:'].concat(partirTexto(ctx, dice.text, 220));
+                // El texto ya llega traducido (ver `world.js`): aquí sólo la cabecera.
+                const lineas = [t('{nombre} dice:', { nombre: nombre || dice.name })]
+                    .concat(partirTexto(ctx, dice.text, 220));
                 lineas.forEach((linea, i) => {
                     const y = arriba.y - 28 - (lineas.length - 1 - i) * 14;
                     ctx.fillStyle = 'rgba(0,0,0,0.8)';
@@ -615,9 +621,10 @@ export class Renderer {
         says.forEach((say, index) => {
             const y = 40 + index * 16;
             ctx.fillStyle = 'rgba(0,0,0,0.65)';
-            ctx.fillRect(8, y - 12, ctx.measureText(say.line).width + 12, 16);
+            const linea = traducir(say.line);
+            ctx.fillRect(8, y - 12, ctx.measureText(linea).width + 12, 16);
             ctx.fillStyle = '#ffe8a0';
-            ctx.fillText(say.line, 14, y);
+            ctx.fillText(linea, 14, y);
         });
     }
 }

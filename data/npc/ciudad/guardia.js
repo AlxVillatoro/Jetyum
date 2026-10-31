@@ -37,7 +37,8 @@ module.exports = {
 
     keywords: [
         {
-            words: ['hola', 'hi', 'buenas', 'buenos dias'],
+            words: ['hola', 'hi', 'buenas', 'buenos dias',
+                'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
@@ -47,7 +48,7 @@ module.exports = {
         },
 
         {
-            words: ['mina', 'minas', 'bajar'],
+            words: ['mina', 'minas', 'bajar', 'mine', 'mines', 'descend', 'go down'],
             say: (npc) => {
                 npc.say('La mina esta una planta mas abajo. No bajes sin nivel y sin arma: ' +
                     'ahi abajo nadie te oye, y aqui arriba no hay quien baje a buscarte.');
@@ -55,7 +56,7 @@ module.exports = {
         },
 
         {
-            words: ['ratas', 'rata', 'monstruos', 'bichos'],
+            words: ['ratas', 'rata', 'monstruos', 'bichos', 'rats', 'rat', 'monsters', 'creatures'],
             say: (npc) => {
                 npc.say('Las ratas salen junto al charco, al otro lado de la ciudad. Son ' +
                     'debiles, pero muerden, y sin arma acabas en el suelo mas rapido de lo ' +
@@ -64,7 +65,7 @@ module.exports = {
         },
 
         {
-            words: ['charco', 'agua', 'charca', 'nadar'],
+            words: ['charco', 'agua', 'charca', 'nadar', 'pond', 'water', 'puddle', 'swim'],
             say: (npc) => {
                 npc.say('El agua somera se anda a la mitad de velocidad: el suelo mojado ' +
                     'cuesta el doble. Si te persiguen, no te metas en el charco.');
@@ -73,7 +74,8 @@ module.exports = {
 
         {
             // Lo que de verdad puede contar de una pelea, que es lo que ha visto.
-            words: ['ataque', 'pelea', 'combate', 'pvp', 'pegar', 'matar'],
+            words: ['ataque', 'pelea', 'combate', 'pvp', 'pegar', 'matar',
+                'attack', 'fight', 'combat', 'hit', 'kill'],
             say: (npc) => {
                 npc.say('El que pega de cerca llega a una casilla, contando la diagonal. ' +
                     'Y aqui se pega el que quiere: no hay calavera, ni carcel, ni juez.');
@@ -81,7 +83,8 @@ module.exports = {
         },
 
         {
-            words: ['proteccion', 'protegido', 'seguro', 'refugio', 'zona'],
+            words: ['proteccion', 'protegido', 'seguro', 'refugio', 'zona',
+                'protection', 'protected', 'safe', 'refuge', 'zone', 'danger'],
             say: (npc) => {
                 npc.say('No te fies de las plazas. Hay casillas marcadas como protegidas en ' +
                     'el mapa, pero hoy no protegen de nada: si alguien te ataca, te ataca.');
@@ -89,7 +92,8 @@ module.exports = {
         },
 
         {
-            words: ['ley', 'orden', 'justicia', 'bandidos', 'criminales'],
+            words: ['ley', 'orden', 'justicia', 'bandidos', 'criminales',
+                'law', 'order', 'justice', 'bandits', 'criminals'],
             say: (npc) => {
                 npc.say('La ley la pongo yo, y la pongo avisando. Bandidos no hay: nadie se ' +
                     'ha puesto una calavera todavia, y sin calavera no hay a quien ' +
@@ -98,7 +102,7 @@ module.exports = {
         },
 
         {
-            words: ['templo', 'curar', 'vida', 'morir'],
+            words: ['templo', 'curar', 'vida', 'morir', 'temple', 'heal', 'life', 'die'],
             say: (npc) => {
                 npc.say('El templo te rehace cuando caes, pero te cuesta una decima parte ' +
                     'de tu experiencia y todo lo que lleves encima. No es un sitio al que ' +
@@ -107,7 +111,7 @@ module.exports = {
         },
 
         {
-            words: ['adios', 'bye', 'chao', 'hasta luego'],
+            words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],
             farewell: true,
             say: (npc) => {
                 npc.say('Anda con ojo.');

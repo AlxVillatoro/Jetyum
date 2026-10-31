@@ -27,6 +27,11 @@ module.exports = {
     // Identidad
     // -----------------------------------------------------------------------
     serverName: 'Jetyum',
+    // EL IDIOMA POR DEFECTO del juego y de las herramientas: 'en' (inglés) | 'es' (español). Es
+    // con el que se abren para quien no ha elegido otro; cada uno lo cambia con su selector y su
+    // elección se recuerda en su navegador. El motor no traduce nada: cada cliente traduce lo que
+    // le llega (ver `shared/js/i18n.mjs`).
+    defaultLanguage: 'en',
     worldType: 'pvp',              // 'pvp' | 'no-pvp' | 'pvp-enforced'
     protectionLevel: 1,
 

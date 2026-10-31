@@ -610,6 +610,13 @@
         color: #e8e8f0;
         font: inherit;
     }
+    #login select.login-idioma {
+        float: right;
+        width: auto;
+        margin: 0;
+        padding: 3px 6px;
+        font-size: 11px;
+    }
     #login .nuevo-pj { display: flex; gap: 10px; }
     #login .nuevo-pj > div { flex: 1; }
     #login small { display: block; margin: -6px 0 12px; color: #6a6a7a; font-size: 11px; }
@@ -823,6 +830,8 @@
                 <label class="opcion"><input type="checkbox" id="op-vida" checked> Barras de vida</label>
                 <label class="opcion"><input type="checkbox" id="op-hora" checked> Hora en la consola</label>
                 <label class="opcion"><input type="checkbox" id="op-diagnostico"> Diagnóstico (fps, red)</label>
+                <label class="opcion" title="Idioma de la interfaz y de los mensajes del juego">Idioma
+                    <select id="op-idioma"></select></label>
                 <label class="opcion" title="Cómo se amplían los píxeles del dibujo">Suavizado
                     <select id="op-suavizado">
                         <option value="pixel">Píxel suave (Scale2x)</option>
@@ -899,6 +908,8 @@
 
 <div id="overlay">
     <form id="login" autocomplete="on">
+        <!-- El idioma, antes de entrar: lo que no se entiende no se puede elegir. -->
+        <select id="login-idioma" class="login-idioma" aria-label="Idioma / Language"></select>
         <h1>Jetyum</h1>
         <div class="login-pestanas" role="tablist">
             <button type="button" class="activa" data-modo="entrar">Entrar</button>

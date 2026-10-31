@@ -114,6 +114,8 @@ export class AssetsProvider {
         this.suavizado = modoValido(opts.suavizado || 'nitido');
         /** Los lienzos que son la ampliación al doble de un dibujo de 32 px (se pintan a la mitad). */
         this.ampliados = new WeakSet();
+        /** Lo que devuelve `get` para cada lienzo: ver `_resultado`. */
+        this.resultados = new WeakMap();
 
         if (opts.things) {
             this.setThings(opts.things);
@@ -397,7 +399,23 @@ export class AssetsProvider {
         ctx.drawImage(base, 0, 0);
     }
 
+    /**
+     * El sprite que se devuelve, y ES SIEMPRE EL MISMO OBJETO PARA EL MISMO DIBUJO.
+     *
+     * Quien lo usa cuenta con eso: la paleta del editor sólo repinta un botón cuando el sprite es
+     * OTRO que el último pintado, y el lienzo del editor guarda por sprite el suelo de fondo y los
+     * dibujos teñidos. Con un objeto nuevo en cada llamada esas tres cachés fallaban siempre, y el
+     * editor repintaba la paleta entera —leyendo los píxeles de cada botón— en cada fotograma: con
+     * el mapa del juego abierto se quedaba en 3 fotogramas por segundo y tiraba de la CPU.
+     *
+     * Se guarda por lienzo, y `invalidar` ya tira los lienzos, así que un dibujo nuevo trae un
+     * sprite nuevo y quien compara identidades se entera.
+     */
     _resultado(cosa, lienzo) {
+        const guardado = this.resultados.get(lienzo);
+        if (guardado && guardado.thing === cosa) {
+            return guardado;
+        }
         const flags = cosa.flags || {};
         const offset = flags.offset || { x: 0, y: 0 };
         // El ARTE HD (docs/ARTE-HD.md) es de 64 px por casilla: se pinta a media escala, así que
@@ -406,7 +424,7 @@ export class AssetsProvider {
         const k = hd ? 0.5 : 1;
         const ancho = lienzo.width * k;
         const alto = lienzo.height * k;
-        return {
+        const resultado = {
             canvas: lienzo,
             width: ancho,
             drawW: ancho,
@@ -417,6 +435,8 @@ export class AssetsProvider {
             elevation: Number(flags.elevation) || 0,
             thing: cosa
         };
+        this.resultados.set(lienzo, resultado);
+        return resultado;
     }
 
     /**

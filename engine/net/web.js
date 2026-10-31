@@ -11,7 +11,8 @@
  *   /                          -> /jetyum/
  *   /jetyum/...            -> client/jetyum/  (el cliente: html, js y sus assets)
  *   /shared/...                -> shared/             (lo que comparten motor y cliente: protocolo...)
- *   /jetyum/motor.json     -> { puerto }: dónde escucha el motor (enginePort)
+ *   /jetyum/motor.json     -> { puerto, idioma }: dónde escucha el motor (enginePort) y el idioma
+ *                             por defecto (defaultLanguage)
  *   /jetyum/vocaciones.json -> las vocaciones que se pueden elegir al crear un personaje
  *
  * Nada fuera de esas carpetas: una ruta con `..` no sale de su raíz.
@@ -136,7 +137,7 @@ function crearServidorWeb(o) {
             return;
         }
         if (ruta === '/jetyum/motor.json') {
-            enviarJson(res, { puerto: Number(config.enginePort) || 8081 });
+            enviarJson(res, { puerto: Number(config.enginePort) || 8081, idioma: config.defaultLanguage || 'en' });
             return;
         }
         if (ruta === '/jetyum/vocaciones.json') {

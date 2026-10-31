@@ -47,6 +47,9 @@ import {
     dibujarPlantilla
 } from './compuestosui.js';
 import { expandir, caja, desdeCasillas, normalizarPlantilla } from '../../shared/js/compuestos.mjs';
+import { IDIOMAS, idioma, idiomaDelServidor, setIdioma } from '../../shared/js/i18n.mjs';
+import { montarSelectorDeIdioma, traducirPagina } from '../../shared/js/i18n-dom.mjs';
+import '../../shared/i18n/herramientas.mjs';
 import {
     TAMANO_POR_DEFECTO,
     cuantasCasillas,
@@ -990,7 +993,7 @@ function refreshMapStatus() {
     document.getElementById('map-stats').textContent =
         stats.explicitTiles + ' tiles explícitos (' + stats.withItems + ' con objetos, ' +
         stats.withFlags + ' con banderas) de ' +
-        stats.cellsIfMaterialized.toLocaleString('es-ES') + ' celdas  |  ' +
+        stats.cellsIfMaterialized.toLocaleString(idioma() === 'en' ? 'en-US' : 'es-ES') + ' celdas  |  ' +
         stats.spawnAreas + ' respawn(s) con ' + stats.spawns + ' monstruo(s)  |  ' +
         stats.npcs + ' npc  |  ' + stats.composites + ' compuesto(s)' +
         (stats.pending > 0 ? '  |  ' + stats.pending + ' sin guardar' : '  |  todo guardado');
@@ -2245,27 +2248,139 @@ function wireTeclado() {
 // Arranque
 // ---------------------------------------------------------------------------
 
-function loop() {
-    if (state.canvas) {
-        state.canvas.draw(state.canvas.hover ? describeCell(state.canvas.hover) : null);
+/*
+ * EL MAPA SE DIBUJA CUANDO ALGO CAMBIA, NO EN CADA FOTOGRAMA.
+ *
+ * Antes se redibujaba entero sesenta veces por segundo —o ciento cuarenta y cuatro, con una
+ * pantalla rápida— aunque nadie tocara nada, y con el mapa del juego en «ver todo» eso son miles
+ * de sprites por fotograma: el editor quieto se comía la CPU. Ahora se dibuja:
+ *
+ *   - en cuanto pasa algo: un evento del ratón o del teclado (toda edición viene de uno), o un
+ *     cambio de cámara, de tamaño, de mapa o de sprites, que es lo que puede llegar sin evento
+ *     —la respuesta de una petición, una hoja de sprites que acaba de cargar—;
+ *   - una vez por segundo de todas formas, por si algo cambia sin que nada de lo anterior se
+ *     entere: es la red de seguridad, y cuesta un dibujo por segundo;
+ *   - y para el fuego de los respawns, que es lo único que se mueve solo, se repinta sólo la capa
+ *     de encima sobre la copia de la de abajo (ver `MapCanvas.draw`).
+ *
+ * Y NADA DE ESTO CON LA PESTAÑA DEL MAPA ESCONDIDA: no se ve, y al volver a ella el clic en la
+ * pestaña ya pide un dibujo.
+ */
+const REPASO_MS = 1000;
+const FUEGO_MS = 66;
+
+const dibujo = {
+    pedido: true,
+    pedidoEncima: false,
+    firma: '',
+    mapa: null,
+    completo: 0,
+    encima: 0,
+    versionPaleta: null
+};
+
+function pedirDibujo() {
+    dibujo.pedido = true;
+}
+
+/**
+ * Mover el ratón SIN BOTONES sólo cambia la casilla bajo el cursor y el fantasma, que van en la
+ * capa de encima: basta con repintar esa. Con un botón pulsado se está pintando, borrando o
+ * arrastrando, y eso cambia el mapa, así que se pide el dibujo completo.
+ */
+function alMoverElRaton(event) {
+    if (event.buttons) {
+        dibujo.pedido = true;
+    } else {
+        dibujo.pedidoEncima = true;
+    }
+}
+
+function escucharCambiosDelLienzo() {
+    ['mousedown', 'mouseup', 'wheel', 'keydown', 'keyup', 'click', 'input', 'change', 'resize']
+        .forEach((tipo) => window.addEventListener(tipo, pedirDibujo, true));
+    // Mover el ratón sólo cambia el mapa cuando es sobre el mapa: el resto de la página son
+    // paneles, y redibujar el mapa por pasar el ratón por la paleta sería trabajo tirado.
+    ['mousemove', 'mouseleave'].forEach((tipo) =>
+        state.canvas.canvas.addEventListener(tipo, alMoverElRaton));
+}
+
+/** Lo que, si cambia, cambia el dibujo aunque no haya habido ningún evento. */
+function firmaDelLienzo() {
+    const lienzo = state.canvas;
+    const camara = lienzo.camera;
+    const proveedor = lienzo.provider;
+
+    return [lienzo.canvas.width, lienzo.canvas.height, camara.centerX, camara.centerY,
+        camara.tileSize, lienzo.z, lienzo.modo, proveedor && proveedor.version].join('|');
+}
+
+function mapaALaVista() {
+    const panel = document.getElementById('panel-map');
+    return !panel || panel.classList.contains('active');
+}
+
+function loop(ahora) {
+    const t = ahora || 0;
+
+    if (state.canvas && mapaALaVista()) {
+        const firma = firmaDelLienzo();
+        const texto = () => (state.canvas.hover ? describeCell(state.canvas.hover) : null);
+
+        if (dibujo.pedido || firma !== dibujo.firma || state.canvas.map !== dibujo.mapa ||
+            t - dibujo.completo >= REPASO_MS) {
+            dibujo.pedido = false;
+            dibujo.pedidoEncima = false;
+            dibujo.firma = firma;
+            dibujo.mapa = state.canvas.map;
+            dibujo.completo = t;
+            dibujo.encima = t;
+            state.canvas.draw(texto());
+        } else if (dibujo.pedidoEncima ||
+            (t - dibujo.encima >= FUEGO_MS && state.canvas.hayAnimacion())) {
+            dibujo.pedidoEncima = false;
+            dibujo.encima = t;
+            state.canvas.draw(texto(), { soloEncima: true });
+        }
     }
 
     // Los dibujos de la paleta llegan por HTTP, así que hay que repintar los que aún no
-    // tenían sprite. Cuando ya están todos, esto es un recorrido de comparaciones y no
-    // se nota.
-    if (state.palette) {
-        state.palette.refrescarPendientes();
+    // tenían sprite. SÓLO CUANDO EL PROVEEDOR CAMBIA DE VERSIÓN: es lo que pasa cada vez que
+    // llega una hoja o cambian las cosas, y fuera de eso los dibujos no cambian. Recorrer la
+    // paleta entera en cada fotograma para no repintar nada era trabajo tirado.
+    if (state.palette && state.palette.proveedor) {
+        const version = state.palette.proveedor.version;
+
+        if (version !== dibujo.versionPaleta) {
+            dibujo.versionPaleta = version;
+            state.palette.refrescarPendientes();
+        }
     }
 
     requestAnimationFrame(loop);
 }
 
 async function boot() {
+    // EL IDIOMA, LO PRIMERO: ver `shared/js/i18n-dom.mjs`. Al cambiarlo se redibuja el mapa, que
+    // lleva texto pintado en el lienzo (las etiquetas de los marcadores, el aviso de la casilla).
+    document.documentElement.lang = idioma();
+    traducirPagina();
+    montarSelectorDeIdioma(document.getElementById('idioma'), IDIOMAS, idioma(), (id) => {
+        setIdioma(id);
+        pedirDibujo();
+    });
+
     document.querySelectorAll('.tab').forEach((tab) => {
         tab.addEventListener('click', () => showTab(tab.dataset.tab));
     });
 
     const status = await api.status();
+
+    // El idioma por defecto es el del servidor (`defaultLanguage` en `config.js`), salvo que quien
+    // edita haya elegido otro.
+    if (status.idioma) {
+        idiomaDelServidor(status.idioma);
+    }
 
     if (status.error) {
         document.getElementById('global-status').textContent =
@@ -2632,6 +2747,7 @@ async function boot() {
 
     showTab('map');
     openMap(document.getElementById('map-select').value);
+    escucharCambiosDelLienzo();
     loop();
 }
 
