@@ -44,8 +44,10 @@ section('1. El generador');
         generar({ salida: tmp });
         const nuevo = fs.readFileSync(path.join(tmp, 'data', 'world', 'continente.map.json'), 'utf8');
         check('genera el mapa en poco tiempo', Date.now() - t0 < 30000, (Date.now() - t0) + ' ms');
+        // Sin contar los finales de línea: git puede sacar el archivo con CRLF.
+        const sinCr = (s) => s.replace(/\r\n/g, '\n');
         check('el mapa del repositorio es el que sale del generador (es determinista)',
-            nuevo === fs.readFileSync(ARCHIVO, 'utf8'), 'si falla: node tools/generar-continente.mjs');
+            sinCr(nuevo) === sinCr(fs.readFileSync(ARCHIVO, 'utf8')), 'si falla: node tools/generar-continente.mjs');
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });
     }

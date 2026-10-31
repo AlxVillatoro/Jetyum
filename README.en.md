@@ -83,6 +83,7 @@ Other commands:
 | `npm run engine:reload` | Checks hot reloading of content |
 | `npm run mundo:otsp` | Regenerates the brushes, the composites and the `jetyum` map |
 | `npm run mapa:continente` | Regenerates the big `continente` map |
+| `npm run monstruos:importar` | Imports TFS monsters (`../forserver-downgrade`) into `data/monsters/importados` |
 | `npm run mundo:aldea` | Regenerates the HD village map |
 | `npm run arte:plantillas` | Generates the provisional HD art sheets from the 32 px art |
 | `npm run arte:importar` | Brings the HD art from `data/arte-hd/` into the game |

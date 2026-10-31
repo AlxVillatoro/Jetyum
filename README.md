@@ -78,6 +78,7 @@ Otros comandos:
 | `npm run engine:reload` | Comprueba la recarga en caliente del contenido |
 | `npm run mundo:otsp` | Regenera los pinceles, los compuestos y el mapa `jetyum` |
 | `npm run mapa:continente` | Regenera el mapa grande `continente` |
+| `npm run monstruos:importar` | Importa monstruos de TFS (`../forserver-downgrade`) a `data/monsters/importados` |
 | `npm run mundo:aldea` | Regenera el mapa de la aldea HD |
 | `npm run arte:plantillas` | Genera las hojas provisionales del arte HD a partir del arte de 32 px |
 | `npm run arte:importar` | Mete el arte HD de `data/arte-hd/` en el juego |

@@ -168,6 +168,27 @@ attacks: [
 través de paredes. Las `immunities` cuentan (al daño y a las condiciones), y `flags.runHealth` (huye
 con poca vida), `flags.targetDistance` (mantiene la distancia), `voices` y `changeTarget` también.
 
+### Monstruos importados de TFS
+
+`npm run monstruos:importar` (`tools/importar-monstruos.mjs`) lee las fichas Lua de un servidor TFS o
+Canary (por defecto `../forserver-downgrade/data/monsters`) y escribe un módulo por monstruo en
+`data/monsters/importados/<carpeta>/`. Cada vez que se ejecuta sustituye lo importado: si quieres
+cambiar uno a mano, sácalo de `importados/`. Ahora mismo trae 40.
+
+Qué se importa:
+
+- **Solo los que se dibujan bien:** su `lookType` tiene que estar en `ASPECTOS_FIELES`. Los aspectos
+  301-346 del cliente son los del OpenTibia Sprite Pack, no los de Tibia. Tampoco se importan los jefes,
+  las misiones, los eventos y los entrenadores, ni los que ya existen.
+- **Los ataques que el motor sabe hacer:** los de arriba. Un `combat` lleva su `type` como elemento, y
+  el cuerpo a cuerpo con `skill`/`attack` lleva el daño máximo de TFS. Los hechizos con nombre propio
+  («fire wave») no se importan y salen en el informe.
+- **El botín y el cuerpo, por nombre:** el id del otro servidor se busca en su `items.xml` y el nombre,
+  en el nuestro. Lo que no tenemos se queda fuera. Un humano sin cuerpo propio deja el `dead human`.
+
+En el mapa «continente», cada importado tiene respawn en la zona que le toca por su nombre o por lo
+duro que es (`ZONAS` en `tools/generar-continente.mjs`). La prueba es `npm run test:monstruos`.
+
 ---
 
 ## Comandos de chat

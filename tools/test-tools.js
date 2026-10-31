@@ -36,6 +36,11 @@ const { loadMap } = require('../engine/world/loader');
 
 const ROOT = path.resolve(__dirname, '..');
 
+// Los monstruos que hay en data/monsters (los de la casa y los importados de TFS): un módulo cada uno.
+const contarModulos = (d) => fs.readdirSync(d, { withFileTypes: true }).reduce((n, e) => n +
+    (e.isDirectory() ? contarModulos(path.join(d, e.name)) : (e.name.endsWith('.js') ? 1 : 0)), 0);
+const MONSTRUOS = contarModulos(path.join(ROOT, 'data', 'monsters'));
+
 let failures = 0;
 
 function ok(label, detail) {
@@ -1604,14 +1609,14 @@ async function main() {
     {
         const status = await api(port, 'GET', '/api/status');
         check('el estado dice cuantos monstruos y NPC se pueden colocar',
-            status.status === 200 && status.body.monsters === 27 && status.body.npcs === 8,
+            status.status === 200 && status.body.monsters === MONSTRUOS && status.body.npcs === 8,
             status.body.monsters + ' monstruos y ' + status.body.npcs + ' npc');
 
         const monstruos = await api(port, 'GET', '/api/monsters');
         const rata = monstruos.body.monsters.find((monstruo) => monstruo.name === 'Rat');
 
         check('se listan los monstruos de data/monsters/',
-            monstruos.status === 200 && monstruos.body.monsters.length === 27 &&
+            monstruos.status === 200 && monstruos.body.monsters.length === MONSTRUOS &&
             rata !== undefined && rata.health === 20 && rata.experience === 5,
             'Rat: ' + rata.health + ' de vida y ' + rata.experience + ' de experiencia, leidos ' +
             'del modulo del monstruo y no con una expresion regular sobre el texto');

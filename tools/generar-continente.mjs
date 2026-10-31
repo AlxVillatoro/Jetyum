@@ -737,6 +737,66 @@ function bosque(obra) {
     Object.assign(obra.waypoints, { granja: [202, 100, Z], bosque: [206, 134, Z] });
 }
 
+/**
+ * LOS MONSTRUOS IMPORTADOS (`tools/importar-monstruos.mjs`, en `data/monsters/importados`): cada uno
+ * en la primera ZONA que lo acepta, por su nombre o por lo duro que es, y dentro de la zona repartidos
+ * entre sus sitios. Los sitios de la superficie que no eran de nadie se despejan (un claro con
+ * hoguera); los de abajo son salas de las cuevas. Así, importar más monstruos los pone en el mapa
+ * sin tocar este archivo.
+ */
+const ZONAS = [
+    { acepta: (m) => /troll/i.test(m.name), sitios: [[152, 199, Z]] },
+    { acepta: (m) => /goblin|muglex/i.test(m.name), sitios: [[236, 191, Z]] },
+    { acepta: (m) => /minotaur/i.test(m.name), sitios: [[72, 196, 9], [70, 214, 9]] },
+    { acepta: (m) => /cyclops/i.test(m.name), sitios: [[76, 96, 9]] },
+    { acepta: (m) => /scorpion|snake/i.test(m.name), sitios: [[30, 196, Z], [94, 234, Z]] },
+    { acepta: (m) => /wolf/i.test(m.name), sitios: [[226, 46, Z]] },
+    { acepta: (m) => /skeleton|undead|ghoul|zombie/i.test(m.name) && m.experience >= 150, sitios: [[44, 156, 9]] },
+    { acepta: (m) => /skeleton|undead|ghoul|zombie|prospector|mine worker/i.test(m.name), sitios: [[80, 70, 8], [70, 36, 8]] },
+    { acepta: (m) => m.experience >= 1500, sitios: [[24, 190, 10], [48, 198, 10]] },
+    { acepta: (m) => m.experience >= 500, sitios: [[98, 204, 9], [20, 164, 9]] },
+    { acepta: (m) => /cult|dark|novice|mad scientist|firestarter/i.test(m.name), sitios: [[40, 152, Z], [46, 124, 8]] },
+    { acepta: (m) => /elf|dryad|hunter|poacher|stalker/i.test(m.name), sitios: [[226, 140, Z], [214, 172, Z]] },
+    { acepta: (m) => /nomad/i.test(m.name), sitios: [[18, 206, Z]], nuevos: true },
+    { acepta: () => true, sitios: [[80, 80, Z], [150, 74, Z], [96, 172, Z], [164, 172, Z], [70, 150, Z]], nuevos: true }
+];
+
+/** Los monstruos de `data/monsters/importados`, en orden de nombre. */
+function monstruosImportados() {
+    const dir = path.join(RAIZ, 'data', 'monsters', 'importados');
+    if (!fs.existsSync(dir)) {
+        return [];
+    }
+    const archivos = (d) => fs.readdirSync(d, { withFileTypes: true })
+        .flatMap((e) => (e.isDirectory() ? archivos(path.join(d, e.name)) : [path.join(d, e.name)]));
+    return archivos(dir).filter((f) => f.endsWith('.js')).map((f) => require(f))
+        .filter((m) => m && m.type === 'monster' && m.name).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function importados(obra, monstruos) {
+    const porSitio = new Map();
+    const usadas = new Map();
+    monstruos.forEach((m) => {
+        const zona = ZONAS.find((z) => z.acepta(m));
+        const k = usadas.get(zona) || 0;
+        usadas.set(zona, k + 1);
+        const sitio = zona.sitios[k % zona.sitios.length];
+        const clave = sitio.join(',');
+        if (!porSitio.has(clave)) {
+            porSitio.set(clave, { sitio, nuevo: !!zona.nuevos, nombres: [] });
+        }
+        porSitio.get(clave).nombres.push(m.name, m.name);
+    });
+    porSitio.forEach(({ sitio, nuevo, nombres }) => {
+        const [x, y, z] = sitio;
+        if (nuevo) {
+            claro(obra, x, y, 4);
+            campamento(obra, x + 3, y - 3);
+        }
+        obra.respawn(x, y, z, 4, 60000, nombres);
+    });
+}
+
 function pradera(obra) {
     // Flores, hierbas, árboles y rocas sueltas por el campo.
     const esPradera = (x, y) => tierraDe(x, y) === 'pradera' && !esPlaya(x, y);
@@ -1225,6 +1285,7 @@ export function mapaContinente(items, pinceles, assets) {
     // cementerio, y su suelo la taparía.
     ceniza(obra);
     subterraneo(obra, ciudades);
+    importados(obra, monstruosImportados());
 
     // La naturaleza de cada tierra, después de lo construido.
     nieve(obra);
@@ -1256,6 +1317,9 @@ export function mapaContinente(items, pinceles, assets) {
         lobos: [196, 36, Z],
         'museo-dentro': m.llegada
     });
+    // Un lugar de `/ir` siempre se pisa: si la decoración al azar le cayó encima (sólo cae en
+    // casillas sin dueño), se quita.
+    Object.values(obra.waypoints).filter((p) => p[2] === Z && !obra.reservada(p[0], p[1])).forEach(([x, y]) => obra.vaciar(x, y));
 
     return {
         format: 'jetyum-map',
