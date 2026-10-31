@@ -20,6 +20,8 @@
  */
 
 const { SKILLS } = require('../data/definiciones');
+const Atributos = require('./atributos');
+const Logros = require('./logros');
 
 /** Lo que cuesta subir cada skill a nivel 11 (TFS: `skillBase`). */
 const SKILL_BASE = { fist: 50, club: 50, sword: 50, axe: 50, distance: 30, shielding: 100, fishing: 20 };
@@ -82,12 +84,14 @@ function velocidadPara(vocacion, nivel) {
 /**
  * Pone al día lo que depende del nivel y la vocación: vida y maná máximos, velocidad, almas.
  *
- * @param {Object} [opciones] `curar: true` llena vida y maná (al subir de nivel, como Tibia)
+ * @param {Object} [opciones] `curar: true` llena vida y maná (al subir de nivel, como Tibia);
+ *        `extra: {vida, mana}`, lo que suman los atributos (vitalidad y energía: atributos.js)
  */
 function aplicarNivel(jugador, vocacion, opciones) {
     const curar = opciones && opciones.curar;
-    jugador.maxHealth = maxHealthPara(vocacion, jugador.level);
-    jugador.maxMana = maxManaPara(vocacion, jugador.level);
+    const extra = (opciones && opciones.extra) || {};
+    jugador.maxHealth = maxHealthPara(vocacion, jugador.level) + (extra.vida || 0);
+    jugador.maxMana = maxManaPara(vocacion, jugador.level) + (extra.mana || 0);
     jugador.baseSpeed = velocidadPara(vocacion, jugador.level);
     jugador.speed = jugador.baseSpeed + (jugador.speedBonus || 0) + (jugador.condSpeed || 0) +
         (jugador.mountSpeed || 0);
@@ -202,6 +206,10 @@ function progresoParaGuardar(jugador) {
         magicLevel: jugador.magicLevel || 0,
         manaSpent: jugador.manaSpent || 0,
         skills: jugador.skills || skillsIniciales(),
+        // Los puntos repartidos en cada atributo (atributos.js).
+        atributos: Atributos.paraGuardar(jugador),
+        // Y lo que llevan las fuentes de esos puntos: pasos, lugares, runas, especies... (logros.js).
+        logros: Logros.paraGuardar(jugador),
         // Los depósitos (uno por ciudad, `{ idDeCiudad: [árboles] }`: ver `depotOf` en extras.js) y la
         // calavera, que duran aunque salgas. `deposito` es el de su ciudad, como se guardaba cuando
         // había uno solo: lo lee un motor viejo, y uno nuevo sólo si no encuentra `depositos`.
@@ -226,6 +234,8 @@ function cargarProgreso(jugador, guardado) {
         }
     });
     jugador.skills = skills;
+    Atributos.cargar(jugador, g.atributos);
+    Logros.cargar(jugador, g.logros);
     jugador.magicLevel = Math.max(MAGIA_INICIAL, Number(g.magicLevel) || 0);
     jugador.manaSpent = Math.max(0, Number(g.manaSpent) || 0);
     jugador.stamina = g.stamina === undefined ? STAMINA_MAX : Math.max(0, Math.min(STAMINA_MAX, Number(g.stamina)));

@@ -63,6 +63,108 @@ const SKILLS = [
 ];
 
 /**
+ * LOS ATRIBUTOS (engine/world/atributos.js), en el orden de la ventana: su abreviatura (la columna),
+ * su nombre, lo que suman con `n` puntos y lo que da cada punto (con `p`, lo que manda el motor en
+ * `perPoint`). Lo largo va en el globo del ratón, para que quepan los cinco en una fila.
+ */
+const ATRIBUTOS = [
+    ['strength', 'FUE', 'Fuerza',
+        (n, p) => '+' + n * p.meleeDamage + '% cuerpo a cuerpo, +' + n * p.capacity + ' oz',
+        (p) => 'Cada punto: +' + p.meleeDamage + '% de daño cuerpo a cuerpo y +' + p.capacity + ' oz de capacidad'],
+    ['dexterity', 'DES', 'Destreza',
+        (n, p) => '+' + n * p.distanceDamage + '% a distancia',
+        (p) => 'Cada punto: +' + p.distanceDamage + '% de daño a distancia'],
+    ['intelligence', 'INT', 'Inteligencia',
+        (n, p) => '+' + n * p.magicDamage + '% magia, +' + n * p.healing + '% curación',
+        (p) => 'Cada punto: +' + p.magicDamage + '% de daño mágico y +' + p.healing + '% de curación'],
+    ['vitality', 'VIT', 'Vitalidad',
+        (n, p) => '+' + n * p.health + ' de vida',
+        (p) => 'Cada punto: +' + p.health + ' de vida máxima'],
+    ['energy', 'ENE', 'Energía',
+        (n, p) => '+' + n * p.mana + ' de maná',
+        (p) => 'Cada punto: +' + p.mana + ' de maná máximo']
+];
+
+/**
+ * DE DÓNDE SALEN LOS PUNTOS (engine/world/logros.js), en la ventana Atributos, en dos columnas: cada
+ * fuente con los puntos que ya dio y, debajo, cómo va hacia el siguiente en corto; el detalle, en el
+ * globo del ratón. `s` es `attributes.sources` de PLAYER_STATS.
+ */
+function pintarFuentes(s) {
+    const lista = document.getElementById('lista-fuentes');
+    if (!lista || !s) {
+        return;
+    }
+    const manana = 'hoy ya no: vuelve mañana';
+    const hoy = 'listo por hoy';
+    // [nombre, fuente, en corto, el detalle]
+    const filas = [
+        ['Nivel', s.level, s.level.next ? 'al nivel ' + s.level.next : 'todos conseguidos',
+            s.level.next ? 'el próximo, al nivel ' + s.level.next : 'todos conseguidos'],
+        ['Caminar', s.walking, s.walking.todayFull ? hoy : s.walking.steps + '/' + s.walking.goal,
+            s.walking.todayFull ? manana : s.walking.steps + ' / ' + s.walking.goal + ' pasos'],
+        ['Explorar', s.exploring, s.exploring.places + '/' + s.exploring.placesTotal + ' lugares',
+            s.exploring.places + ' / ' + s.exploring.placesTotal + ' lugares\n' + s.exploring.areas + ' / ' +
+            s.exploring.areasGoal + ' zonas'],
+        ['Magia', s.magic, s.magic.runes + '/' + s.magic.runesGoal + ' runas',
+            s.magic.runes + ' / ' + s.magic.runesGoal + ' runas\nmaná ' + s.magic.manaPercent + '%'],
+        ['Tiempo', s.activeTime, s.activeTime.todayFull ? hoy : s.activeTime.minutes + '/' + s.activeTime.goal + ' min',
+            'Tiempo activo\n' + (s.activeTime.todayFull ? manana : s.activeTime.minutes + ' / ' + s.activeTime.goal + ' min')],
+        ['Caza', s.hunting, s.hunting.species + ' especies',
+            s.hunting.species + ' especies\n' + s.hunting.mastered + ' con ' + s.hunting.masteryKills + ' muertes']
+    ];
+    lista.innerHTML = filas.map(([nombre, f, corto, detalle]) =>
+        '<div class="fuente" title="' + nombre + '\n' + detalle + '"><span>' + nombre + '</span><b>' + ((f && f.points) || 0) +
+        '</b><small>' + corto + '</small></div>').join('');
+}
+
+/** Lo último que se pintó en la ventana de atributos (para no rehacerla, y sus botones, en cada tick). */
+let firmaAtributos = null;
+
+/**
+ * La ventana «Atributos»: los puntos por repartir, cada atributo con su «+» y el botón de reiniciar.
+ * Los botones llevan `data-atributo`; quien los escucha (main.js) manda `ATTRIBUTE_ADD`.
+ */
+function pintarAtributos(a) {
+    const boton = document.querySelector('[data-ventana="atributos"]');
+    if (boton) {
+        boton.hidden = !a || a.enabled === false;
+        boton.classList.toggle('con-puntos', !!a && a.free > 0);
+    }
+    const lista = document.getElementById('lista-atributos');
+    const firma = JSON.stringify(a || null);
+    if (!lista || !a || firma === firmaAtributos) {
+        return;
+    }
+    firmaAtributos = firma;
+    const libres = document.getElementById('atributos-libres');
+    if (libres) {
+        libres.textContent = String(a.free);
+    }
+    // Los cinco en una fila: la abreviatura, el valor y el «+»; el nombre y lo que dan, en el globo.
+    lista.innerHTML = ATRIBUTOS.map(([clave, abreviatura, nombre, suma, cada]) => {
+        const n = (a.values && a.values[clave]) || 0;
+        const p = (a.perPoint && a.perPoint[clave]) || {};
+        const lleno = a.max > 0 && n >= a.max;
+        return '<div class="atributo" title="' + nombre + '\n' + suma(n, p) + '\n' + cada(p) +
+            (a.max > 0 ? '\nTope: ' + a.max : '') + '"><span>' + abreviatura + '</span><b>' + n + '</b>' +
+            '<button type="button" class="boton-icono" data-atributo="' + clave + '"' +
+            (a.free > 0 && !lleno ? '' : ' disabled') + ' title="' +
+            (lleno ? 'Tope: ' + a.max : 'Poner un punto (Mayús+clic: cinco)') + '">+</button></div>';
+    }).join('');
+    pintarFuentes(a.sources);
+    const reiniciar = document.getElementById('atributos-reiniciar');
+    if (reiniciar) {
+        const gastados = Object.values(a.values || {}).reduce((t, v) => t + v, 0);
+        reiniciar.disabled = gastados === 0;
+        reiniciar.dataset.coste = String(a.resetCost || 0);
+        reiniciar.title = a.resetCost > 0
+            ? 'Recupera todos los puntos para repartirlos de nuevo (cuesta ' + a.resetCost + ' de oro)'
+            : 'Recupera todos los puntos para repartirlos de nuevo';
+    }
+}
+
+/**
  * LOS ESTADOS de debajo de la vida, como los iconos de Tibia: cada uno es un booleano de
  * PLAYER_STATS y sale sólo mientras es verdad. El motor decide; aquí sólo se enseña.
  */
@@ -241,6 +343,7 @@ function armazonDeRanuras() {
  */
 export function limpiarPaneles() {
     ultimaFirma = null;
+    firmaAtributos = null;
     pendiente = false;
     pintarEstados(null);
 
@@ -791,6 +894,8 @@ export function actualizarStats(jugador) {
                 return fila(nombre, sk.level, sk.percent);
             }).join('');
     }
+
+    pintarAtributos(st.attributes || null);
 }
 
 /** Una barra de la barra lateral (vida o maná) con su número encima. */

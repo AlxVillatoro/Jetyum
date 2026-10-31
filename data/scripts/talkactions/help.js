@@ -43,6 +43,12 @@ const COMANDOS = [
             'valores de color: el 78 es "el color 78", no "un poco de azul"'
     },
     { nombre: 'spells', uso: '/spells', que: 'los hechizos de tu vocacion, en un dialogo' },
+    {
+        nombre: 'atributos',
+        uso: '/atributos [atributo] [puntos]',
+        que: 'tus atributos y los puntos por repartir; con un atributo (fuerza, destreza, inteligencia, ' +
+            'vitalidad, energia), pone los puntos ahi; "/atributos reiniciar" los recupera todos'
+    },
     { nombre: 'ayuda', uso: '/ayuda [comando]', que: 'esto mismo, o el detalle de uno' }
 ];
 

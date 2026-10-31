@@ -405,6 +405,10 @@ class GameSession {
      * @param {Array} message [opcode, ...datos]
      */
     handle(message) {
+        // Cualquier cosa que haga cuenta como «activo» (el tiempo de juego que da puntos: logros.js).
+        if (this.player && this.entered) {
+            this.player.ultimaActividad = this.world.now();
+        }
         const resultado = this._procesar(message);
         // Lo que acaba de hacer (mover, usar, andar, soltar) puede haber roto su intercambio: se
         // mira ya, sin esperar al tick, para que el otro no acepte algo que ya no está.
@@ -554,6 +558,12 @@ class GameSession {
 
             case P.CLIENT.TOGGLE_MOUNT:
                 return this._handleToggleMount();
+
+            case P.CLIENT.ATTRIBUTE_ADD:
+                return this._handleAttributeAdd(message[1], message[2]);
+
+            case P.CLIENT.ATTRIBUTES_RESET:
+                return this._handleAttributesReset();
 
             case P.CLIENT.USE_WITH:
                 return this._handleUseWith(message[1], message[2]);
@@ -1223,6 +1233,43 @@ class GameSession {
         }
         this.view.markDirty(this.playerId);
         return { handled: true, action: 'toggleMount', ok: true, mounted: this.player.mounted === true };
+    }
+
+    /** Poner puntos en un atributo (la ventana Atributos): las reglas están en `atributos.js`. */
+    _handleAttributeAdd(atributo, cantidad) {
+        const r = this.world.asignarAtributo(this.player, atributo, cantidad);
+        if (!r.ok) {
+            this.sendText({
+                sinPuntos: 'No tienes puntos de atributo por repartir.',
+                tope: 'Ese atributo ya está en el tope (' + r.tope + ').',
+                noExiste: 'Ese atributo no existe.',
+                desactivados: 'Los atributos están desactivados en este mundo.'
+            }[r.razon] || 'No se puede.');
+            return { handled: true, action: 'attributeAdd', ok: false, reason: r.razon };
+        }
+        this.view.markDirty(this.playerId);
+        return { handled: true, action: 'attributeAdd', ok: true, added: r.puestos, free: r.libres };
+    }
+
+    /** Recuperar todos los puntos para repartirlos de nuevo (cuesta `resetCost` de config.js). */
+    _handleAttributesReset() {
+        const r = this.world.reiniciarAtributos(this.player);
+        if (!r.ok) {
+            this.sendText({
+                nada: 'No tienes puntos de atributo repartidos.',
+                dinero: 'Reiniciar los atributos cuesta ' + r.coste + ' de oro.',
+                desactivados: 'Los atributos están desactivados en este mundo.'
+            }[r.razon] || 'No se puede.');
+            return { handled: true, action: 'attributesReset', ok: false, reason: r.razon };
+        }
+        this.sendText(r.coste > 0
+            ? 'Has recuperado ' + r.devueltos + ' punto(s) de atributo por ' + r.coste + ' de oro.'
+            : 'Has recuperado ' + r.devueltos + ' punto(s) de atributo.');
+        if (r.coste > 0) {
+            this.sendInventory();
+        }
+        this.view.markDirty(this.playerId);
+        return { handled: true, action: 'attributesReset', ok: true, returned: r.devueltos, cost: r.coste };
     }
 
     _handlePickup(x, y, z) {

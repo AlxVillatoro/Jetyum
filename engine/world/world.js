@@ -27,6 +27,8 @@ const { Player, Monster, DIRECTION, resetIdCounter } = require('./creature');
 const { createNpc } = require('./npc');
 const { normalizeOutfit } = require('./outfit');
 const Vocacion = require('./vocacion');
+const Atributos = require('./atributos');
+const Logros = require('./logros');
 const { VOCACION_BASE } = require('../data/definiciones');
 
 /*
@@ -128,6 +130,9 @@ class World {
 
         /** Lo que gana por nivel una criatura sin vocacion conocida. */
         this.defaultGainCap = 5;
+
+        /** Los atributos (atributos.js): puntos por nivel y lo que da cada uno. Los pone el motor. */
+        this.atributosConf = Atributos.normalizarConfig();
 
         /**
          * El cuerpo de los monstruos que no dicen `corpse` (o dicen uno que no existe): una caja,
@@ -628,6 +633,10 @@ class World {
         }
 
         this._relocate(creature, to, offset);
+        // Un paso de un jugador cuenta para los puntos de atributo (caminar y explorar: logros.js).
+        if (creature.kind === 'player') {
+            this._logroDePaso(creature, to, now);
+        }
 
         // El coste del paso lo pone el SUELO de destino, no el de origen: caminar
         // hacia un charco es más lento, y salir de él no.
@@ -3101,8 +3110,10 @@ class World {
         // en onzas: comparar onzas con centésimas daría un límite cien veces más pequeño del
         // que toca, y el fallo se vería como "no puedes con una espada" en un personaje que
         // debería cargar diez.
+        // Y lo que suma la fuerza (atributos.js), en los jugadores.
         const ounces = this.baseCapacityOz +
-            Math.max(1, creature.level || 1) * this.gainCapOf(creature);
+            Math.max(1, creature.level || 1) * this.gainCapOf(creature) +
+            (creature.atributos ? Atributos.extras(creature, this.atributosConf).capacidad : 0);
 
         return ounces * UNITS_PER_OUNCE;
     }
@@ -3201,7 +3212,7 @@ class World {
             return { ok: false, reason: 'no existe la vocacion ' + nombreOId };
         }
         player.vocation = vocation.name;
-        Vocacion.aplicarNivel(player, vocation);
+        this.applyLevel(player);
         return { ok: true, vocation: vocation.name };
     }
 
@@ -3225,6 +3236,8 @@ class World {
     addManaSpent(player, mana) {
         const rate = this.rateMagic > 0 ? this.rateMagic : 1;
         const r = Vocacion.sumarManaGastado(player, this.vocationOf(player), mana * rate);
+        // Y para los puntos de atributo de la magia (logros.js), según el maná que gana su vocación.
+        this.avisarLogros(player, Logros.mana(player, this.atributosConf, mana, this.vocationOf(player).gainMana));
         if (r.subidas > 0) {
             this.emit('onAdvance', player, 'magic', r.desde, r.hasta);
             this.sendTextMessage(player.id, 'Has subido a nivel mágico ' + r.hasta + '.');
@@ -3232,9 +3245,72 @@ class World {
         return r;
     }
 
-    /** Sube (o baja) de nivel: aplica lo que gana por nivel su vocación. */
+    /**
+     * LOS PUNTOS DE ATRIBUTO QUE SE GANAN JUGANDO (logros.js): se le dice al jugador cada uno que
+     * gana (o que ya llegó al tope del día).
+     */
+    avisarLogros(player, avisos) {
+        if (this.atributosConf.enabled && avisos && avisos.length) {
+            avisos.forEach((texto) => this.sendTextMessage(player.id, texto));
+        }
+    }
+
+    /** Los lugares con nombre del mapa, `[[nombre, posición], ...]`: los que se descubren explorando. */
+    lugaresDelMapa() {
+        const mapa = this.map;
+        if (!mapa || !mapa.waypoints) {
+            return [];
+        }
+        if (!this._lugares || this._lugares.mapa !== mapa || this._lugares.n !== mapa.waypoints.size) {
+            this._lugares = { mapa, n: mapa.waypoints.size, lista: [...mapa.waypoints.entries()] };
+        }
+        return this._lugares.lista;
+    }
+
+    _logroDePaso(player, to, ahora) {
+        const tile = this.map.getTile(to.x, to.y, to.z);
+        const enProteccion = !!(tile && tile.isProtectionZone && tile.isProtectionZone());
+        player.ultimaActividad = ahora;
+        this.avisarLogros(player, Logros.paso(player, this.atributosConf, to, ahora, enProteccion, this.lugaresDelMapa()));
+    }
+
+    /** Sube (o baja) de nivel: aplica lo que gana por nivel su vocación, y sus atributos. */
     applyLevel(player, opciones) {
-        return Vocacion.aplicarNivel(player, this.vocationOf(player), opciones);
+        const extra = Atributos.extras(player, this.atributosConf);
+        return Vocacion.aplicarNivel(player, this.vocationOf(player), { ...(opciones || {}), extra });
+    }
+
+    /**
+     * PONE PUNTOS EN UN ATRIBUTO (atributos.js) y aplica lo que dan (vida, maná, capacidad).
+     * @returns {{ok: boolean, razon?: string, puestos?: number, libres?: number}}
+     */
+    asignarAtributo(player, atributo, cantidad) {
+        const r = Atributos.asignar(player, String(atributo || '').toLowerCase(), cantidad, this.atributosConf);
+        if (r.ok) {
+            this.applyLevel(player);
+        }
+        return { ...r, libres: Atributos.libres(player, this.atributosConf) };
+    }
+
+    /**
+     * DEVUELVE TODOS LOS PUNTOS para repartirlos de nuevo, cobrando `resetCost` de config.js (el
+     * dinero que lleva encima, como en una tienda). La vida y el maná no pasan del nuevo máximo.
+     * @returns {{ok: boolean, razon?: string, devueltos?: number, coste?: number}}
+     */
+    reiniciarAtributos(player) {
+        const conf = this.atributosConf;
+        if (!conf.enabled) {
+            return { ok: false, razon: 'desactivados' };
+        }
+        if (Atributos.gastados(player) === 0) {
+            return { ok: false, razon: 'nada' };
+        }
+        if (conf.resetCost > 0 && !this.pagarDinero(player, conf.resetCost)) {
+            return { ok: false, razon: 'dinero', coste: conf.resetCost };
+        }
+        const devueltos = Atributos.reiniciar(player);
+        this.applyLevel(player);
+        return { ok: true, devueltos, coste: conf.resetCost };
     }
 
     /** ¿Cabe esto en lo que le queda libre? */
@@ -3442,6 +3518,10 @@ class World {
                 // La calavera caduca sola (avisa a quien la vea).
                 if (player.skull && player.skullUntil && ahora >= player.skullUntil) {
                     this.skullOf(player);
+                }
+                // El tiempo de juego activo, para los puntos de atributo (logros.js).
+                if (this.atributosConf.enabled) {
+                    this.avisarLogros(player, Logros.tiempo(player, this.atributosConf, ahora));
                 }
             });
         }

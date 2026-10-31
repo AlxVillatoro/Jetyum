@@ -36,6 +36,8 @@ const MapLoader = require('../world/loader');
 const { Scheduler } = require('./scheduler');
 const { Spawner } = require('../world/spawner');
 const { Condiciones } = require('../world/condiciones');
+const Atributos = require('../world/atributos');
+const Logros = require('../world/logros');
 const { Combat } = require('../world/combat');
 const { MonsterAI } = require('../world/ai');
 const { ViewManager } = require('../net/view');
@@ -484,6 +486,8 @@ function createEngine(options) {
     world.redSkullTime = Number(config.redSkullTime) || undefined;
     world.expShareRange = Number(config.expShareRange) || undefined;
     world.newPlayerTownId = Number(config.newPlayerTownId) || 0;
+    // Los atributos (atributos.js): puntos por nivel, lo que da cada uno y lo que cuesta reiniciarlos.
+    world.atributosConf = Atributos.normalizarConfig(config.attributes);
     if (config.defaultWorldLight) {
         world.dayLight = Math.max(0, Math.min(255, Number(config.defaultWorldLight.level) || 255));
         world.lightColor = Number(config.defaultWorldLight.color) || 215;
@@ -516,8 +520,19 @@ function createEngine(options) {
         ]);
     });
 
+    // Cazar especies distintas da puntos de atributo (logros.js): cuenta para quien da el golpe final.
+    world.on('onKill', (killer, target) => {
+        if (killer && killer.kind === 'player' && target && target.kind === 'monster') {
+            world.avisarLogros(killer, Logros.caza(killer, world.atributosConf, target.name));
+        }
+    });
+
     world.on('onAdvance', (player, skill, oldLevel, newLevel) => {
         registry.dispatchEvent('advance', [wrap(player), skill, oldLevel, newLevel]);
+        // Al llegar a un nivel de `levelMilestones`, un punto de atributo (logros.js).
+        if (skill === 'level' && newLevel > oldLevel && player.kind === 'player') {
+            world.avisarLogros(player, Logros.niveles(world.atributosConf, oldLevel, newLevel));
+        }
     });
 
     // EL INTERCAMBIO (intercambio.js): `onTradeRequest(player, target, item)` y `onTradeAccept(player,

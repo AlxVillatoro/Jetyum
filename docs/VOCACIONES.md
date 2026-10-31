@@ -99,6 +99,52 @@ escribiéndolos en el chat; el motor comprueba la vocación, el nivel, el maná 
 
 ---
 
+## 1b. Los atributos
+
+Los **puntos de atributo se ganan jugando**, de muchas maneras, y son **libres**: vengan de donde
+vengan, se ponen donde quieras, en la ventana **Atributos** (el botón con la persona y el «+» de la
+barra lateral; se pone dorado cuando hay puntos) o con `/atributos`. Mayús+clic en «+» pone cinco.
+Ningún atributo pasa de **100** (`maxPerAttribute`).
+
+| Fuente | Cómo se gana un punto (de serie) |
+|---|---|
+| **Nivel** | Al llegar a los niveles 10, 25, 50, 75, 90 y 100 (`levelMilestones`) |
+| **Caminar** | Cada 5.000 pasos andados fuera de las zonas de protección; como mucho 2 al día |
+| **Explorar** | Cada lugar con nombre del mapa al que llegas (el continente tiene 44: ciudades, cuevas, cimas, el museo…) y cada 50 zonas nuevas de 16×16 casillas que pisas |
+| **Magia** | Cada 100 runas que creas, y cada 10.000 de maná gastado en magia si tu vocación gana 30 de maná por nivel (un mago); el caballero, que gana 5, necesita seis veces menos, así que también gana puntos con sus hechizos |
+| **Tiempo activo** | Cada hora de juego activo (sin pasar más de 5 minutos sin hacer nada); como mucho 3 al día |
+| **Caza** | Cada especie de monstruo que derrotas por primera vez, y otra vez al llegar a 100 de esa especie |
+
+La ventana enseña cuántos puntos te ha dado cada fuente y cómo vas hacia el siguiente («1200 / 5000
+pasos», «6 / 44 lugares»...), y el juego avisa con un mensaje de cada punto ganado. Los teletransportes
+no cuentan como pasos, y el «día» de los topes es el del reloj del servidor. Está en
+`engine/world/logros.js`; las cuentas se guardan con el personaje.
+
+| Atributo | Cada punto da (de serie) |
+|---|---|
+| **Fuerza** (`strength`) | +1 % de daño cuerpo a cuerpo y de hechizos físicos, +5 oz de capacidad |
+| **Destreza** (`dexterity`) | +1 % de daño a distancia |
+| **Inteligencia** (`intelligence`) | +1 % de daño mágico (hechizos, runas y varitas) y +1 % de curación |
+| **Vitalidad** (`vitality`) | +5 de vida máxima |
+| **Energía** (`energy`) | +5 de maná máximo |
+
+- **Reiniciar** (el botón de la ventana o `/atributos reiniciar`) devuelve todos los puntos para
+  repartirlos de nuevo y cuesta `resetCost` de oro (de serie, 500; con 0 es gratis). Se paga con
+  el dinero que llevas encima, y la ventana avisa del coste antes de reiniciar.
+- **Bajar de nivel al morir no quita lo repartido**: si por eso pierdes un punto de nivel, hasta
+  recuperarlo no hay puntos nuevos.
+- **Todo se configura** en `attributes` de `config.js`: el tope, los niveles que dan punto, cada
+  fuente (`sources`), lo que da cada punto, el coste de reiniciar, y `enabled: false` para un mundo
+  sin atributos.
+- `/atributos fuerza 3` pone tres puntos (los nombres valen en español y en inglés: `/attributes
+  strength 3`); `/atributos` a secas lo cuenta todo, también de dónde salieron tus puntos.
+
+Está en `engine/world/atributos.js`; los scripts tienen `player.getAttribute(nombre)`,
+`getAttributes()`, `getAttributePoints()`, `getAttributeSources()`, `addAttributePoints(nombre, n)`,
+`resetAttributes()` y `Game.getAttributeConfig()`. Las pruebas, en `tools/test-atributos.mjs` (`npm run test:atributos`).
+
+---
+
 ## 2. Los aspectos
 
 | Propiedad | Qué hace |
@@ -121,7 +167,7 @@ si no, con el primero que lo sea.
 ## 3. Dónde se guarda
 
 En la base de datos, en la tabla `players`: `vocation`, `sex`, y `progress` (JSON con el maná, las
-almas, la stamina, el nivel mágico y las skills con sus *tries*). La vida y el maná máximos y la
+almas, la stamina, el nivel mágico, las skills con sus *tries* y los puntos de cada atributo). La vida y el maná máximos y la
 velocidad no se guardan como verdad: se recalculan con el nivel y `vocations.js` al entrar.
 
 Las pruebas están en `tools/test-vocaciones.mjs` (`npm run test:vocaciones`).

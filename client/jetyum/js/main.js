@@ -1175,6 +1175,36 @@ class Game {
         this._addSay(undefined, texto, undefined);
     }
 
+    /**
+     * GIRAR SIN MOVERSE (Ctrl+flecha), como en Tibia. El muñeco mira ya hacia ahí, sin esperar al
+     * motor, que de todas formas lo confirma a todos los que lo ven.
+     */
+    girar(key) {
+        const direccion = { up: 0, right: 1, down: 2, left: 3 }[key];
+        if (direccion === undefined || !this.connection) {
+            return;
+        }
+        const me = this.world.playerId ? this.world.creatures.get(this.world.playerId) : null;
+        if (me) {
+            me.direction = direccion;
+        }
+        this.connection.send([[CLIENT.TURN_NORTH, CLIENT.TURN_EAST, CLIENT.TURN_SOUTH, CLIENT.TURN_WEST][direccion]]);
+    }
+
+    /** Poner puntos en un atributo (la ventana Atributos): el motor decide si hay puntos. */
+    ponerAtributo(atributo, cantidad) {
+        if (this.connection) {
+            this.connection.send([CLIENT.ATTRIBUTE_ADD, String(atributo), Number(cantidad) || 1]);
+        }
+    }
+
+    /** Recuperar todos los puntos de atributo para repartirlos de nuevo. */
+    reiniciarAtributos() {
+        if (this.connection) {
+            this.connection.send([CLIENT.ATTRIBUTES_RESET]);
+        }
+    }
+
     /** Montar o desmontar (Ctrl+R): lo decide el motor, que contesta con un texto si no se puede. */
     alternarMontura() {
         if (this.connection) {
@@ -1767,6 +1797,18 @@ function boot() {
         if (escribiendoEnAlgunSitio() && !enChat) {
             return;
         }
+        // CTRL+FLECHA: girar sin moverse, como en Tibia (también con el chat abierto, igual que las
+        // flechas caminan con él). Mantenerla pulsada no hace más que volver a mirar hacia ahí.
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
+            const giro = wheelToKey(event, false);
+            if (giro) {
+                event.preventDefault();
+                if (!event.repeat) {
+                    game.girar(giro);
+                }
+                return;
+            }
+        }
 
         if (!modoWasd) {
             // CHAT SIEMPRE ABIERTO: las flechas caminan (aunque estés escribiendo)...
@@ -1849,6 +1891,28 @@ function boot() {
 
     window.addEventListener('blur', () => game.clearKeys());
     window.addEventListener('resize', () => game.resize());
+
+    // LA VENTANA DE ATRIBUTOS: «+» pone un punto (Mayús+clic, cinco) y «Reiniciar», todos de vuelta.
+    const listaAtributos = document.getElementById('lista-atributos');
+    if (listaAtributos) {
+        listaAtributos.addEventListener('click', (event) => {
+            const boton = event.target.closest('[data-atributo]');
+            if (boton && !boton.disabled) {
+                game.ponerAtributo(boton.dataset.atributo, event.shiftKey ? 5 : 1);
+            }
+        });
+    }
+    const reiniciarAtributos = document.getElementById('atributos-reiniciar');
+    if (reiniciarAtributos) {
+        reiniciarAtributos.addEventListener('click', () => {
+            const coste = Number(reiniciarAtributos.dataset.coste) || 0;
+            if (confirm(coste > 0
+                ? '¿Recuperar todos tus puntos de atributo para repartirlos de nuevo? Cuesta ' + coste + ' de oro.'
+                : '¿Recuperar todos tus puntos de atributo para repartirlos de nuevo?')) {
+                game.reiniciarAtributos();
+            }
+        });
+    }
 
     // Un clic en el mapa: atacar a la criatura que haya ahí, o mirar el tile.
     /*

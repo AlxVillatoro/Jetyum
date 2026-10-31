@@ -154,6 +154,12 @@ diamonds like Habbo, with the same sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE
   keywords and trade. The healer heals wounds and poison (`heal`), except in the middle of a
   fight.
 - **Dying costs what it does in TFS:** experience, skills and magic level; your corpse keeps what you lose (the backpack and, by chance, your equipment). The healer's five **blessings** (`blessings`) reduce it and are spent on death; `/bendiciones` and `/muertes [name]` (the death history).
+- **Attributes.** Points to spend on strength, dexterity, intelligence, vitality and energy (more
+  damage, capacity, health or mana; up to 100 in each), in the **Attributes** window or with
+  `/attributes`. You earn them by playing: reaching certain levels, walking, exploring new places,
+  making runes and using magic, active playing time and hunting different species. Resetting them
+  costs 500 gold. Configure them under `attributes` in `config.js` (see `docs/VOCACIONES.md`).
+- **Turn in place** with **Ctrl + arrow keys**, like in Tibia.
 - **Mounts.** Pick one in the character window (right click on yourself) and mount or dismount with
   **Ctrl+R** or the «Ride» checkbox; they add speed. You can't mount inside a protection zone. They
   live in `data/XML/mounts.js`: everyone has the pack bear and the pig, and the others are given
@@ -284,6 +290,7 @@ it writes to temporary copies):
 | `test:mapa` | The RME tools |
 | `test:otsp` | The `jetyum` world: loading, doors, global events and raids |
 | `test:vocaciones` | Vocations and outfits |
+| `test:atributos` | Attribute points: each source (levels, walking, exploring, magic, time and hunting), the cap, spending, resetting and what each one gives |
 | `test:scripts` | The scripting API and the game built with it |
 | `test:arte` | The HD art: templates, importer and the village |
 | `test:i18n` | Languages: translation, dictionaries and that every text on the pages has a translation |

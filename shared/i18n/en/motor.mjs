@@ -338,6 +338,47 @@ export default {
         '/outfit <type> [head] [body] [legs] [feet] [addons]  -  changes your outfit. Colors are indices into the client palette, not color values: 78 is "color 78", not "a bit of blue"',
     '/spells  -  los hechizos de tu vocacion, en un dialogo': '/spells  -  the spells of your vocation, in a dialog',
     '/ayuda [comando]  -  esto mismo, o el detalle de uno': '/ayuda [command]  -  this list, or the details of one command',
+    '/atributos [atributo] [puntos]  -  tus atributos y los puntos por repartir; con un atributo (fuerza, destreza, inteligencia, vitalidad, energia), pone los puntos ahi; "/atributos reiniciar" los recupera todos':
+        '/attributes [attribute] [points]  -  your attributes and the points left to spend; with an attribute (strength, dexterity, intelligence, vitality, energy), puts the points there; "/attributes reset" gets them all back',
+
+    // engine/world/atributos.js, la sesión y data/scripts/talkactions/atributos.js
+    'Has ganado un punto de atributo por llegar al nivel {n}.': 'You earned an attribute point for reaching level {n}.',
+    'Has ganado un punto de atributo por caminar {n} pasos.': 'You earned an attribute point for walking {n} steps.',
+    'Has ganado un punto de atributo por descubrir {lugar}.': 'You earned an attribute point for discovering {lugar}.',
+    'Has ganado un punto de atributo por explorar {n} zonas nuevas.': 'You earned an attribute point for exploring {n} new areas.',
+    'Has ganado un punto de atributo por crear {n} runas.': 'You earned an attribute point for making {n} runes.',
+    'Has ganado un punto de atributo por usar tu magia.': 'You earned an attribute point for using your magic.',
+    'Has ganado un punto de atributo por jugar {n} minutos.': 'You earned an attribute point for playing {n} minutes.',
+    'Has ganado un punto de atributo por derrotar por primera vez a: {monstruo}.':
+        'You earned an attribute point for defeating a new species: {monstruo}.',
+    'Has ganado un punto de atributo por derrotar {n} veces a: {monstruo}.':
+        'You earned an attribute point for defeating {n} of: {monstruo}.',
+    'Hoy ya no ganas más puntos caminando: vuelve mañana.': 'No more points from walking today: come back tomorrow.',
+    'Hoy ya no ganas más puntos por tiempo de juego: vuelve mañana.': 'No more points from playing time today: come back tomorrow.',
+    'Ese atributo ya está en el tope ({n}).': 'That attribute is already at the cap ({n}).',
+    'Puntos ganados: {a} por nivel, {b} caminando, {c} explorando, {d} con magia, {e} por tiempo de juego y {f} cazando.':
+        'Points earned: {a} from levels, {b} walking, {c} exploring, {d} with magic, {e} from playing time and {f} hunting.',
+    'No tienes puntos de atributo por repartir.': 'You have no attribute points to spend.',
+    'Ese atributo no existe.': 'That attribute does not exist.',
+    'Los atributos están desactivados en este mundo.': 'Attributes are disabled in this world.',
+    'No tienes puntos de atributo repartidos.': 'You have not spent any attribute points.',
+    'Reiniciar los atributos cuesta {n} de oro.': 'Resetting your attributes costs {n} gold.',
+    'Has recuperado {n} punto(s) de atributo por {c} de oro.': 'You got {n} attribute point(s) back for {c} gold.',
+    'Has recuperado {n} punto(s) de atributo.': 'You got {n} attribute point(s) back.',
+    'Esa cantidad no vale.': 'That amount is not valid.',
+    'Has puesto {n} punto(s) en {atributo}. Te quedan {m}.': 'You put {n} point(s) into {atributo}. {m} left.',
+    'Fuerza {n}: +{d}% de daño cuerpo a cuerpo y +{c} oz de capacidad.': 'Strength {n}: +{d}% melee damage and +{c} oz capacity.',
+    'Destreza {n}: +{d}% de daño a distancia.': 'Dexterity {n}: +{d}% distance damage.',
+    'Inteligencia {n}: +{d}% de daño mágico y +{h}% de curación.': 'Intelligence {n}: +{d}% magic damage and +{h}% healing.',
+    'Vitalidad {n}: +{v} de vida máxima.': 'Vitality {n}: +{v} max health.',
+    'Energía {n}: +{m} de maná máximo.': 'Energy {n}: +{m} max mana.',
+    'Puntos por repartir: {n}. Escribe /atributos fuerza 1 (o destreza, inteligencia, vitalidad, energía) o usa la ventana Atributos.':
+        'Points to spend: {n}. Type /attributes strength 1 (or dexterity, intelligence, vitality, energy) or use the Attributes window.',
+    'fuerza': 'strength',
+    'destreza': 'dexterity',
+    'inteligencia': 'intelligence',
+    'vitalidad': 'vitality',
+    'energía': 'energy',
 
     // data/scripts/talkactions/ir.js
     'Lugares: {lista}. Uso: /ir <lugar>': 'Places: {lista}. Usage: /ir <place>',

@@ -31,6 +31,7 @@ const { EFECTO, PROYECTIL, CONST_ME, CONST_ANI, EFECTO_DE_ELEMENTO } = require('
 // Las ÁREAS (`Game.area.circulo(2)`...) están en engine/world/areas.js: las usan también los
 // hechizos de los monstruos.
 const { AREA } = require('../world/areas');
+const Atributos = require('../world/atributos');
 
 // Lo de TFS: las constantes (enums.js), las clases que no son criaturas ni objetos (tfs.js) y las
 // funciones de 0.x con los constructores globales (compat.js).
@@ -70,7 +71,15 @@ function createGame(deps) {
         // El tipo, por nombre ('fire') o por COMBAT_* de TFS (COMBAT_FIREDAMAGE).
         const tipo = typeof o.type === 'number' ? (Enums.ELEMENTO_DE_COMBATE[o.type] || 'physical')
             : String(o.type || 'physical').toLowerCase();
-        const cantidad = azar(o.min, o.max);
+        /*
+         * LOS ATRIBUTOS de quien lanza (atributos.js): la inteligencia sube la curación y el daño
+         * mágico (hechizos y runas); la fuerza, el de un hechizo físico (como «exori»).
+         */
+        const atributo = atacante && atacante.kind === 'player'
+            ? Atributos.multiplicador(atacante, tipo === 'healing' ? 'healing' : (tipo === 'physical' ? 'physical' : 'magic'),
+                world.atributosConf)
+            : 1;
+        const cantidad = Math.round(azar(o.min, o.max) * atributo);
         if (!objetivo || objetivo.isDead()) {
             return { hit: false, damage: 0 };
         }
@@ -104,6 +113,11 @@ function createGame(deps) {
         /** Milisegundos del reloj del mundo (para medir duraciones). */
         now() {
             return world.now();
+        },
+
+        /** Lo que da cada punto de atributo, los puntos por nivel y el coste de reiniciar (atributos.js). */
+        getAttributeConfig() {
+            return JSON.parse(JSON.stringify(world.atributosConf || Atributos.normalizarConfig()));
         },
 
         /** La hora del día del mundo, «HH:MM» (un día dura `dayCycleMinutes` de config.js). */

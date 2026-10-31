@@ -1034,6 +1034,8 @@ Y lo de la vocación (ver [VOCACIONES.md](VOCACIONES.md)):
 | `getMana()`, `getMaxMana()`, `addMana(n)` | El maná (n negativo lo gasta) |
 | `getSoul()`, `getMagicLevel()`, `getSkillLevel('sword')` | Almas, nivel mágico y skills |
 | `addSkillTries(skill, n)`, `addManaSpent(n)` | Entrenar (sube y avisa con `onAdvance`) |
+| `getAttribute('strength')`, `getAttributes()`, `getAttributePoints()`, `getAttributeSources()` | Los atributos, los puntos por repartir y cuántos dio cada fuente (ver VOCACIONES.md) |
+| `addAttributePoints('vitality', n)`, `resetAttributes()` | Repartir puntos y recuperarlos (cobra `resetCost`) |
 | `addSpeedBonus(n, ms)` | Más velocidad un rato |
 
 **El objeto** (`item`): `getId`, `getUniqueId`, `getName`, `getCount`, `getAttribute(clave)`,

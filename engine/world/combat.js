@@ -27,6 +27,7 @@ const { EFECTO, EFECTO_DE_ELEMENTO, PROYECTIL } = require('../../shared/js/efect
 const { levelForExperience, experienceToNextLevel, applyExperienceStages } =
     require('./experience');
 const Vocacion = require('./vocacion');
+const Atributos = require('./atributos');
 const { VOCACION_BASE } = require('../data/definiciones');
 // Lo que cuesta morir (las bendiciones y las cuentas del castigo de TFS): ver engine/world/muerte.js.
 const Muerte = require('./muerte');
@@ -175,11 +176,13 @@ function playerAttackProfile(player, world) {
         const arma = world && world.weaponOf ? world.weaponOf(player) : null;
         const attrs = (arma && arma.attributes) || {};
         const conDatos = attrs.maxDamage !== undefined;
-        const max = conDatos ? Math.abs(Number(attrs.maxDamage))
-            : Math.max(1, Math.floor((8 + player.level / 2) * formula.wandDamage));
+        // La inteligencia (atributos.js) suma su porcentaje al daño de la varita.
+        const intel = Atributos.multiplicador(player, 'magic', world && world.atributosConf);
+        const max = Math.round((conDatos ? Math.abs(Number(attrs.maxDamage))
+            : Math.max(1, Math.floor((8 + player.level / 2) * formula.wandDamage))) * intel);
         const elemento = attrs.element ? String(attrs.element).toLowerCase() : (weaponType === 'rod' ? 'ice' : 'energy');
         return {
-            minDamage: conDatos ? Math.abs(Number(attrs.minDamage) || 0) : Math.floor(max / 2),
+            minDamage: conDatos ? Math.round(Math.abs(Number(attrs.minDamage) || 0) * intel) : Math.floor(max / 2),
             maxDamage: max,
             interval: vocation.attackSpeed,
             range: Number(attrs.range) || 3,
@@ -229,11 +232,15 @@ function playerAttackProfile(player, world) {
      * equilibrado 1,2, defensivo 2), y por la vocación. El mínimo es nivel/5.
      */
     const factorModo = factorDeAtaque(player);
+    // Y LOS ATRIBUTOS (atributos.js): la fuerza suma su porcentaje al cuerpo a cuerpo y la destreza,
+    // a la distancia.
+    const atributo = Atributos.multiplicador(player, skill === 'distance' ? 'distance' : 'melee',
+        world && world.atributosConf);
     const max = Math.max(1, Math.round((Math.floor(player.level / 5) +
-        ((skillLevel / 4 + 1) * (attack / 3) * 1.03) / factorModo) * factor));
+        ((skillLevel / 4 + 1) * (attack / 3) * 1.03) / factorModo) * factor * atributo));
 
     return {
-        minDamage: Math.min(max, Math.floor(player.level / 5)),
+        minDamage: Math.min(max, Math.floor(Math.floor(player.level / 5) * atributo)),
         maxDamage: max,
         interval: vocation.attackSpeed,
         range: skill === 'distance' ? (player.weaponRange || 6) : 1,

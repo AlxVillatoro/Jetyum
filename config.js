@@ -282,6 +282,48 @@ module.exports = {
     corpseFallbackDuration: 120,
 
     // -----------------------------------------------------------------------
+    // Atributos (engine/world/atributos.js)
+    // -----------------------------------------------------------------------
+    // Los puntos se ganan jugando (engine/world/logros.js) y el jugador los reparte como quiere en su
+    // ventana «Atributos» (o con /atributos), hasta `maxPerAttribute` en cada uno (0 = sin tope).
+    // `resetCost` es el oro que cuesta recuperarlos todos (0 = gratis). Con `enabled: false` no se
+    // ganan puntos ni cuentan los repartidos.
+    //
+    // DE DÓNDE SALEN (`sources`):
+    //   - un punto al llegar a cada nivel de `levelMilestones`;
+    //   - walking: uno cada `stepsPerPoint` pasos fuera de zonas de protección, como mucho
+    //     `maxPointsPerDay` al día;
+    //   - exploring: `pointsPerPlace` por cada lugar con nombre del mapa al que llegas (a
+    //     `placeRadius` casillas o menos) y uno cada `areasPerPoint` zonas nuevas de `areaSize` x
+    //     `areaSize` casillas;
+    //   - magic: uno cada `runesPerPoint` runas creadas y uno cada `manaPerPoint` de maná gastado en
+    //     magia (para quien gana `referenceManaGain` de maná por nivel; un caballero necesita menos);
+    //   - activeTime: uno cada `minutesPerPoint` minutos de juego activo (sin estar quieto más de
+    //     `idleMinutes`), como mucho `maxPointsPerDay` al día;
+    //   - hunting: `firstKill` por cada especie que derrotas por primera vez y `mastery` al llegar a
+    //     `masteryKills` de esa especie.
+    //
+    // Lo que da cada punto va al final: los daños y la curación en %, la capacidad en onzas.
+    attributes: {
+        enabled: true,
+        maxPerAttribute: 100,
+        resetCost: 500,
+        levelMilestones: [10, 25, 50, 75, 90, 100],
+        sources: {
+            walking: { stepsPerPoint: 5000, maxPointsPerDay: 2 },
+            exploring: { pointsPerPlace: 1, placeRadius: 4, areaSize: 16, areasPerPoint: 50 },
+            magic: { runesPerPoint: 100, manaPerPoint: 10000, referenceManaGain: 30 },
+            activeTime: { minutesPerPoint: 60, maxPointsPerDay: 3, idleMinutes: 5 },
+            hunting: { firstKill: 1, masteryKills: 100, mastery: 1 }
+        },
+        strength: { meleeDamage: 1, capacity: 5 },
+        dexterity: { distanceDamage: 1 },
+        intelligence: { magicDamage: 1, healing: 1 },
+        vitality: { health: 5 },
+        energy: { mana: 5 }
+    },
+
+    // -----------------------------------------------------------------------
     // Rates
     // -----------------------------------------------------------------------
     // Multiplicadores: experiencia (después de las etapas), skills, nivel mágico, probabilidad del

@@ -46,6 +46,7 @@
 
 const P = require('./protocol');
 const Vocacion = require('../world/vocacion');
+const Atributos = require('../world/atributos');
 const { SKILLS } = require('../data/definiciones');
 const { experienceForLevel } = require('../world/experience');
 
@@ -476,6 +477,9 @@ class ViewManager {
             magicLevel: player.magicLevel || 0,
             magicPercent: vocation ? Vocacion.porcentajeMagia(vocation, player) : 0,
             skills,
+            // Los atributos y los puntos por repartir (atributos.js): la ventana «Atributos».
+            attributes: Atributos.paraElCliente(player, this.world.atributosConf || Atributos.normalizarConfig(),
+                this.world.now ? this.world.now() : Date.now(), this.world.lugaresDelMapa ? this.world.lugaresDelMapa().length : 0),
             // Los iconos de estado (reglas.js): en combate (no puede salir), PZ lock (no puede
             // entrar en una zona de protección), en una zona de protección, y montado.
             inFight: !!(this.world.isInFight && this.world.isInFight(player)),

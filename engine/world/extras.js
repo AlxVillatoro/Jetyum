@@ -156,6 +156,10 @@ const extras = {
         }
         this.recomputeEquipment(player);
         this.emit('onInventoryChange', player);
+        // Crear runas cuenta para los puntos de atributo de la magia (logros.js).
+        if (this.avisarLogros) {
+            this.avisarLogros(player, require('./logros').runa(player, this.atributosConf));
+        }
         return { ok: true, entry: nueva };
     },
 

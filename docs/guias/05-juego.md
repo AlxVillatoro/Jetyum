@@ -119,6 +119,7 @@ pusimos **blocksSolid**, el servidor no te deja atravesarlo.
 | Tecla o gesto | Acción |
 |---|---|
 | Flechas | Caminar (dos teclas a la vez para ir en diagonal), también mientras escribes |
+| **Ctrl** + flechas | Girar sin moverte |
 | Escribir | El chat está **siempre abierto**: lo que tecleas va a la línea de abajo e **Intro** lo manda |
 | **Ctrl+K** (o el botón del teclado junto a la capacidad) | Las **hotkeys**: a cada tecla F1–F12 y Shift+F1–F12 le das una **magia** (se dice al pulsarla, o se escribe en el chat) o un **objeto** de los que llevas, **en ti** o **en tu objetivo** (una poción para otro jugador). Se guardan por personaje |
 | `/wasd` | Cambia al modo WASD: caminas también con W, A, S y D, y para escribir hay que pulsar Intro antes. Otra vez `/wasd` lo quita |
@@ -160,6 +161,7 @@ Y en el chat:
 | `/item <id>` | Crea ese objeto a tus pies (para probar) |
 | `/vocacion` / `/vocacion Knight` | Tu vocación y sus números / cambiarte de vocación (para probar) |
 | `/ir parque` | Te lleva a ese sitio, para explorar rápido (prueba `/ir torre`, `/ir cueva` o `/ir bodega`) |
+| `/atributos`, `/atributos fuerza 3` | Tus atributos, y repartir los puntos que ganas jugando: llegando a ciertos niveles, caminando, explorando, con la magia, con el tiempo de juego y cazando especies nuevas (también en la ventana **Atributos**, el botón que se pone dorado, que dice cómo vas en cada cosa) |
 | `/raid goblins` | Lanza la invasión goblin sin esperar a que salga sola |
 | `exura`, `exura gran`, `exura vita` | Hechizos de curación (gastan maná y suben tu nivel mágico; 1 s entre uno y otro) |
 | `exori flam`, `exori vis`, `exori frigo`, `exori tera` | Golpe de fuego, energía, hielo o tierra a quien estás atacando (magos) |

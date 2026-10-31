@@ -149,6 +149,13 @@ rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.
 - **NPC.** Se saluda con `hola` y se despide con `adios`; tienen palabras clave y comercio. El
   sanador cura las heridas y el veneno (`curar`), salvo en pleno combate.
 - **Morir cuesta como en TFS:** experiencia, skills y nivel mágico; queda tu cuerpo con lo que pierdes (la mochila y, a suertes, lo equipado). Las cinco **bendiciones** del sanador (`bendiciones`) lo rebajan y se gastan al morir; `/bendiciones` y `/muertes [nombre]` (el historial).
+- **Atributos.** Puntos para repartir entre fuerza, destreza, inteligencia, vitalidad y energía
+  (más daño, capacidad, vida o maná; hasta 100 en cada uno), en la ventana **Atributos** o con
+  `/atributos`. Se ganan jugando: al llegar a ciertos niveles, caminando, explorando lugares
+  nuevos, creando runas y usando magia, con el tiempo de juego activo y cazando especies distintas.
+  Reiniciarlos cuesta 500 de oro. Se configuran en `attributes` de `config.js` (ver
+  `docs/VOCACIONES.md`).
+- **Girar sin moverse** con **Ctrl + flechas**, como en Tibia.
 - **Monturas.** Se eligen en la ventana del personaje (clic derecho sobre ti) y se monta o desmonta
   con **Ctrl+R** o la casilla «Montar»; suman velocidad. No se monta en una zona de protección.
   Están en `data/XML/mounts.js`: el oso de carga y el cerdo los tiene todo el mundo, y las demás
@@ -278,6 +285,7 @@ copias temporales):
 | `test:mapa` | Las herramientas de RME |
 | `test:otsp` | El mundo `jetyum`: carga, puertas, eventos globales y raids |
 | `test:vocaciones` | Vocaciones y aspectos |
+| `test:atributos` | Los puntos de atributo: cada fuente (nivel, caminar, explorar, magia, tiempo y caza), el tope, repartirlos, reiniciarlos y lo que da cada uno |
 | `test:scripts` | La API de scripts y el juego hecho con ella |
 | `test:arte` | El arte HD: plantillas, importador y la aldea |
 | `test:i18n` | Los idiomas: traducción, diccionarios y que todo el texto de las páginas tenga traducción |

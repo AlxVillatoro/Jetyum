@@ -24,6 +24,7 @@ const { normalizeOutfit, canUseOutfit } = require('../world/outfit');
 const { formatWeight } = require('../world/weight');
 // Las bendiciones y el historial de muertes (el bloque «Bendiciones» del jugador).
 const Muerte = require('../world/muerte');
+const Atributos = require('../world/atributos');
 // Las constantes de TFS (CONST_SLOT_*, SKILL_*, CONDITION_*...) y sus traducciones a Jetyum.
 const Enums = require('./enums');
 const { STAMINA_MAX } = require('../world/vocacion');
@@ -702,6 +703,44 @@ class PlayerWrapper extends CreatureWrapper {
     getMagicLevel() {
         const player = this.world.getPlayer(this.id);
         return player ? player.magicLevel : 0;
+    }
+
+    /**
+     * LOS ATRIBUTOS (engine/world/atributos.js): los puntos en uno ('strength', 'dexterity',
+     * 'intelligence', 'vitality' o 'energy'), o todos (`getAttributes()`), y los que quedan por repartir.
+     */
+    getAttribute(nombre) {
+        const player = this.world.getPlayer(this.id);
+        return player && player.atributos ? player.atributos[String(nombre).toLowerCase()] || 0 : 0;
+    }
+
+    getAttributes() {
+        const player = this.world.getPlayer(this.id);
+        return player ? { ...(player.atributos || {}) } : {};
+    }
+
+    /** Cuántos puntos ha ganado con cada fuente: `{level, walking, exploring, magic, activeTime, hunting}` (logros.js). */
+    getAttributeSources() {
+        const player = this.world.getPlayer(this.id);
+        return player ? require('../world/logros').puntos(player, this.world.atributosConf) : {};
+    }
+
+    getAttributePoints() {
+        const player = this.world.getPlayer(this.id);
+        return player ? Atributos.libres(player, this.world.atributosConf) : 0;
+    }
+
+    /** Pone puntos en un atributo, como la ventana Atributos: `{ok, razon, puestos, libres}`. */
+    addAttributePoints(nombre, cantidad) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.asignarAtributo(player, nombre, cantidad === undefined ? 1 : cantidad)
+            : { ok: false, razon: 'noExiste' };
+    }
+
+    /** Recupera todos los puntos (cobra `resetCost`): `{ok, razon, devueltos, coste}`. */
+    resetAttributes() {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.reiniciarAtributos(player) : { ok: false, razon: 'nada' };
     }
 
     /**

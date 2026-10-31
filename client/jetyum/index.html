@@ -312,8 +312,10 @@
     }
     .caja-valor span { color: #7a7a8a; font-size: 8px; text-transform: uppercase; }
 
-    /* Los ocho botones: Stop, Quests, Options, Help / Skills, Battle, VIP, Logout. */
-    #botonera { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+    /* Los nueve botones: Stop, Quests, Options, Help, Skills / Atributos, Battle, VIP, Logout. */
+    #botonera { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
+    /* Con puntos de atributo por repartir, el botón de Atributos lo dice. */
+    #botonera .boton-icono.con-puntos { color: #f0c040; border-color: #8a6a20; }
     #botonera .boton-icono { width: 100%; height: 24px; }
 
     /* ===== Las ventanas de la barra lateral (skills, batalla, VIP, mochila...) ===== */
@@ -355,6 +357,24 @@
     .skill-barra div { height: 100%; background: #c84040; }
     .skill-barra.nivel div { background: #3fbf5a; }
     .skill-separador { border-top: 1px solid #2c2c3a; margin: 4px 0; }
+    /* La ventana de atributos: los cinco en una fila (abreviatura, valor y «+»; lo demás en el globo)
+       y debajo, de dónde salen los puntos, en dos columnas. */
+    #lista-atributos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin: 3px 0; }
+    .atributo { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 0;
+        background: #20202a; border-radius: 3px; cursor: default; }
+    .atributo span { color: #9a9aaa; font-size: 10px; letter-spacing: .5px; }
+    .atributo b { color: #e8e8f0; font-weight: normal; font-variant-numeric: tabular-nums; }
+    .atributo .boton-icono { width: 20px; height: 18px; font-weight: bold; }
+    .atributo .boton-icono:disabled { opacity: .35; cursor: default; }
+    #lista-fuentes { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 3px 0; }
+    .fuente { display: grid; grid-template-columns: 1fr auto; column-gap: 4px; padding: 2px 4px; background: #20202a;
+        border-radius: 3px; color: #b0b0c0; cursor: default; min-width: 0; }
+    .fuente b { color: #d8b048; font-weight: normal; font-variant-numeric: tabular-nums; }
+    .fuente span, .fuente small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fuente small { grid-column: 1 / -1; color: #7a7a8a; font-size: 10px; }
+    #atributos-reiniciar { width: 100%; padding: 3px; font: inherit; background: #262634; border: 1px solid #383850;
+        border-radius: 3px; color: #c8c8d8; cursor: pointer; }
+    #atributos-reiniciar:disabled { opacity: .5; cursor: default; }
     #vocation-value { color: #cfe6ff; }
 
     /* La lista de batalla: lo que hay a la vista, con su vida; clic para atacar. */
@@ -874,6 +894,22 @@
             </div>
         </section>
 
+        <section class="ventana" id="ventana-atributos" data-ventana-id="atributos" hidden>
+            <div class="ventana-cabecera"><span class="titulo">Atributos</span>
+                <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
+                <button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>
+            <div class="ventana-cuerpo">
+                <div class="skill"><span>Puntos por repartir</span><b id="atributos-libres">—</b></div>
+                <div class="skill-separador"></div>
+                <div id="lista-atributos"></div>
+                <div class="skill-separador"></div>
+                <div class="skill" title="Los puntos se ganan jugando: subiendo de nivel, caminando, explorando, con la magia, jugando y cazando"><span>Cómo se ganan</span><b>pts</b></div>
+                <div id="lista-fuentes"></div>
+                <div class="skill-separador"></div>
+                <button type="button" id="atributos-reiniciar">Reiniciar atributos</button>
+            </div>
+        </section>
+
         <section class="ventana" id="ventana-batalla" data-ventana-id="batalla">
             <div class="ventana-cabecera"><span class="titulo">Batalla</span>
                 <button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>
@@ -926,6 +962,7 @@
             <div class="ventana-cuerpo">
                 <table class="ayuda-tabla">
                     <tr><td>Flechas</td><td>andar (dos a la vez, en diagonal); con <b>/wasd</b>, también W A S D</td></tr>
+                    <tr><td>Ctrl + flechas</td><td>girar sin moverte</td></tr>
                     <tr><td>Clic</td><td>ir andando hasta ahí</td></tr>
                     <tr><td>Los dos botones</td><td>mirar</td></tr>
                     <tr><td>Clic derecho</td><td>sobre un monstruo, atacarlo (otra vez, dejarlo); sobre algo, usarlo (también en la mochila y en los cuerpos); sobre un contenedor, abrirlo o cerrarlo; sobre ti, tu ficha</td></tr>
@@ -939,6 +976,7 @@
                     <tr><td>Escribir</td><td>va directo al chat; Intro lo manda (con /wasd, Intro para empezar a escribir)</td></tr>
                     <tr><td>exura</td><td>curarte (gasta maná)</td></tr>
                     <tr><td>utani hur</td><td>correr más (nivel 14)</td></tr>
+                    <tr><td>/atributos</td><td>repartir tus puntos de atributo (también en la ventana Atributos)</td></tr>
                     <tr><td>/ir</td><td>viajar a un sitio del mapa</td></tr>
                     <tr><td>/ayuda</td><td>más comandos</td></tr>
                 </table>
@@ -964,6 +1002,7 @@
             <button type="button" class="boton-icono" data-ventana="opciones" data-icono="opciones" title="Options: opciones del cliente"></button>
             <button type="button" class="boton-icono" data-ventana="ayuda" data-icono="ayuda" title="Help: controles y comandos"></button>
             <button type="button" class="boton-icono activo" data-ventana="skills" data-icono="skills" title="Skills: nivel, experiencia y habilidades"></button>
+            <button type="button" class="boton-icono" data-ventana="atributos" data-icono="atributos" title="Atributos: reparte los puntos que ganas al subir de nivel"></button>
             <button type="button" class="boton-icono activo" data-ventana="batalla" data-icono="batalla" title="Battle: criaturas a la vista (clic para atacar)"></button>
             <button type="button" class="boton-icono" data-ventana="vip" data-icono="vip" title="VIP: tu lista de amigos"></button>
             <button type="button" class="boton-icono" data-accion="salir" data-icono="salir" title="Logout: salir del juego"></button>

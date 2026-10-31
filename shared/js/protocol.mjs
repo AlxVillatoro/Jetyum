@@ -316,6 +316,14 @@ export const CLIENT = {
     TOGGLE_MOUNT: 0xD4,
 
     /**
+     * LOS ATRIBUTOS (engine/world/atributos.js): poner puntos en uno, `[0xE0, atributo, cantidad]`
+     * ('strength', 'dexterity', 'intelligence', 'vitality' o 'energy'), y recuperarlos todos para
+     * repartirlos de nuevo, `[0xE1]`. Lo que queda se ve en `stats.attributes` de PLAYER_STATS.
+     */
+    ATTRIBUTE_ADD: 0xE0,
+    ATTRIBUTES_RESET: 0xE1,
+
+    /**
      * «USAR CON» (el «use with» de Tibia): usar algo SOBRE algo. `[0x86, origen, destino]`:
      *
      *   origen   `{ inventario: índice }` (lo que llevas), `{ hotkey: typeId }` (el primero que

@@ -303,6 +303,16 @@ async function main() {
             client.world.creatures.get(client.world.playerId).x === 12 &&
             client.world.creatures.get(client.world.playerId).y === 11,
             'un salto no se desliza: aparece');
+
+        // Girar sin moverse (Ctrl+flecha en el cliente): el motor lo apunta y el cliente lo ve.
+        await sleep(600);
+        client.send([P.CLIENT.TURN_WEST]);
+        const giro = await client.waitUntil((world) => world.creatures.get(world.playerId).direction === 3, 2000);
+        check('girar (Ctrl+flecha) cambia hacia donde mira sin moverse',
+            giro && engine.world.getPlayer(client.world.playerId).direction === 3 &&
+            engine.world.getPlayer(client.world.playerId).position.x === 12,
+            'mira al oeste en (' + client.world.creatures.get(client.world.playerId).x + ',' +
+            client.world.creatures.get(client.world.playerId).y + ')');
     }
 
     // =======================================================================
