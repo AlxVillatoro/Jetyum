@@ -132,6 +132,7 @@ falta tocar el motor para añadir un hechizo, la arquitectura está mal.
 | Objetos compuestos y propiedades de objeto en el mapa | hecho y probado (beta) |
 | Editor de mapas al estilo RME (pinceles con borde, muros, casas, portapapeles, deshacer) | hecho y probado (beta) |
 | Ciudades, casas y `houseId` en el formato de mapa | hecho y probado |
+| Casas (comprar, alquiler, listas de acceso, lo de dentro, camas) y banco | hecho y probado |
 | Acciones y movimientos por actionId / uniqueId | hecho y probado |
 | Cliente: lectura de `.dat`/`.spr` de Tibia | pendiente (importador) |
 | Predicción en el cliente | pendiente |
@@ -545,11 +546,35 @@ el personaje y no en una migración de la base, por el mismo motivo por el que e
 defecto se pone ahí: **qué significa una ranura es una decisión del juego, y la base sólo
 guarda datos**.
 
-No hay contenedores anidados, y es una decisión con su precio, dicho en voz alta: el
-contenido es una lista plana con la ranura `inside`, no viaja dentro del objeto. Por eso
-**una mochila con cosas dentro no se puede soltar, ni quitar, ni meter en otra**: lo de
-dentro se quedaría dentro de nada. Se rechaza con ese motivo en vez de dejar un inventario
-roto, y el día que haya anidamiento será contar entradas dentro de entradas, no rehacer esto.
+**Los contenedores anidados** (`engine/world/contenedores.js`). Antes no los había, y el precio
+estaba dicho aquí: una mochila con cosas no se podía meter en otra. Ahora una bolsa va dentro de la
+mochila, y otra dentro de ésa, como en Tibia, y se hizo sin rehacer lo anterior:
+
+- **La lista plana se queda.** `player.inventory` sigue siendo lo puesto más lo que va
+  *directamente* dentro de la mochila (`inside`). Lo nuevo es que una entrada que es un contenedor
+  —que no sea la mochila puesta— lleva lo suyo en `entry.contents`, entradas con la misma forma, a
+  cualquier profundidad. La mochila puesta es la excepción y no tiene `contents`: lo suyo son las
+  `inside`. `contenidoDeEntrada` es el único sitio que sabe de las dos formas. Así el mensaje
+  INVENTORY, la muerte y las filas viejas de la base no cambian.
+- **En el mundo ya eran árboles**: `Item` con `contents` y `parent`. Lo de dentro de lo de dentro
+  está donde esté su raíz (`posicionDeObjeto`), y eso es "estar al lado" de una bolsa en un cuerpo.
+- **Al cruzar se traduce entero**: una entrada que sale al mundo se vuelve `Item` con todo su árbol,
+  y al revés. Lo de dentro viaja siempre con su contenedor (soltar, morir, depósito, recoger).
+- **Las reglas, en un sitio** (`moverADentro`), comprobadas antes de tocar nada: los huecos de cada
+  contenedor (`containerSize`), pilas de 100, el peso recursivo, que un contenedor no entre dentro
+  de sí mismo (`containerInItself`) y como mucho `MAX_ANIDADO` (8) uno dentro de otro (`tooDeep`).
+- **Se guarda sin migración**: una bolsa es una fila de `player_items` y lo de dentro va en el JSON
+  de su `attributes`, bajo `_contenido`. Las filas de antes no lo traen y se cargan igual. El
+  depósito usa el mismo árbol en el progreso.
+- **En el protocolo** (v3), las ventanas de contenedor se nombran por el signo del id: positivo, la
+  instancia de un objeto del mundo; negativo, un contenedor que llevas (`CONTAINER_ID`). Mover
+  objeto gana `MOVE_FROM.INVENTORY_CONTAINER`, `MOVE_TO.INVENTORY`, `MOVE_TO.INVENTORY_CONTAINER` y
+  el campo `TO_INDEX` (soltar encima de una bolsa la mete dentro). Lo de la v2 vale igual.
+
+Lo que sigue sin poder hacerse, y por qué: **quitarse la mochila puesta "a ninguna parte" con cosas
+dentro** (quedaría dentro de sí misma; al suelo o a otro contenedor sí se puede), y **cambiar de
+mochila soltando una encima de la puesta** (como en Tibia, va dentro; para cambiarla se deja la
+puesta en el suelo y se pone la otra).
 
 **Las banderas llegan al cliente, y como datos.** Hasta ahora el cliente recibía de cada
 objeto del suelo `[id, cantidad, instancia]` y una tabla de dibujos: no podía saber que un
@@ -720,9 +745,35 @@ Y tres decisiones que no son obvias:
   esto no tendría dónde. En TFS son claves numéricas; aquí la clave es texto, para
   poder escribir `mision.dragon` en vez de `4021`.
 
+**Los depósitos y el correo** (`engine/world/extras.js`, `engine/world/correo.js`). Hay un
+depósito por jugador y por ciudad, y se guardan en el JSON del progreso como árboles
+(`depositos: { idDeCiudad: [...] }`), igual que antes el único (`deposito`, que se sigue escribiendo
+con el de su ciudad: un motor viejo lo lee, y uno nuevo lo usa sólo si no hay `depositos`). El
+correo **no toca el progreso de quien no está dentro**: guardar es completo y lo hace el dueño del
+personaje, así que escribir en su JSON desde fuera pisaría o sería pisado. Lo que le llega espera
+en su propia tabla (`player_mail`, versión 7) y se entrega al entrar, en este orden: al depósito,
+guardar al personaje y borrar las filas; si algo se cae en medio, el correo llega dos veces antes
+que ninguna. `world.entregarEnDeposito` es la única puerta, para el correo y para las casas.
+
+**Las casas y el banco** (`engine/world/casas.js`, versión 6 de la base). El saldo del banco es una
+columna del personaje (`players.balance`) y se guarda con él, en la misma transacción que el
+inventario: depositar quita monedas y suma saldo, y las dos cosas se escriben juntas. Lo que mueve
+saldo **sin** mover monedas —una transferencia, comprar una casa, el alquiler— se escribe al momento
+(`setBalance` / `addBalance`, este último en una sola sentencia que no deja bajar de cero), porque
+si el servidor se cayera antes del siguiente guardado el dinero aparecería en dos sitios o en
+ninguno; a quien no está conectado sólo se le toca así, nunca su JSON. Cada casa del mapa tiene su
+fila en `houses` (el mapa manda en el nombre, el alquiler y la ciudad; la base, en el dueño, el pago
+y los avisos), sus listas en `house_lists` (el texto tal cual) y lo de dentro en `house_items`, un
+árbol JSON por casa. **Qué es de la casa y qué del mapa** no lo dice ninguna marca en el objeto: lo
+que se puede coger (`pickupable`) es de la casa y se guarda; lo que no (paredes, puertas, camas,
+armarios) vuelve con el mapa, y de los armarios se guarda lo que tienen dentro. Desde que una casa
+tiene fila en `house_items`, manda la base: al arrancar se quitan de sus casillas los objetos
+cogibles que trae el mapa y se ponen los guardados (TFS hace lo mismo al borrar los objetos movibles
+del OTBM en las casillas de casa). El estado se guarda al cambiar; lo de dentro, con el guardado
+periódico y al apagar, y sólo si ha cambiado.
+
 Lo que falta: la web de creación de cuentas (hoy se crean solas, que es cómodo en
-desarrollo e inseguro en producción), las casas y los gremios, y el registro de
-muertes.
+desarrollo e inseguro en producción) y los gremios.
 
 **Fase 8 — Herramientas.** *Hecha la parte propia.* Editor de mapas y de objetos, con
 escritor de mapas y edición quirúrgica de `items.xml`.

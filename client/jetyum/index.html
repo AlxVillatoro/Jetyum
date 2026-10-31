@@ -409,6 +409,10 @@
         background: #0e0e14; border: 1px solid #000; box-shadow: inset 1px 1px 0 #2a2a36; cursor: default;
     }
     .rejilla-contenedor .objeto:not(.hueco-vacio):hover { outline: 1px solid #c0a040; }
+    /* Una bolsa dentro de otra (contenedores anidados): se abre con clic derecho y admite que le
+       sueltes cosas encima. Una esquina dorada la distingue de lo que sólo se usa. */
+    .objeto.es-contenedor { box-shadow: inset -3px -3px 0 -1px #c0a040; }
+    .ventana-contenedor[data-propio="1"] .ventana-cabecera .titulo { color: #d8c27a; }
     .rejilla-contenedor .objeto img { display: block; image-rendering: pixelated; }
     .rejilla-contenedor .objeto .icono { display: flex; }
     .rejilla-contenedor .objeto .cuantas { position: absolute; right: 1px; bottom: 0; color: #f0f0f0; font-size: 9px; text-shadow: 1px 1px 0 #000; }
@@ -537,6 +541,27 @@
     .comercio-pie .hacer { background: #2f6a3a; border: 1px solid #3f8a4a; color: #fff; font: inherit; padding: 3px; cursor: pointer; border-radius: 2px; }
     .comercio-pie .hacer:disabled { opacity: 0.4; cursor: default; }
 
+    /* El intercambio con otro jugador: tu oferta y la suya, quién ha aceptado, Acepto y Cancelar. */
+    .ventana-intercambio .ventana-cabecera { background: #33301f; }
+    .intercambio { display: flex; flex-direction: column; gap: 4px; }
+    .intercambio-lado { border: 1px solid #2c2c3a; border-radius: 2px; padding: 3px; }
+    .intercambio-quien { color: #c8c8d8; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .intercambio-rejilla { max-height: 160px; overflow-y: auto; }
+    .intercambio-rejilla .objeto { cursor: help; }
+    .intercambio-lado .vacio { color: #8a8aa0; font-style: italic; }
+    .intercambio-aceptado { color: #7fe07f; margin-top: 3px; }
+    .intercambio-pie { display: flex; gap: 4px; }
+    .intercambio-pie button { flex: 1; font: inherit; padding: 3px; cursor: pointer; border-radius: 2px; color: #fff; }
+    .intercambio-pie .hacer { background: #2f6a3a; border: 1px solid #3f8a4a; }
+    .intercambio-pie .hacer:disabled { opacity: 0.4; cursor: default; }
+    .intercambio-pie .cancelar { background: #5a2a2a; border: 1px solid #7a3a3a; }
+
+    /* El menú de un objeto (Ctrl + clic derecho): mirarlo, comerciar con él... */
+    .menu-objeto { position: fixed; z-index: 900; display: flex; flex-direction: column; min-width: 140px;
+        background: #1b1b24; border: 1px solid #3a3a4c; border-radius: 3px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6); padding: 2px 0; }
+    .menu-objeto button { background: none; border: 0; color: #d8d8e8; font: inherit; text-align: left; padding: 3px 10px; cursor: pointer; }
+    .menu-objeto button:hover, .menu-objeto button:focus { background: #2f4460; color: #fff; outline: none; }
+
     /* El diálogo de información (popupFYI): en medio de la pantalla, por encima de todo. */
     .dialogo-fondo { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
         justify-content: center; background: rgba(0, 0, 0, 0.35); }
@@ -548,6 +573,10 @@
     .dialogo-pie button { background: #2f4460; border: 1px solid #3f5a80; color: #fff; font: inherit;
         padding: 3px 16px; cursor: pointer; border-radius: 2px; }
     .dialogo-pie button:hover { background: #3a5578; }
+    .dialogo-pie button + button { margin-left: 6px; }
+    /* La ventana de texto donde se escribe (una carta, la lista de invitados de una casa). */
+    .dialogo-area { margin: 8px 10px; min-width: min(420px, calc(100vw - 64px)); min-height: 140px; resize: vertical;
+        background: #11131c; border: 1px solid #3f4a63; color: #e8e8f4; font: inherit; line-height: 1.4; padding: 6px; }
 
     /*
      * LOS MODOS DE COMBATE, en una columna a la derecha del equipo, como en Tibia: los tres modos
@@ -896,6 +925,7 @@
                     <tr><td>Los dos botones</td><td>mirar</td></tr>
                     <tr><td>Clic derecho</td><td>sobre un monstruo, atacarlo (otra vez, dejarlo); sobre algo, usarlo (también en la mochila y en los cuerpos); sobre un contenedor, abrirlo o cerrarlo; sobre ti, tu ficha</td></tr>
                     <tr><td>Arrastrar</td><td>coger y mover cosas: al suelo, a tu equipo, a tu mochila o a un contenedor abierto</td></tr>
+                    <tr><td>Ctrl + clic derecho</td><td>sobre un objeto, su menú: mirarlo o comerciar con él con otro jugador («Comerciar con…» y clic en el jugador)</td></tr>
                     <tr><td>E</td><td>usar lo que tienes delante (en modo /wasd)</td></tr>
                     <tr><td>Escape</td><td>dejar de atacar</td></tr>
                     <tr><td>Ctrl+R</td><td>montar o desmontar (la montura se elige en tu ficha; no se monta en una zona de protección)</td></tr>

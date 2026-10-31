@@ -33,6 +33,7 @@ que son módulos Lua (`modules/game_*`). Aquí el núcleo y la interfaz son mód
 | `modules/game_skills` / `game_healthinfo` | barras de vida y maná, ventana Skills (nivel, experiencia, nivel mágico, las 7 skills con su barra, almas, capacidad, stamina) | hecho |
 | `modules/game_minimap` | `js/minimapa.js`: lo explorado con el color `minimap` de cada cosa, zoom y ver otras plantas | hecho (sin marcas ni clic para andar) |
 | `modules/game_outfit` | `js/personaje.js`: clic derecho sobre ti (aspectos de tu sexo, colores, añadidos y ficha) | hecho |
+| `modules/game_playertrade` | `js/intercambio.js` (la ventana) + `js/menuobjeto.js` (Ctrl + clic derecho sobre un objeto: «Mirar», «Comerciar con…»). Ver §6 | hecho |
 | `modules/game_hotkeys`, `game_actionbar` | — | pendiente |
 | `modules/game_npcmodal` | diálogo por chat | hecho (por chat) |
 | `modules/game_viplist` | `js/lateral.js`: ventana VIP (se guarda en el navegador; verde si lo ves) | hecho (sin estado en línea del servidor) |
@@ -165,7 +166,35 @@ client/jetyum/
     suavizado.js    Scale2x y bilineal: el suavizado de los píxeles (Opciones)
     iso.js          la vista isométrica (prototipo, ?iso=1): cámara y pintado en rombos
     sprites.js      proveedor de procedimiento, paleta de colores y createProvider()
-    panels.js       equipo, mochila y peso
+    panels.js       equipo, mochila y peso (una bolsa de la mochila: clic derecho la abre,
+                    soltar algo encima la mete dentro)
+    contenedor.js   ventanas de contenedor: del suelo (id positivo) y las bolsas que llevas,
+                    anidadas a cualquier profundidad (id negativo, `CONTAINER_ID`)
     arrastrar.js    arrastrar y soltar
     itemtypes.js    las banderas que el cliente necesita para arrastrar sin preguntar
+    intercambio.js  la ventana del intercambio entre jugadores (tu oferta, la suya, Acepto, Cancelar)
+    menuobjeto.js   el menú de un objeto (Ctrl + clic derecho)
 ```
+
+---
+
+## 6. El intercambio entre jugadores
+
+El «Trade with...» de Tibia 8.60. Las reglas están en el motor (`engine/world/intercambio.js`); el
+cliente sólo pide y enseña.
+
+**En el juego**: Ctrl + clic derecho sobre un objeto (de la mochila, del equipo, de una ventana
+abierta o lo de arriba de una casilla de al lado) → «Comerciar con…» → clic en el jugador (en el
+mapa o en la lista de batalla), a dos casillas como mucho. Al otro le llega «X quiere comerciar
+contigo.» y contesta igual, con un objeto suyo. Entonces los dos ven las dos ofertas; clic en un
+objeto para mirarlo, «Acepto» (sale quién ha aceptado ya) o «Cancelar». Cuando aceptan los dos, se
+cambian. Mover, usar o perder lo ofrecido, alejarse, morir o salir lo cancela.
+
+| Mensaje | Forma | Qué es |
+|---|---|---|
+| `CLIENT.TRADE_REQUEST` (0x90) | `[0x90, origen, idJugador]` | Ofrecer (o contestar). `origen` como en `USE_WITH`: `{inventario}`, `{contenedor, hueco}` o `{suelo: [x, y, z]}` |
+| `CLIENT.TRADE_LOOK` (0x91) | `[0x91, suya, índice]` | Mirar un objeto de una oferta (`suya` 1: la del otro); contesta un `TEXT` |
+| `CLIENT.TRADE_ACCEPT` (0x92) | `[0x92]` | Aceptar |
+| `CLIENT.TRADE_CLOSE` (0x93) | `[0x93]` | Cancelar (cerrar la ventana) |
+| `SERVER.TRADE` (0x47) | `[0x47, {companero, tuya, suya, aceptaste, acepto}]` | La ventana entera, cada vez que cambia. `tuya`/`suya`: la oferta en lista plana (el objeto y, si es contenedor, todo lo de dentro por niveles), cada uno `{typeId, count, name, charges}`; `suya` es null hasta que el otro contesta. Sólo la recibe quien ya ofreció algo |
+| `SERVER.TRADE_CLOSE` (0x48) | `[0x48]` | Se cierra (el porqué llega en un `TEXT`: «Intercambio cancelado.», «Intercambio completado.») |

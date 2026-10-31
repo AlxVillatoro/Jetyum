@@ -436,16 +436,26 @@ function pintarMochila(entradas, proveedor, itemtypes, peso) {
     if (!contenedor) {
         caja.innerHTML = '';
     } else {
-        caja.innerHTML = dentro.map((entrada) =>
-            '<div class="objeto arrastrable" data-index="' + entrada.index + '" ' +
+        /*
+         * UNA BOLSA DENTRO DE LA MOCHILA (contenedores anidados) se marca con `data-bolsa`: clic
+         * derecho la ABRE en su ventana (el motor la abre al usarla) y soltar algo ENCIMA la mete
+         * dentro de ella (`MOVE_TO.INVENTORY` con su índice). Lo de dentro de la bolsa no viene en
+         * el inventario: se ve en su ventana.
+         */
+        caja.innerHTML = dentro.map((entrada) => {
+            const bolsa = itemtypes.esContenedor(entrada.typeId);
+            return '<div class="objeto arrastrable' + (bolsa ? ' es-contenedor' : '') + '" data-index="' + entrada.index + '" ' +
+            (bolsa ? 'data-bolsa="1" ' : '') +
             'title="' + entrada.name + (entrada.count > 1 ? ' x' + entrada.count : '') +
-            ' (arrastra para moverlo)">' +
+            (bolsa ? ' (arrastra para moverlo; clic derecho: abrirla; suelta algo encima para meterlo dentro)">'
+                : ' (arrastra para moverlo)">') +
             // Un hueco de contenedor como en Tibia: el dibujo a 32 y, si hay más de uno, cuántos.
             dibujarIcono(entrada.typeId, proveedor, 32, entrada.count) +
             '<span class="nombre">' + entrada.name +
             (entrada.count > 1 ? ' x' + entrada.count : '') + '</span>' +
             numeroDeEsquina(entrada) +
-            '</div>').join('') +
+            '</div>';
+        }).join('') +
             '<div class="objeto hueco-vacio"></div>'.repeat(Math.max(0, huecos - dentro.length));
     }
 

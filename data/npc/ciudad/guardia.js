@@ -104,9 +104,8 @@ module.exports = {
         {
             words: ['templo', 'curar', 'vida', 'morir', 'temple', 'heal', 'life', 'die'],
             say: (npc) => {
-                npc.say('El templo te rehace cuando caes, pero te cuesta una decima parte ' +
-                    'de tu experiencia y todo lo que lleves encima. No es un sitio al que ' +
-                    'ir de visita.');
+                npc.say('El templo te rehace cuando caes, pero te cuesta experiencia y, si ' +
+                    'no llevas bendiciones, la mochila. No es un sitio al que ir de visita.');
             }
         },
 

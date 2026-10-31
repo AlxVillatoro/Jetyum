@@ -204,6 +204,46 @@ const reglas = {
     },
 
     // -----------------------------------------------------------------------
+    // Ventanas de texto
+    // -----------------------------------------------------------------------
+
+    /**
+     * ABRE UNA VENTANA DE TEXTO a un jugador (`SERVER.TEXT_WINDOW`): para leer, o para escribir si
+     * `editable`. Al guardar, `alGuardar(texto)` recibe lo escrito, ya recortado a `maximo`. Una
+     * ventana sólo la puede contestar su jugador, y una sola vez.
+     *
+     * @returns {number} el id de la ventana
+     */
+    abrirVentanaDeTexto(player, opciones, alGuardar) {
+        const o = opciones || {};
+        this.ventanasDeTexto = this.ventanasDeTexto || new Map();
+        this.siguienteVentanaDeTexto = (this.siguienteVentanaDeTexto || 0) + 1;
+        const id = this.siguienteVentanaDeTexto;
+        const ventana = {
+            titulo: String(o.titulo || ''),
+            texto: String(o.texto == null ? '' : o.texto),
+            editable: o.editable === true,
+            maximo: Math.max(1, Math.min(8000, Number(o.maximo) || 1000))
+        };
+        if (ventana.editable && typeof alGuardar === 'function') {
+            this.ventanasDeTexto.set(id, { playerId: player.id, alGuardar, maximo: ventana.maximo });
+        }
+        this.emit('onTextWindow', player, id, ventana);
+        return id;
+    },
+
+    /** Lo que el cliente devuelve de una ventana editable. Devuelve si se aceptó. */
+    guardarVentanaDeTexto(player, id, texto) {
+        const ventana = this.ventanasDeTexto && this.ventanasDeTexto.get(Number(id));
+        if (!ventana || !player || ventana.playerId !== player.id) {
+            return false;
+        }
+        this.ventanasDeTexto.delete(Number(id));
+        ventana.alGuardar(String(texto == null ? '' : texto).slice(0, ventana.maximo));
+        return true;
+    },
+
+    // -----------------------------------------------------------------------
     // Ciudades y templos
     // -----------------------------------------------------------------------
 

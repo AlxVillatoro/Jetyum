@@ -5265,4 +5265,16 @@
 	<item id="21032" article="a" name="pile of stones"><attribute key="onBottom" value="1" /><attribute key="useable" value="1" /></item>
 	<item id="21033" article="a" name="hole"><attribute key="onBottom" value="1" /><attribute key="blocksPathfind" value="1" /><attribute key="floorchange" value="down" /><attribute key="decayTo" value="21032" /><attribute key="duration" value="60" /></item>
 	<!-- RUNAS:fin -->
+	<!-- CORREO:inicio · Correo y camas (generado por tools/generar-correo.mjs: no editar a mano) -->
+	<item id="21040" article="a" name="mailbox"><attribute key="blocksSolid" value="1" /><attribute key="mailbox" value="1" /></item>
+	<item id="21041" article="a" name="letter"><attribute key="pickupable" value="1" /><attribute key="useable" value="1" /><attribute key="weight" value="50" /><attribute key="writable" value="1" /><attribute key="maxTextLen" value="500" /><attribute key="stampedId" value="21042" /></item>
+	<item id="21042" article="a" name="stamped letter"><attribute key="pickupable" value="1" /><attribute key="useable" value="1" /><attribute key="weight" value="50" /><attribute key="readable" value="1" /></item>
+	<item id="21043" article="a" name="parcel"><attribute key="pickupable" value="1" /><attribute key="isContainer" value="1" /><attribute key="containerSize" value="10" /><attribute key="weight" value="1800" /><attribute key="stampedId" value="21044" /></item>
+	<item id="21044" article="a" name="stamped parcel"><attribute key="pickupable" value="1" /><attribute key="isContainer" value="1" /><attribute key="containerSize" value="10" /><attribute key="weight" value="1800" /></item>
+	<item id="21045" article="a" name="label"><attribute key="pickupable" value="1" /><attribute key="useable" value="1" /><attribute key="weight" value="10" /><attribute key="writable" value="1" /><attribute key="maxTextLen" value="100" /><attribute key="mailLabel" value="1" /></item>
+	<item id="21050" article="a" name="bed"><attribute key="blocksSolid" value="1" /><attribute key="useable" value="1" /><attribute key="bed" value="1" /><attribute key="bedPart" value="head" /><attribute key="partnerDirection" value="south" /><attribute key="occupiedId" value="21052" /></item>
+	<item id="21051" article="a" name="bed"><attribute key="blocksSolid" value="1" /><attribute key="useable" value="1" /><attribute key="bed" value="1" /><attribute key="bedPart" value="foot" /><attribute key="partnerDirection" value="north" /><attribute key="occupiedId" value="21053" /></item>
+	<item id="21052" article="a" name="bed"><attribute key="blocksSolid" value="1" /><attribute key="useable" value="1" /><attribute key="bed" value="1" /><attribute key="bedPart" value="head" /><attribute key="partnerDirection" value="south" /><attribute key="occupied" value="1" /><attribute key="freeId" value="21050" /></item>
+	<item id="21053" article="a" name="bed"><attribute key="blocksSolid" value="1" /><attribute key="useable" value="1" /><attribute key="bed" value="1" /><attribute key="bedPart" value="foot" /><attribute key="partnerDirection" value="north" /><attribute key="occupied" value="1" /><attribute key="freeId" value="21051" /></item>
+	<!-- CORREO:fin -->
 </items>

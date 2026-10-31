@@ -216,6 +216,8 @@ section('4. Las runas');
 // ===========================================================================
 {
     const { pj, sesion, buzon } = conectar('Runero', en(0, 0), 'Sorcerer');
+    // Que el cíclope no lo mate mientras pasa el tiempo: al morir perdería la runa (y la prueba).
+    pj.maxHealth = pj.health = 100000;
     pj.level = 60;
     pj.magicLevel = 20;
     pj.maxMana = pj.mana = 3000;

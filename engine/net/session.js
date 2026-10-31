@@ -31,6 +31,13 @@ const { formatWeight } = require('../world/weight');
 /** Cuántos contenedores del suelo (cuerpos, cajas) puede tener abiertos a la vez un jugador. */
 const MAX_CONTENEDORES = 6;
 
+/**
+ * Y cuántos de los SUYOS (bolsas dentro de su mochila, `engine/world/contenedores.js`). Van aparte
+ * para que abrir tres bolsas no cierre el cuerpo que estabas saqueando. Es el tope de anidamiento:
+ * con una ventana por nivel se ve una cadena entera.
+ */
+const MAX_CONTENEDORES_PROPIOS = 8;
+
 /** Hasta qué distancia se ven los números de daño y curación (lo que cabe en pantalla). */
 const VISTA_TEXTOS = 9;
 
@@ -289,6 +296,10 @@ class GameSession {
             return false;
         }
         this.closed = true;
+        // Quien se va (o se queda en el mundo sin cliente, en combate) deja de comerciar.
+        if (this.player && this.world.cancelarIntercambio) {
+            this.world.cancelarIntercambio(this.player);
+        }
 
         if (this._debeQuedarse()) {
             this._esperarFinDelCombate();
@@ -363,6 +374,17 @@ class GameSession {
      * @param {Array} message [opcode, ...datos]
      */
     handle(message) {
+        const resultado = this._procesar(message);
+        // Lo que acaba de hacer (mover, usar, andar, soltar) puede haber roto su intercambio: se
+        // mira ya, sin esperar al tick, para que el otro no acepte algo que ya no está.
+        if (this.player && this.player.intercambio) {
+            this.world.revisarIntercambio(this.player);
+        }
+        return resultado;
+    }
+
+    /** Lo de `handle`, mensaje a mensaje. */
+    _procesar(message) {
         if (this.closed || !Array.isArray(message) || message.length === 0) {
             return { handled: false, reason: 'malformed' };
         }
@@ -507,6 +529,22 @@ class GameSession {
 
             case P.CLIENT.FIGHT_MODES:
                 return this._handleFightModes(message[1], message[2], message[3]);
+
+            case P.CLIENT.TRADE_REQUEST:
+                return this._handleTradeRequest(message[1], message[2]);
+
+            case P.CLIENT.TRADE_LOOK:
+                return this._handleTradeLook(message[1], message[2]);
+
+            case P.CLIENT.TRADE_ACCEPT:
+                return { handled: true, action: 'tradeAccept', ...this.world.aceptarIntercambio(this.player) };
+
+            case P.CLIENT.TRADE_CLOSE:
+                return { handled: true, action: 'tradeClose', ok: this.world.cancelarIntercambio(this.player) };
+
+            case P.CLIENT.TEXT_WINDOW_SAVE:
+                return { handled: true, action: 'textWindowSave',
+                    ok: this.world.guardarVentanaDeTexto(this.player, message[1], message[2]) };
 
             default:
                 this.stats.rejected += 1;
@@ -667,7 +705,12 @@ class GameSession {
             : 'No ves nada especial.';
 
         this._send(P.message(P.SERVER.TEXT, 0, text));
-        return { handled: true, action: 'look', text: text };
+        // Una puerta de casa dice de quién es o cuánto cuesta. Va aparte para que se traduzca entera.
+        const casa = this.world.houseLookText ? this.world.houseLookText(Number(x), Number(y), Number(z)) : null;
+        if (casa) {
+            this._send(P.message(P.SERVER.TEXT, 0, casa));
+        }
+        return { handled: true, action: 'look', text: text, casa: casa };
     }
 
     /**
@@ -751,6 +794,7 @@ class GameSession {
         if (abrible) {
             return this._alternarContenedor(abrible);
         }
+        this._usaLoOfrecido({ item: usable });
         const uid = this.world.adoptItem(usable);
         const r = this.engine.dispatchAction(usable.typeId, {
             playerId: this.playerId,
@@ -915,11 +959,38 @@ class GameSession {
         }
         // Abrir otra vez uno que ya está abierto sólo lo vuelve a mandar.
         this.contenedoresAbiertos.set(item.instanceId, null);
-        if (this.contenedoresAbiertos.size > MAX_CONTENEDORES) {
-            this._cerrarContenedor(this.contenedoresAbiertos.keys().next().value, true);
-        }
+        this._limitarVentanas(false);
         this._vigilarContenedor();
         return { handled: true, action: 'openContainer', id: item.instanceId, items: this.world.contentsOfItem(item).length };
+    }
+
+    /**
+     * ABRE LA VENTANA DE UN CONTENEDOR QUE LLEVAS (una bolsa dentro de tu mochila), o la cierra si
+     * ya estaba abierta. Su id es negativo (`CONTAINER_ID` en el protocolo) y se vigila igual que
+     * los del suelo: si deja de estar en tu inventario, se cierra.
+     */
+    _alternarContenedorPropio(entry) {
+        const id = this.world.idDeContenedorPropio(entry);
+        if (!this.contenedoresAbiertos) {
+            this.contenedoresAbiertos = new Map();
+        }
+        if (this.contenedoresAbiertos.has(id)) {
+            this._cerrarContenedor(id, true);
+            return { handled: true, action: 'closeContainer', id: id };
+        }
+        this.contenedoresAbiertos.set(id, null);
+        this._limitarVentanas(true);
+        this._vigilarContenedor();
+        return { handled: true, action: 'openContainer', id: id,
+            items: this.world.contenidoDeEntrada(this.player, entry).length };
+    }
+
+    /** Si hay demasiadas ventanas de una clase (del suelo o tuyas), se cierra la más vieja. */
+    _limitarVentanas(propias) {
+        const ids = [...this.contenedoresAbiertos.keys()].filter((id) => P.CONTAINER_ID.esPropio(id) === propias);
+        if (ids.length > (propias ? MAX_CONTENEDORES_PROPIOS : MAX_CONTENEDORES)) {
+            this._cerrarContenedor(ids[0], true);
+        }
     }
 
     /**
@@ -956,12 +1027,27 @@ class GameSession {
             return;
         }
         [...this.contenedoresAbiertos.entries()].forEach(([id, firmaVieja]) => {
-            const item = this.world.items.get(id);
-            if (!item || !item.position || !item.isContainer || !this.world.canReach(this.player, item.position)) {
-                this._cerrarContenedor(id, true);
-                return;
+            let datos;
+            if (P.CONTAINER_ID.esPropio(id)) {
+                // UNO QUE LLEVAS: mientras siga en tu inventario (a cualquier profundidad) y sea un
+                // contenedor. Si salió -al suelo, a un cuerpo-, ya es otro objeto: se cierra.
+                const entry = this.world.contenedorPropio(this.player, id);
+                if (!entry) {
+                    this._cerrarContenedor(id, true);
+                    return;
+                }
+                datos = this.world.containerPayloadPropio(this.player, entry);
+            } else {
+                // Uno del suelo, o de DENTRO de uno del suelo (una bolsa en un cuerpo): al lado de
+                // donde esté el de fuera del todo.
+                const item = this.world.items.get(id);
+                const donde = item ? this.world.posicionDeObjeto(item) : null;
+                if (!item || !donde || !item.isContainer || !this.world.canReach(this.player, donde)) {
+                    this._cerrarContenedor(id, true);
+                    return;
+                }
+                datos = this.world.containerPayload(item);
             }
-            const datos = this.world.containerPayload(item);
             const firma = JSON.stringify(datos);
             if (firma !== firmaVieja) {
                 this.contenedoresAbiertos.set(id, firma);
@@ -972,6 +1058,18 @@ class GameSession {
 
     /** Coger del contenedor abierto a la mochila. */
     _handleContainerTake(id, index) {
+        // De una bolsa que llevas: es moverlo a la mochila.
+        if (P.CONTAINER_ID.esPropio(id)) {
+            const m = this.world.moveItem(this.player, { kind: 'inventoryContainer', id: Number(id), index: Number(index) },
+                { kind: 'container' });
+            if (!m.ok) {
+                this._explainMoveFailure(m);
+                return { handled: true, action: 'containerTake', ok: false, reason: m.reason };
+            }
+            this.sendInventory();
+            this._vigilarContenedor();
+            return { handled: true, action: 'containerTake', ok: true };
+        }
         const r = this.world.takeFromContainer(this.player, id, index);
         if (!r.ok) {
             const motivos = {
@@ -979,6 +1077,7 @@ class GameSession {
                 noContainer: 'No llevas mochila: no tienes donde meterlo.',
                 tooHeavy: 'Pesa demasiado: no puedes con ello.',
                 backpackFull: 'Tu mochila esta llena: tiene ' + r.slots + ' huecos.',
+                tooDeep: 'No caben más contenedores unos dentro de otros: como mucho ' + r.max + '.',
                 noItem: 'Eso ya no esta ahi.'
             };
             this.sendText(motivos[r.reason] || 'No puedes cogerlo.');
@@ -1165,16 +1264,18 @@ class GameSession {
         const fromKind = message[F.FROM_KIND];
         const toKind = message[F.TO_KIND];
 
-        if (fromKind !== P.MOVE_FROM.GROUND && fromKind !== P.MOVE_FROM.INVENTORY &&
-            fromKind !== P.MOVE_FROM.CONTAINER) {
+        if (!Object.values(P.MOVE_FROM).includes(fromKind)) {
             this.stats.rejected += 1;
             return { handled: false, reason: 'badSource' };
         }
-        if (toKind !== P.MOVE_TO.GROUND && toKind !== P.MOVE_TO.SLOT &&
-            toKind !== P.MOVE_TO.CONTAINER && toKind !== P.MOVE_TO.GROUND_CONTAINER) {
+        if (!Object.values(P.MOVE_TO).includes(toKind)) {
             this.stats.rejected += 1;
             return { handled: false, reason: 'badTarget' };
         }
+
+        // El hueco sobre el que se soltó (v3): si es una bolsa, va dentro de ella. -1 o nada: ninguno.
+        const toIndex = message[F.TO_INDEX] === undefined || message[F.TO_INDEX] === null
+            ? null : Number(message[F.TO_INDEX]);
 
         let from;
         if (fromKind === P.MOVE_FROM.GROUND) {
@@ -1182,6 +1283,9 @@ class GameSession {
         } else if (fromKind === P.MOVE_FROM.CONTAINER) {
             // Del cuerpo abierto: lo que se ve en su ventana.
             from = { kind: 'container', id: message[F.FROM_ID], index: message[F.FROM_INDEX] };
+        } else if (fromKind === P.MOVE_FROM.INVENTORY_CONTAINER) {
+            // De la ventana de una bolsa que llevas (id negativo).
+            from = { kind: 'inventoryContainer', id: Number(message[F.FROM_ID]), index: message[F.FROM_INDEX] };
         } else {
             from = { kind: 'inventory', index: message[F.FROM_INDEX] };
         }
@@ -1192,8 +1296,14 @@ class GameSession {
         } else if (toKind === P.MOVE_TO.CONTAINER) {
             to = { kind: 'container' };
         } else if (toKind === P.MOVE_TO.GROUND_CONTAINER) {
-            // A la ventana abierta de una mochila tirada o de un cuerpo.
-            to = { kind: 'groundContainer', id: message[F.TO_ID] };
+            // A la ventana abierta de una mochila tirada o de un cuerpo (o a una bolsa de dentro).
+            to = { kind: 'groundContainer', id: message[F.TO_ID], index: toIndex };
+        } else if (toKind === P.MOVE_TO.INVENTORY_CONTAINER) {
+            // A la ventana de una bolsa que llevas (o a una bolsa de dentro de ella).
+            to = { kind: 'inventoryContainer', id: Number(message[F.TO_ID]), index: toIndex };
+        } else if (toKind === P.MOVE_TO.INVENTORY) {
+            // Encima de una entrada del panel: si es una bolsa, dentro de ella.
+            to = { kind: 'inventory', index: toIndex };
         } else {
             to = { kind: 'slot', slot: message[F.TO_SLOT] };
         }
@@ -1224,6 +1334,9 @@ class GameSession {
          */
         this.sendInventory();
         this.view.markDirty(this.playerId);
+        // Y las ventanas abiertas (la bolsa de la que salió, la bolsa a la que fue) se ponen al día ya,
+        // sin esperar al siguiente tick.
+        this._vigilarContenedor();
 
         // Y NO SE DICE NADA AL ACERTAR: mover es una accion normal, como caminar, y el resultado
         // se ve en el panel. Un mensaje por cada arrastre llenaria el chat de ruido.
@@ -1276,10 +1389,22 @@ class GameSession {
                     'o ponte la mochila si no llevas otra.');
                 break;
             case 'containerFull':
-                this.sendText('No cabe: ese contenedor esta lleno.');
+                this.sendText(result.slots
+                    ? 'No cabe: ese contenedor esta lleno (tiene ' + result.slots + ' huecos).'
+                    : 'No cabe: ese contenedor esta lleno.');
                 break;
             case 'containerInContainer':
                 this.sendText('Un contenedor no se puede meter dentro de otro.');
+                break;
+            case 'containerInItself':
+                this.sendText('No puedes meter un contenedor dentro de sí mismo.');
+                break;
+            case 'tooDeep':
+                this.sendText('No caben más contenedores unos dentro de otros: como mucho ' + result.max + '.');
+                break;
+            case 'badSource':
+            case 'badTarget':
+                this.sendText('Eso ya no esta ahi.');
                 break;
             case 'emptyTile':
                 this.sendText('Ahi no hay nada que mover.');
@@ -1292,6 +1417,12 @@ class GameSession {
                 break;
             case 'notEnoughRoom':
                 this.sendText('No hay sitio ahi.');
+                break;
+            case 'mailFailed':
+                // El correo ya ha dicho por qué no se pudo mandar: no se añade nada.
+                break;
+            case 'notInvited':
+                this.sendText('No estás invitado a esta casa.');
                 break;
             default:
                 // Un motivo que este codigo no conoce: se dice igual, en vez de callarse. Un
@@ -1369,6 +1500,9 @@ class GameSession {
         this._ataqueAutomatico();
         this._vigilarTienda();
         this._vigilarContenedor();
+        if (this.player.intercambio) {
+            this.world.revisarIntercambio(this.player);
+        }
         return this._flushView();
     }
 
@@ -1444,6 +1578,24 @@ class GameSession {
         if (!entry) {
             return { handled: false, reason: 'badItem' };
         }
+        return this._usarEntrada(entry, 'useInventory');
+    }
+
+    /**
+     * USAR UNA ENTRADA QUE LLEVAS, esté donde esté (en la mochila, puesta o dentro de una bolsa).
+     *
+     * UNA BOLSA SE ABRE (o se cierra, si ya estaba abierta) en su ventana, como en Tibia, salvo que
+     * un script la reclame (`registry.hasAction`): una bolsa de misión que hace algo al usarla manda
+     * sobre "abrir". La mochila puesta no llega aquí: su ventana la abre y cierra el cliente.
+     */
+    _usarEntrada(entry, accion) {
+        const attrs0 = entry.attributes || {};
+        if (this.world.isContainerEntry(entry) && entry !== this.world.containerOf(this.player) &&
+                !this.engine.registry.hasAction(entry.typeId, { actionId: attrs0.actionId, uniqueId: attrs0.uniqueId })) {
+            const r = this._alternarContenedorPropio(entry);
+            return { ...r, action: accion, used: true, itemId: entry.typeId, container: r.action };
+        }
+        this._usaLoOfrecido({ entry: entry });
         const objeto = this.engine.registry.entities.inventoryItem(this.playerId, entry);
         const pos = this.player.position;
         const attrs = entry.attributes || {};
@@ -1460,7 +1612,8 @@ class GameSession {
         }
         this.sendInventory();
         this.view.markDirty(this.playerId);
-        return { handled: true, action: 'useInventory', used: r.handled === true, itemId: entry.typeId };
+        this._vigilarContenedor();
+        return { handled: true, action: accion, used: r.handled === true, itemId: entry.typeId };
     }
 
     /**
@@ -1471,14 +1624,14 @@ class GameSession {
      */
     _handleUseHotkeyItem(typeId, creatureId) {
         const id = Number(typeId);
-        const inventario = this.player.inventory || [];
-        const entry = inventario.find((e) => e.typeId === id && e.slot === 'inside') ||
-            inventario.find((e) => e.typeId === id);
+        // La primera que lleves: de la mochila, de una bolsa de dentro o, si no, puesta.
+        const entry = this.world.buscarEntradaDeTipo(this.player, id);
         const definicion = this.world.itemTypes.get(id);
         if (!entry) {
             this.sendText('No llevas ' + (definicion ? (definicion.plural || definicion.name) : 'eso') + '.');
             return { handled: true, action: 'useHotkeyItem', used: false, reason: 'noItem' };
         }
+        this._usaLoOfrecido({ entry: entry });
         // UNA RUNA desde una hotkey: sobre la criatura que diga (tu objetivo) o, sin ella, sobre ti.
         if (this.engine.registry.runes.has(id)) {
             const r = this.engine.registry.useRune(this.player, entry,
@@ -1531,10 +1684,11 @@ class GameSession {
         let delSuelo = null;
         if (o.inventario !== undefined) {
             entrada = this.world.inventoryEntry(this.player, Number(o.inventario));
+        } else if (o.contenedor !== undefined && P.CONTAINER_ID.esPropio(o.contenedor)) {
+            // De la ventana de una bolsa que llevas: `{contenedor: id, hueco: n}`.
+            entrada = this.world.entradaEnContenedorPropio(this.player, o.contenedor, o.hueco);
         } else if (o.hotkey !== undefined) {
-            const id = Number(o.hotkey);
-            entrada = (this.player.inventory || []).find((e) => e.typeId === id && e.slot === 'inside') ||
-                (this.player.inventory || []).find((e) => e.typeId === id) || null;
+            entrada = this.world.buscarEntradaDeTipo(this.player, o.hotkey);
         } else if (Array.isArray(o.suelo)) {
             const [x, y, z] = o.suelo.map(Number);
             const tile = this.world.map.getTile(x, y, z);
@@ -1547,6 +1701,7 @@ class GameSession {
             return { handled: true, action: 'useWith', used: false, reason: 'noItem' };
         }
         const typeId = entrada ? entrada.typeId : delSuelo.typeId;
+        this._usaLoOfrecido(entrada ? { entry: entrada } : { item: delSuelo });
 
         // --- Sobre qué ---
         const criatura = d.criatura !== undefined ? this.world.getCreature(Number(d.criatura)) : null;
@@ -1601,11 +1756,20 @@ class GameSession {
      * con el objeto de verdad (que sabe gastarse con `item.remove(1)`). Hay que estar al lado.
      */
     _handleUseContainer(id, index) {
+        // De la ventana de una bolsa que llevas: se usa como lo que llevas (y una bolsa se abre).
+        if (P.CONTAINER_ID.esPropio(id)) {
+            const entry = this.world.entradaEnContenedorPropio(this.player, id, index);
+            if (!entry) {
+                return { handled: false, reason: 'noItem' };
+            }
+            return this._usarEntrada(entry, 'useContainer');
+        }
         const contenedor = this.world.items.get(Number(id));
-        if (!contenedor || !contenedor.position || !contenedor.isContainer) {
+        const donde = contenedor ? this.world.posicionDeObjeto(contenedor) : null;
+        if (!contenedor || !donde || !contenedor.isContainer) {
             return { handled: false, reason: 'noContainer' };
         }
-        if (!this.world.canReach(this.player, contenedor.position)) {
+        if (!this.world.canReach(this.player, donde)) {
             this.sendText('Esta demasiado lejos.');
             return { handled: true, action: 'useContainer', used: false, reason: 'tooFar' };
         }
@@ -1613,6 +1777,15 @@ class GameSession {
         if (!item) {
             return { handled: false, reason: 'noItem' };
         }
+        // UNA BOLSA DENTRO DE UN CUERPO (o del depósito) se abre en su propia ventana, salvo que un
+        // script la reclame.
+        const attrsItem = item.attributes || {};
+        if (item.isContainer && !this.engine.registry.hasAction(item.typeId,
+                { itemUid: item.instanceId || 0, actionId: attrsItem.actionId, uniqueId: attrsItem.uniqueId })) {
+            const r = this._alternarContenedor(item);
+            return { ...r, action: 'useContainer', used: true, itemId: item.typeId, container: r.action };
+        }
+        this._usaLoOfrecido({ item: item });
         const uid = this.world.adoptItem(item);
         const pos = this.player.position;
         const r = this.engine.dispatchAction(item.typeId, {
@@ -1638,6 +1811,14 @@ class GameSession {
         let attrs = null;
         if (tipo === 'inventory') {
             const entry = this.world.inventoryEntry(this.player, a);
+            if (entry) {
+                typeId = entry.typeId;
+                count = entry.count;
+                attrs = entry.attributes;
+            }
+        } else if (tipo === 'container' && P.CONTAINER_ID.esPropio(a)) {
+            // Algo de dentro de una bolsa que llevas.
+            const entry = this.world.entradaEnContenedorPropio(this.player, a, b);
             if (entry) {
                 typeId = entry.typeId;
                 count = entry.count;
@@ -1679,6 +1860,33 @@ class GameSession {
         return 'Ves ' + nombre + (numeros.length ? ' (' + numeros.join(', ') + ')' : '') + '.' +
             (peso > 0 ? (count > 1 ? ' Pesan ' : ' Pesa ') + formatWeight(peso) + '.' : '') +
             (a.description ? ' ' + a.description : '');
+    }
+
+    /**
+     * OFRECER ALGO A OTRO JUGADOR (`CLIENT.TRADE_REQUEST`), o contestar con algo a quien te ofreció.
+     * Las reglas y los mensajes son del mundo (`engine/world/intercambio.js`); aquí sólo se pasa.
+     */
+    _handleTradeRequest(origen, jugadorId) {
+        const r = this.world.pedirIntercambio(this.player, origen, jugadorId);
+        return { handled: true, action: 'tradeRequest', ok: r.ok === true, reason: r.reason, counter: r.counter };
+    }
+
+    /** MIRAR un objeto del intercambio (`CLIENT.TRADE_LOOK`): el mismo texto que al mirarlo en un panel. */
+    _handleTradeLook(suya, indice) {
+        const objeto = this.world.mirarEnIntercambio(this.player, Number(suya) === 1 || suya === true, indice);
+        if (!objeto) {
+            return { handled: false, reason: 'noItem' };
+        }
+        const texto = this._describirObjeto(objeto.typeId, objeto.count, objeto.attributes);
+        this.sendText(texto);
+        return { handled: true, action: 'tradeLook', text: texto };
+    }
+
+    /** USAR LO QUE ESTÁS OFRECIENDO (o lo que va dentro) cancela el intercambio, como moverlo. */
+    _usaLoOfrecido(ref) {
+        if (this.player.intercambio && this.world.objetoEnIntercambio(this.player, ref)) {
+            this.world.cancelarIntercambio(this.player);
+        }
     }
 
     /** El diario de misiones, calculado con los storages del jugador. */
@@ -1782,7 +1990,22 @@ class GameSession {
         return this._send(P.message(P.SERVER.PRIVATE_MESSAGE, String(de), String(texto), canal || 'privado'));
     }
 
+    /** Una ventana de texto, para leer o escribir (`SERVER.TEXT_WINDOW`). */
+    sendTextWindow(id, ventana) {
+        return this._send(P.message(P.SERVER.TEXT_WINDOW, Number(id), ventana));
+    }
+
     /** Un diálogo con texto (el `popupFYI` de Tibia). */
+    /** La ventana del intercambio entre jugadores, al día (`SERVER.TRADE`). */
+    sendTrade(ventana) {
+        return this._send(P.message(P.SERVER.TRADE, ventana));
+    }
+
+    /** Se cierra la ventana del intercambio (`SERVER.TRADE_CLOSE`). */
+    sendTradeClose() {
+        return this._send(P.message(P.SERVER.TRADE_CLOSE));
+    }
+
     sendPopup(titulo, texto) {
         return this._send(P.message(P.SERVER.POPUP, String(titulo || ''), String(texto || '')));
     }

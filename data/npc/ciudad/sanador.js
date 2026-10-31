@@ -15,11 +15,148 @@
  * Sigue diagnosticando con «como estoy», que es un dato que el jugador no tiene: el cliente dibuja
  * una barra, no un número.
  *
+ * Y DA LAS BENDICIONES, como los NPC del templo de Tibia (`StdModule.bless` de TFS,
+ * data/npc/lib/npcsystem/modules.lua): es el que está junto al templo en los dos mapas, y el que ya
+ * hablaba de la muerte. «bendiciones» las explica y dice el precio; el nombre de una («chispa del
+ * fenix», «spark of the phoenix») o «todas» la ofrece, y «si» la compra. El precio sube con el nivel
+ * (`player.getBlessingCost()`: 2000 de oro hasta el nivel 30 y hasta 20 000 desde el 120) y se cobra
+ * con `removeMoney`, contando platino y cristal. Como en TFS, en un mundo «pvp-enforced» no se
+ * bendice a nadie. Lo que hacen al morir lo decide el motor (engine/world/muerte.js).
+ *
+ * LA OFERTA PENDIENTE se guarda EN EL NPC (`npc.ofertaBendicion`), con el id de quien la pidió:
+ * es el truco del anciano y del herrero para recordar algo entre una frase y la siguiente, y el id
+ * es lo que impide que el «si» de otro jugador compre lo que pidió el primero.
+ *
  * DIBUJO: el del aspecto (`lookType`) en `client/jetyum/assets/things.json`.
  */
 
 /** Lo que el sanador quita, además de cerrar las heridas. */
 const MALES = ['veneno', 'fuego', 'energia', 'sangrado'];
+
+/**
+ * Las palabras de cada bendición (el número es el de TFS y el de `player.hasBlessing`). El nombre
+ * que se dice lo da el motor (`player.getBlessings()`), para que no haya dos copias.
+ */
+const PALABRAS_BENDICION = {
+    1: ['escudo espiritual', 'espiritual', 'spiritual shielding', 'spiritual', 'shielding'],
+    2: ['abrazo de tibia', 'abrazo', 'embrace of tibia', 'embrace'],
+    3: ['fuego de los soles', 'soles', 'fire of the suns', 'suns'],
+    4: ['chispa del fenix', 'chispa del fénix', 'chispa', 'fenix', 'fénix', 'spark of the phoenix', 'spark', 'phoenix'],
+    5: ['sabiduria de la soledad', 'sabiduría de la soledad', 'sabiduria', 'sabiduría', 'soledad',
+        'wisdom of solitude', 'wisdom', 'solitude']
+};
+
+/** ¿Se puede bendecir en este mundo? En TFS no, si es «pvp-enforced». */
+function sePuedeBendecir() {
+    const stats = typeof Game !== 'undefined' && Game.getStats ? Game.getStats() : null;
+    return !stats || String(stats.worldType || '').toLowerCase() !== 'pvp-enforced';
+}
+
+/** Ofrece la bendición `n` (o todas las que falten, con `n = 'todas'`) y espera el «si». */
+function ofrecer(npc, player, n) {
+    if (!sePuedeBendecir()) {
+        npc.say('En un mundo de guerra los dioses no bendicen a nadie.');
+        return;
+    }
+    const lista = player.getBlessings();
+    const precio = player.getBlessingCost();
+    if (n === 'todas') {
+        const faltan = lista.filter((b) => !b.has);
+        if (faltan.length === 0) {
+            npc.say('Ya tienes las cinco bendiciones.');
+            return;
+        }
+        npc.ofertaBendicion = { jugador: player.getId(), ids: faltan.map((b) => b.id), precio: precio * faltan.length };
+        npc.say('Te faltan ' + faltan.length + ' bendiciones: son ' + precio * faltan.length +
+            ' de oro. ¿Las quieres? Di "si" o "no".');
+        return;
+    }
+    const bendicion = lista.find((b) => b.id === n);
+    if (bendicion.has) {
+        npc.say('Ya tienes la bendicion "' + bendicion.nombre + '".');
+        return;
+    }
+    npc.ofertaBendicion = { jugador: player.getId(), ids: [n], precio: precio };
+    npc.say('La bendicion "' + bendicion.nombre + '" te cuesta ' + precio + ' de oro. ¿La quieres? ' +
+        'Di "si" o "no".');
+}
+
+/** La oferta pendiente de ESTE jugador, o null. */
+function ofertaDe(npc, player) {
+    const oferta = npc.ofertaBendicion;
+    return oferta && oferta.jugador === player.getId() ? oferta : null;
+}
+
+/**
+ * Las palabras clave de las bendiciones, en DOS TANDAS porque el orden decide (gana la primera que
+ * casa): las que nombran una bendición van PRONTO, para que «blessing for death» no lo conteste el
+ * «templo»; «si», «no» y «todas» van AL FINAL, para que «no, curar» siga curando.
+ */
+function palabrasDeBendiciones() {
+    const una = Object.keys(PALABRAS_BENDICION).map((id) => ({
+        words: PALABRAS_BENDICION[id],
+        say: (npc, player) => ofrecer(npc, player, Number(id))
+    }));
+    return [
+        {
+            words: ['bendiciones', 'bendicion', 'bendición', 'bendecir', 'bendiceme', 'bendíceme',
+                'blessings', 'blessing', 'bless'],
+            say: (npc, player) => {
+                const nombres = player.getBlessings().map((b) => '"' + b.nombre + '"');
+                npc.say('Hay cinco bendiciones: ' + nombres.slice(0, -1).join(', ') + ' y ' +
+                    nombres[nombres.length - 1] + '.');
+                npc.say('Cada una te quita parte de lo que pierdes al morir, y se gastan todas cuando caes. ' +
+                    'A tu nivel cada una cuesta ' + player.getBlessingCost() + ' de oro; di su nombre, o ' +
+                    '"todas" para las que te falten.');
+            }
+        },
+        ...una
+    ];
+}
+
+function respuestasDeBendiciones() {
+    return [
+        {
+            words: ['todas', 'todas las bendiciones', 'all', 'all blessings'],
+            say: (npc, player) => ofrecer(npc, player, 'todas')
+        },
+        {
+            words: ['si', 'sí', 'vale', 'de acuerdo', 'yes', 'ok', 'okay'],
+            say: (npc, player) => {
+                const oferta = ofertaDe(npc, player);
+                if (!oferta) {
+                    npc.say('No te he ofrecido nada. Preguntame por las "bendiciones".');
+                    return;
+                }
+                npc.ofertaBendicion = null;
+                // Se vuelve a mirar: entre la oferta y el «si» ha podido conseguir alguna.
+                const faltan = oferta.ids.filter((id) => !player.hasBlessing(id));
+                if (faltan.length === 0) {
+                    npc.say('Ya tienes esa bendicion: los dioses no bendicen dos veces lo mismo.');
+                    return;
+                }
+                const precio = player.getBlessingCost() * faltan.length;
+                if (!player.removeMoney(precio)) {
+                    npc.say('No te alcanza: hacen falta ' + precio + ' de oro.');
+                    return;
+                }
+                faltan.forEach((id) => player.addBlessing(id));
+                npc.say(faltan.length === 1
+                    ? 'Los dioses te han bendecido. Que te guarden.'
+                    : 'Los dioses te han dado ' + faltan.length + ' bendiciones. Que te guarden.');
+            }
+        },
+        {
+            words: ['no', 'nope'],
+            say: (npc, player) => {
+                if (ofertaDe(npc, player)) {
+                    npc.ofertaBendicion = null;
+                }
+                npc.say('Como quieras.');
+            }
+        }
+    ];
+}
 
 module.exports = {
 
@@ -36,11 +173,18 @@ module.exports = {
                 'hello', 'hey', 'greetings', 'good morning'],
             greeting: true,
             say: (npc, player) => {
+                // Saludar de nuevo deja sin efecto lo que se le hubiera ofrecido antes.
+                if (ofertaDe(npc, player)) {
+                    npc.ofertaBendicion = null;
+                }
                 // `getName()` y no `player.name`: en el envoltorio el nombre es un metodo.
                 npc.say('Hola, ' + player.getName() + '. Dime "curar" si vienes herido, o ' +
                     '"como estoy" y te digo como llevas el cuerpo.');
             }
         },
+
+        // Las bendiciones: «bendiciones» y el nombre de cada una (ver `palabrasDeBendiciones`).
+        ...palabrasDeBendiciones(),
 
         {
             words: ['curar', 'cura', 'curas', 'sanar', 'sanacion', 'medico', 'remedio',
@@ -99,6 +243,7 @@ module.exports = {
             say: (npc) => {
                 npc.say('El templo te rehace entero cuando caes. Eso si: pierdes experiencia ' +
                     'por el camino.');
+                npc.say('Si quieres perder menos, pideme las "bendiciones".');
             }
         },
 
@@ -137,6 +282,9 @@ module.exports = {
                     'cosas dejan marca: si vuelves herido, ya sabes donde estoy.');
             }
         },
+
+        // «todas», «si» y «no»: al final, para que no tapen a las de arriba.
+        ...respuestasDeBendiciones(),
 
         {
             words: ['adios', 'bye', 'chao', 'hasta luego', 'farewell', 'goodbye', 'see you'],

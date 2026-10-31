@@ -64,7 +64,10 @@ const CREATURE_EVENTS = {
     advance: 'onAdvance',
     login: 'onLogin',
     logout: 'onLogout',
-    attack: 'onAttack'
+    attack: 'onAttack',
+    // El intercambio entre jugadores (engine/world/intercambio.js); `false` lo impide.
+    traderequest: 'onTradeRequest',
+    tradeaccept: 'onTradeAccept'
 };
 
 /** Canales de chat, para el cuarto argumento de `onSay`. */

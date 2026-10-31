@@ -151,6 +151,7 @@ diamonds like Habbo, with the same sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE
 - **NPCs.** Greet them with `hi` (or `hola`) and say goodbye with `bye` (or `adios`); they have
   keywords and trade. The healer heals wounds and poison (`heal`), except in the middle of a
   fight.
+- **Dying costs what it does in TFS:** experience, skills and magic level; your corpse keeps what you lose (the backpack and, by chance, your equipment). The healer's five **blessings** (`blessings`) reduce it and are spent on death; `/bendiciones` and `/muertes [name]` (the death history).
 - **Mounts.** Pick one in the character window (right click on yourself) and mount or dismount with
   **Ctrl+R** or the «Ride» checkbox; they add speed. You can't mount inside a protection zone. They
   live in `data/XML/mounts.js`: everyone has the pack bear and the pig, and the others are given

@@ -146,6 +146,7 @@ rombos como Habbo, con los mismos sprites ([docs/CLIENTE.md §2.5](docs/CLIENTE.
   depósito, arcos con flechas, efectos y proyectiles, y día y noche con luces.
 - **NPC.** Se saluda con `hola` y se despide con `adios`; tienen palabras clave y comercio. El
   sanador cura las heridas y el veneno (`curar`), salvo en pleno combate.
+- **Morir cuesta como en TFS:** experiencia, skills y nivel mágico; queda tu cuerpo con lo que pierdes (la mochila y, a suertes, lo equipado). Las cinco **bendiciones** del sanador (`bendiciones`) lo rebajan y se gastan al morir; `/bendiciones` y `/muertes [nombre]` (el historial).
 - **Monturas.** Se eligen en la ventana del personaje (clic derecho sobre ti) y se monta o desmonta
   con **Ctrl+R** o la casilla «Montar»; suman velocidad. No se monta en una zona de protección.
   Están en `data/XML/mounts.js`: el oso de carga y el cerdo los tiene todo el mundo, y las demás

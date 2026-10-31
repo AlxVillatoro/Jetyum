@@ -169,8 +169,10 @@ export const SERVER = {
     FLOOR_CHANGE: 0x40,
 
     /**
-     * Se abre (o cambia) un contenedor del suelo: un cuerpo, una caja. Un objeto con
-     * `{id, typeId, name, capacity, items: [{index, typeId, count, name}]}`. (En Tibia es el 0x6E.)
+     * Se abre (o cambia) un contenedor: uno del suelo (un cuerpo, una caja, el depósito) o uno que
+     * LLEVAS (una mochila dentro de tu mochila). Un objeto con
+     * `{id, typeId, name, capacity, items: [{index, typeId, count, name, charges?}]}`. (En Tibia es
+     * el 0x6E.) El `id` dice cuál de los dos es: ver `CONTAINER_ID` más abajo.
      */
     CONTAINER_OPEN: 0x34,
 
@@ -192,6 +194,27 @@ export const SERVER = {
      * personaje en el mundo hasta que acabe el combate, que es lo que pasa en Tibia.
      */
     LOGOUT_RESULT: 0x43,
+
+    /**
+     * UNA VENTANA DE TEXTO (el «text window» de Tibia): `[0x46, id, { titulo, texto, editable,
+     * maximo }]`. La abren los scripts —una carta que se lee o se escribe, la lista de invitados de
+     * una casa—. Si es `editable`, el cliente devuelve lo escrito con `CLIENT.TEXT_WINDOW_SAVE` y
+     * el mismo `id`; `maximo` es cuántos caracteres admite.
+     */
+    TEXT_WINDOW: 0x46,
+
+    /**
+     * LA VENTANA DEL INTERCAMBIO ENTRE JUGADORES (el «trade» de Tibia, 0x7D/0x7E allí), entera cada
+     * vez que cambia: `[0x47, { companero, tuya, suya, aceptaste, acepto }]`. `companero` es el nombre
+     * del otro; `tuya` y `suya` las dos ofertas como LISTA PLANA (el objeto y, si es un contenedor,
+     * todo lo de dentro por niveles, como la enseña TFS), cada objeto `{typeId, count, name,
+     * charges}`; `suya` es null hasta que el otro contesta. `aceptaste` / `acepto`: quién ha aceptado
+     * ya. Sólo la recibe quien ya ha ofrecido algo: al invitado le llega un texto.
+     */
+    TRADE: 0x47,
+
+    /** Se cierra la ventana del intercambio (cancelado o hecho; el porqué llega en un texto): `[0x48]`. */
+    TRADE_CLOSE: 0x48,
 
     /**
      * Latido del servidor: el instante del motor y cuántos mensajes se enviaron.
@@ -273,6 +296,26 @@ export const CLIENT = {
      */
     FIGHT_MODES: 0xA0,
 
+    /** Lo escrito en una ventana de texto editable: `[0x89, id, texto]` (ver `SERVER.TEXT_WINDOW`). */
+    TEXT_WINDOW_SAVE: 0x89,
+
+    /**
+     * OFRECER UN OBJETO A OTRO JUGADOR (o contestar con uno al que te ofreció algo): `[0x90, origen,
+     * id del jugador]`. `origen` tiene la forma del de `USE_WITH`: `{ inventario: índice }`,
+     * `{ contenedor: id, hueco }` (de una ventana abierta, tuya o del suelo) o `{ suelo: [x, y, z] }`
+     * (lo de arriba de una casilla a tu lado). Las reglas, en `engine/world/intercambio.js`.
+     */
+    TRADE_REQUEST: 0x90,
+
+    /** Mirar un objeto del intercambio: `[0x91, suya, índice]` (`suya` 1: la oferta del otro). */
+    TRADE_LOOK: 0x91,
+
+    /** Aceptar el intercambio: `[0x92]`. Cuando aceptan los dos, se cambian. */
+    TRADE_ACCEPT: 0x92,
+
+    /** Cancelarlo (cerrar la ventana): `[0x93]`. */
+    TRADE_CLOSE: 0x93,
+
     /** Mirar algo. */
     LOOK: 0x8C,
 
@@ -321,7 +364,10 @@ export const CLIENT = {
     /** Dejar de atacar (el botón «Stop» o Escape). Es el 0xBE de Tibia. */
     CANCEL_ATTACK: 0xBE,
 
-    /** Coger un objeto del contenedor abierto y meterlo en la mochila: `[id, indice]`. */
+    /**
+     * Coger un objeto del contenedor abierto y meterlo en la mochila: `[id, indice]`. Vale para los
+     * del suelo y para los que llevas (id negativo, ver `CONTAINER_ID`).
+     */
     CONTAINER_TAKE: 0x7A,
 
     /** Cerrar la ventana del contenedor: `[id]`. Es el 0x87 de Tibia. */
@@ -352,13 +398,16 @@ export const CLIENT = {
 
     /**
      * USAR un objeto que llevas (en la mochila o puesto): `[indice del inventario]`. Comer, beber
-     * una poción, leer... Es el `onUse` de los scripts con el objeto en tu inventario.
+     * una poción, leer... Es el `onUse` de los scripts con el objeto en tu inventario. Si es un
+     * CONTENEDOR (una mochila dentro de la tuya) y ningún script lo reclama, se ABRE su ventana (o
+     * se cierra, si ya estaba abierta), como en Tibia.
      */
     USE_INVENTORY: 0x83,
 
     /**
      * USAR un objeto que está DENTRO de un contenedor abierto (un cuerpo, una mochila tirada, el
-     * depósito): `[id del contenedor, hueco]`. Clic derecho en su ventana.
+     * depósito o una mochila que llevas): `[id del contenedor, hueco]`. Clic derecho en su ventana.
+     * Si lo de ese hueco es otro contenedor, se abre en su propia ventana.
      */
     USE_CONTAINER: 0x84,
 
@@ -370,7 +419,7 @@ export const CLIENT = {
 
     /**
      * MIRAR un objeto de un panel (los dos botones a la vez): `['inventory', indice]` o
-     * `['container', id del contenedor, hueco]`.
+     * `['container', id del contenedor, hueco]` (del suelo o de uno que llevas).
      */
     LOOK_ITEM: 0x8B,
 
@@ -462,8 +511,12 @@ export function opcodeName(code) {
  * v2: el inventario distingue lo que esta PUESTO de lo que va DENTRO del contenedor -la ranura
  *     `inside`-, y hay un mensaje para mover objetos -`MOVE_ITEM`-. Las dos cosas cambian lo que
  *     significan los mensajes que ya existian, que es justo lo que una version tiene que decir.
+ * v3: CONTENEDORES ANIDADOS. Las ventanas de contenedor pueden ser de uno que llevas (id negativo,
+ *     `CONTAINER_ID`), y mover objeto tiene dos sitios nuevos -`MOVE_FROM.INVENTORY_CONTAINER`,
+ *     `MOVE_TO.INVENTORY` y `MOVE_TO.INVENTORY_CONTAINER`- y un campo al final, `TO_INDEX`. Todo
+ *     lo de la v2 sigue valiendo igual: un cliente v2 no ve las mochilas de dentro, nada más.
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 // ---------------------------------------------------------------------------
 // Constructores de mensajes
@@ -601,8 +654,18 @@ export const MOVE_FROM = {
     GROUND: 'ground',
     /** de la entrada del inventario que se indica. */
     INVENTORY: 'inventory',
-    /** De DENTRO de un contenedor del suelo abierto (el botín de un cuerpo): `FROM_ID` y `FROM_INDEX`. */
-    CONTAINER: 'container'
+    /**
+     * De DENTRO de un contenedor del suelo abierto (el botín de un cuerpo, o una mochila que está
+     * dentro de un cuerpo): `FROM_ID` (su instancia, positiva) y `FROM_INDEX` (el hueco).
+     */
+    CONTAINER: 'container',
+    /**
+     * De DENTRO de un contenedor que LLEVAS y que no es la mochila puesta (una bolsa dentro de tu
+     * mochila, a cualquier profundidad): `FROM_ID` es el id de su ventana -negativo, ver
+     * `CONTAINER_ID`- y `FROM_INDEX` el hueco dentro de ella. Lo que va directamente dentro de la
+     * mochila puesta sigue saliendo con `INVENTORY` y su índice, como en la v2.
+     */
+    INVENTORY_CONTAINER: 'inventoryContainer'
 };
 
 /**
@@ -622,9 +685,52 @@ export const MOVE_TO = {
     /**
      * Dentro de un contenedor DEL SUELO (una mochila tirada, un cuerpo): el de `TO_ID`. Es lo que
      * pasa al soltar algo en su ventana abierta. Soltarlo encima de él en el mapa llega como
-     * `GROUND` y el motor ve que arriba hay un contenedor y lo mete dentro, como en Tibia.
+     * `GROUND` y el motor ve que arriba hay un contenedor y lo mete dentro, como en Tibia. Con
+     * `TO_INDEX`, el hueco de esa ventana sobre el que se soltó: si lo que hay ahí es OTRO
+     * contenedor, va dentro de ése.
      */
-    GROUND_CONTAINER: 'groundContainer'
+    GROUND_CONTAINER: 'groundContainer',
+    /**
+     * ENCIMA de una entrada del inventario (`TO_INDEX`, el mismo índice que manda `INVENTORY`): si
+     * esa entrada es un contenedor -una bolsa dentro de tu mochila- va DENTRO de ella; si no, va a
+     * la mochila, como `CONTAINER`. Es soltar algo sobre el dibujo de una bolsa en el panel.
+     */
+    INVENTORY: 'inventory',
+    /**
+     * Dentro de un contenedor que LLEVAS, por el id de su ventana (`TO_ID`, negativo). Con
+     * `TO_INDEX`, el hueco sobre el que se soltó: si es otro contenedor, va dentro de ése.
+     */
+    INVENTORY_CONTAINER: 'inventoryContainer'
+};
+
+/**
+ * LOS IDS DE LAS VENTANAS DE CONTENEDOR.
+ *
+ * Una ventana de contenedor (`SERVER.CONTAINER_OPEN`, `CLIENT.CLOSE_CONTAINER`, `USE_CONTAINER`,
+ * `CONTAINER_TAKE`, `LOOK_ITEM` y los `FROM_ID`/`TO_ID` de mover) se nombra con UN NÚMERO, y el
+ * SIGNO dice de qué clase es:
+ *
+ *   - POSITIVO: un objeto del mundo, por su INSTANCIA (`item.instanceId`). Un cuerpo, una caja, el
+ *     depósito, una mochila tirada... o una mochila que está DENTRO de una de ésas, que también es
+ *     un objeto del mundo con su instancia.
+ *   - NEGATIVO: un contenedor que LLEVA EL JUGADOR. Las entradas del inventario no son objetos del
+ *     mundo -no tienen instancia ni casilla-, así que el motor le da a cada contenedor que llevas un
+ *     identificador de ejecución (`entry.uid`) sacado del MISMO contador que las instancias, y la
+ *     ventana se llama `-uid`. No se guarda en la base: es de esta ejecución, y al volver a entrar
+ *     se reparte otro. Se conserva mientras la mochila se mueva DENTRO de tu inventario (es la
+ *     misma entrada); si sale -al suelo, a un cuerpo-, pasa a ser un objeto del mundo con su
+ *     instancia, y la ventana de antes se cierra.
+ *
+ * El signo y no un campo aparte, porque un campo aparte se tendría que mandar en todos los mensajes
+ * que llevan el id, y un mensaje que lo olvidara confundiría una mochila tuya con un cuerpo. Con el
+ * signo, el id solo ya dice dónde buscarlo. Y no chocan: el contador da números positivos y únicos
+ * en todo el mundo, así que `-uid` no puede ser nunca la instancia de nada.
+ */
+export const CONTAINER_ID = {
+    /** ¿Es la ventana de un contenedor que lleva el jugador (y no de uno del suelo)? */
+    esPropio: (id) => Number(id) < 0,
+    /** El id de ventana de un contenedor que lleva el jugador, a partir de su `uid`. */
+    dePropio: (uid) => -Math.abs(Number(uid))
 };
 
 /**
@@ -640,15 +746,15 @@ export const MOVE_TO = {
  * fallo de tenerlas desacuerdo es un objeto que se mueve a donde no debe.
  */
 export const MOVE_ITEM_FIELD = {
-    /** `MOVE_FROM.GROUND` o `MOVE_FROM.INVENTORY`. */
+    /** Uno de `MOVE_FROM`. */
     FROM_KIND: 1,
     /** La casilla de origen, cuando el origen es el suelo. */
     FROM_X: 2,
     FROM_Y: 3,
     FROM_Z: 4,
-    /** La entrada del inventario, cuando el origen es el inventario. */
+    /** La entrada del inventario, cuando el origen es el inventario; el hueco, si es una ventana. */
     FROM_INDEX: 5,
-    /** `MOVE_TO.GROUND`, `MOVE_TO.SLOT` o `MOVE_TO.CONTAINER`. */
+    /** Uno de `MOVE_TO`. */
     TO_KIND: 6,
     /** La casilla de destino, cuando el destino es el suelo. */
     TO_X: 7,
@@ -656,10 +762,24 @@ export const MOVE_ITEM_FIELD = {
     TO_Z: 9,
     /** La ranura de destino, cuando el destino es una ranura de equipo. */
     TO_SLOT: 10,
-    /** La instancia del contenedor del suelo, cuando `FROM_KIND` es `MOVE_FROM.CONTAINER`. */
+    /**
+     * El id de la ventana de origen, cuando `FROM_KIND` es `MOVE_FROM.CONTAINER` (positivo) o
+     * `MOVE_FROM.INVENTORY_CONTAINER` (negativo). Ver `CONTAINER_ID`.
+     */
     FROM_ID: 11,
-    /** La instancia del contenedor del suelo, cuando `TO_KIND` es `MOVE_TO.GROUND_CONTAINER`. */
-    TO_ID: 12
+    /**
+     * El id de la ventana de destino, cuando `TO_KIND` es `MOVE_TO.GROUND_CONTAINER` (positivo) o
+     * `MOVE_TO.INVENTORY_CONTAINER` (negativo).
+     */
+    TO_ID: 12,
+    /**
+     * EL HUECO SOBRE EL QUE SE SOLTÓ (v3), o -1 / ausente si se soltó en la ventana sin más. Con
+     * `MOVE_TO.INVENTORY` es el índice de inventario; con `GROUND_CONTAINER` e
+     * `INVENTORY_CONTAINER`, el hueco de esa ventana. Si lo que hay ahí es un contenedor, el objeto
+     * va DENTRO de él, como en Tibia. Va al final para que un mensaje de la v2 -que no lo trae- se
+     * lea igual que antes.
+     */
+    TO_INDEX: 13
 };
 
 export const LOGIN_FIELD = {

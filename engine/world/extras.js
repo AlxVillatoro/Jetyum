@@ -10,7 +10,8 @@
  *   - los GRUPOS (party): invitar, entrar, salir y repartir la experiencia;
  *   - las CALAVERAS: blanca al atacar a quien no la lleva, roja al matar a demasiados;
  *   - los MENSAJES PRIVADOS y de grupo;
- *   - el DEPÓSITO: un cofre con lo de cada jugador, que se guarda con él.
+ *   - el DEPÓSITO: un cofre con lo de cada jugador, uno por ciudad, que se guarda con él (lo que
+ *     LLEGA al depósito -el correo, lo de una casa perdida- está en `correo.js`).
  *
  * Se mezcla en `World` (`Object.assign(World.prototype, extras)`): son métodos del mundo, pero en
  * un archivo propio para que `world.js` no siga creciendo.
@@ -87,16 +88,19 @@ const extras = {
         return true;
     },
 
-    /** Gasta `count` de una entrada del inventario (la poción que se bebe). Devuelve si pudo. */
+    /**
+     * Gasta `count` de una entrada del inventario (la poción que se bebe). Devuelve si pudo. La
+     * entrada puede estar en cualquier sitio de lo que lleva: puesta, en la mochila o dentro de una
+     * bolsa de la mochila (`contenedores.js`).
+     */
     consumeEntry(player, entry, count) {
         const cuantos = Math.max(1, Math.trunc(Number(count) || 1));
-        if (!player || !entry || !player.inventory.includes(entry) || entry.count < cuantos) {
+        if (!player || !entry || !this.tieneEntrada(player, entry) || entry.count < cuantos) {
             return false;
         }
         entry.count -= cuantos;
         if (entry.count <= 0) {
-            player.inventory.splice(player.inventory.indexOf(entry), 1);
-            this._reindexInventory(player.inventory);
+            this._desprenderEntrada(player, entry);
         }
         this.recomputeEquipment(player);
         this.emit('onInventoryChange', player);
@@ -418,48 +422,96 @@ const extras = {
     // -----------------------------------------------------------------------
 
     /**
-     * EL DEPÓSITO DE UN JUGADOR: un contenedor que sólo es suyo, el mismo en cualquier cofre de
-     * depósito. Por dentro es un objeto contenedor (así sirven la ventana, arrastrar y coger) sin
-     * casilla propia: toma la del cofre que se abrió, para que «estar al lado» funcione.
-     * Lo que hay dentro se guarda con el personaje (`player.deposito`).
+     * EL DEPÓSITO DE UN JUGADOR EN UNA CIUDAD: un contenedor que sólo es suyo, el mismo en todos los
+     * cofres de depósito de esa ciudad, y OTRO en cada ciudad (como en Tibia: lo que dejas en una
+     * ciudad no se saca en otra). La ciudad la dice el cofre (`ciudadDeCofre`); sin cofre, `ciudad`,
+     * y sin ninguno de los dos, la del jugador (`ciudadDelJugador`).
+     *
+     * Por dentro es un objeto contenedor (así sirven la ventana, arrastrar y coger) sin casilla
+     * propia: toma la del cofre que se abrió, para que «estar al lado» funcione. Se monta la primera
+     * vez que hace falta y vive en `player.depotItems` (ciudad -> objeto) hasta que sale.
+     *
+     * Lo que hay dentro se guarda con el personaje (`player.depositos`, `{ idDeCiudad: [árboles] }`),
+     * COMO ÁRBOL: una bolsa guardada en el depósito vuelve con lo suyo dentro (`objetoParaGuardar` /
+     * `objetoDesdeGuardado` de `contenedores.js`). Un depósito guardado antes no trae `contents` y se
+     * carga igual, y uno de cuando había UN depósito por jugador (`player.deposito`) es el de su
+     * ciudad (`_depositosDe`).
      */
-    depotOf(player, cofre) {
-        if (!player.depotItem) {
+    depotOf(player, cofre, ciudad) {
+        const id = ciudad !== undefined && ciudad !== null ? Number(ciudad)
+            : (cofre ? this.ciudadDeCofre(cofre, player) : this.ciudadDelJugador(player));
+        if (!(player.depotItems instanceof Map)) {
+            player.depotItems = new Map();
+        }
+        let deposito = player.depotItems.get(id);
+        if (!deposito) {
             const def = this.itemTypes.get(cofre ? cofre.typeId : 0) || this.itemTypes.get(this.depotItemId);
             if (!def) {
                 return null;
             }
-            const deposito = new Item(def, { count: 1 });
+            deposito = new Item(def, { count: 1 });
             deposito.instanceId = this._allocateItemId();
             deposito.attributes = { ...(deposito.attributes || {}), containerSize: HUECOS_DEPOSITO, depot: 1 };
             deposito.isDepot = true;
             deposito.ownerId = player.id;
+            deposito.townId = id;
             deposito.contents = [];
-            (player.deposito || []).forEach((guardado) => {
-                const dentro = this.addToGroundContainer(deposito, guardado.typeId, guardado.count);
-                if (dentro && guardado.attributes) {
-                    dentro.attributes = { ...guardado.attributes };
+            (this._depositosDe(player)[String(id)] || []).forEach((guardado) => {
+                // Cada cosa con su árbol, tal cual se guardó (las pilas ya venían de 100 como mucho).
+                const dentro = guardado && guardado.contents
+                    ? this.objetoDesdeGuardado(guardado, deposito) : null;
+                if (dentro) {
+                    deposito.contents.push(dentro);
+                    return;
+                }
+                const suelto = guardado ? this.addToGroundContainer(deposito, guardado.typeId, guardado.count) : null;
+                if (suelto && guardado.attributes) {
+                    suelto.attributes = { ...guardado.attributes };
                 }
             });
             this.items.set(deposito.instanceId, deposito);
-            player.depotItem = deposito;
+            player.depotItems.set(id, deposito);
         }
         if (cofre && cofre.position) {
-            player.depotItem.position = cofre.position;
+            deposito.position = cofre.position;
         }
-        return player.depotItem;
+        return deposito;
     },
 
-    /** Lo que hay en el depósito, listo para guardar (lo llama el repositorio al guardar). */
-    depotSnapshot(player) {
-        if (!player.depotItem) {
-            return player.deposito || [];
+    /**
+     * LOS DEPÓSITOS GUARDADOS de un jugador, `{ idDeCiudad: [árboles] }`, creados si no los tiene.
+     * Un personaje de cuando había un solo depósito trae `player.deposito` y no `player.depositos`:
+     * aquel es el de su ciudad. Si trae los dos manda `depositos` (`deposito` es sólo su copia).
+     */
+    _depositosDe(player) {
+        if (!player.depositos || typeof player.depositos !== 'object' || Array.isArray(player.depositos)) {
+            player.depositos = {};
+            if (Array.isArray(player.deposito) && player.deposito.length > 0) {
+                player.depositos[String(this.ciudadDelJugador(player))] = player.deposito.slice();
+            }
         }
-        player.deposito = this.contentsOfItem(player.depotItem).map((item) => ({
-            typeId: item.typeId,
-            count: item.count,
-            attributes: item.attributes && Object.keys(item.attributes).length ? { ...item.attributes } : null
-        }));
+        return player.depositos;
+    },
+
+    /**
+     * Lo que hay en los depósitos, listo para guardar (lo llama el repositorio al guardar): pone al
+     * día `player.depositos` con los que estén montados y devuelve EL DE SU CIUDAD, que es lo que
+     * devolvía cuando había uno solo (y lo que queda en `player.deposito`, su copia).
+     */
+    depotSnapshot(player) {
+        const depositos = this._depositosDe(player);
+        if (player.depotItems instanceof Map) {
+            player.depotItems.forEach((deposito, ciudad) => {
+                depositos[String(ciudad)] = this.contentsOfItem(deposito).map((item) => this.objetoParaGuardar(item));
+            });
+        }
+        // Una ciudad sin nada no se guarda: el JSON del progreso no crece con depósitos vacíos.
+        Object.keys(depositos).forEach((clave) => {
+            if (!Array.isArray(depositos[clave]) || depositos[clave].length === 0) {
+                delete depositos[clave];
+            }
+        });
+        player.deposito = depositos[String(this.ciudadDelJugador(player))] || [];
         return player.deposito;
     },
 
@@ -469,13 +521,42 @@ const extras = {
             (item.attributes && Number(item.attributes.depot) === 1)));
     },
 
-    /** Al salir, el depósito se olvida del mundo (sus objetos se guardan en `player.deposito`). */
+    /**
+     * DE QUÉ CIUDAD ES UN COFRE DE DEPÓSITO: la de su atributo `townId` si lo tiene (el mapa lo
+     * puede decir); si no, la del templo más cercano en su planta; si no hay ninguno en su planta,
+     * la del más cercano en cualquiera. Un mapa sin ciudades no tiene más que una: la del jugador.
+     */
+    ciudadDeCofre(cofre, player) {
+        const propia = cofre && cofre.attributes ? Number(cofre.attributes.townId) : 0;
+        if (propia > 0) {
+            return propia;
+        }
+        const ciudades = ((this.map && this.map.towns) || []).filter((t) => t && t.temple);
+        const donde = cofre ? (this.posicionDeObjeto ? this.posicionDeObjeto(cofre) : null) || cofre.position : null;
+        if (!donde || ciudades.length === 0) {
+            return this.ciudadDelJugador(player);
+        }
+        const distancia = (t) => Math.hypot(t.temple.x - donde.x, t.temple.y - donde.y);
+        const cercana = (lista) => lista.reduce((mejor, t) => (!mejor || distancia(t) < distancia(mejor) ? t : mejor), null);
+        const enSuPlanta = ciudades.filter((t) => t.temple.z === donde.z);
+        return (cercana(enSuPlanta) || cercana(ciudades)).id;
+    },
+
+    /** La ciudad de un jugador para su depósito: la suya (`townOf`) o, si el mapa no tiene, la 1. */
+    ciudadDelJugador(player) {
+        const ciudad = this.townOf ? this.townOf(player) : null;
+        return ciudad ? Number(ciudad.id) : (Number(player && player.townId) || 1);
+    },
+
+    /** Al salir, los depósitos se olvidan del mundo (sus objetos se guardan en `player.depositos`). */
     forgetDepot(player) {
-        if (player && player.depotItem) {
+        if (player && player.depotItems instanceof Map) {
             this.depotSnapshot(player);
-            this.contentsOfItem(player.depotItem).forEach((item) => this.items.delete(item.instanceId));
-            this.items.delete(player.depotItem.instanceId);
-            player.depotItem = null;
+            player.depotItems.forEach((deposito) => {
+                this.contentsOfItem(deposito).forEach((item) => this._olvidarObjeto(item));
+                this.items.delete(deposito.instanceId);
+            });
+            player.depotItems = null;
         }
     },
 

@@ -28,6 +28,14 @@ const { levelForExperience, experienceToNextLevel, applyExperienceStages } =
     require('./experience');
 const Vocacion = require('./vocacion');
 const { VOCACION_BASE } = require('../data/definiciones');
+// Lo que cuesta morir (las bendiciones y las cuentas del castigo de TFS): ver engine/world/muerte.js.
+const Muerte = require('./muerte');
+
+/**
+ * El cuerpo de un jugador si `playerCorpseId` (config.js) no dice otro: «dead human» del OpenTibia
+ * Sprite Pack, que es contenedor de 10 huecos y se pudre (fresco -> podrido -> huesos).
+ */
+const CUERPO_DE_JUGADOR = 12246;
 
 /** Probabilidad de botín expresada sobre 100.000, como en Tibia. */
 const LOOT_CHANCE_BASE = 100000;
@@ -698,10 +706,13 @@ class Combat {
         // muerte que hayas causado, y sumarla haría que las estadísticas dijeran lo
         // contrario de lo que pasó.
         if (target.isPlayer && target.isPlayer()) {
+            // ¿Muerte INJUSTA? Se mira ANTES de apuntarla (`notePvpKill`), que es lo que puede
+            // cambiar calaveras: la de la víctima es la que tenía al caer. Va al historial.
+            const injusta = this._muerteInjusta(target, killer);
             if (killer && killer.isPlayer && killer.isPlayer() && this.world && this.world.notePvpKill) {
                 this.world.notePvpKill(killer, target);
             }
-            return this.handlePlayerDeath(target, killer);
+            return this.handlePlayerDeath(target, killer, { unjustified: injusta });
         }
 
         this.stats.kills += 1;
@@ -739,39 +750,69 @@ class Combat {
     /**
      * Resuelve la muerte de un jugador.
      *
-     * LAS TRES COSAS QUE PASAN, y por qué cada una:
+     * LO QUE PASA, en el orden de `Player::death` y `Player::dropCorpse` de TFS, y por qué:
      *
-     * 1. PIERDE EXPERIENCIA, un porcentaje configurable. Sin castigo, morir no cuesta
-     *    nada y el combate deja de tener tensión; es la razón de que en Tibia importe
-     *    no morir.
-     * 2. SUELTA EL INVENTARIO en el sitio donde cayó. Es lo que hace Tibia, y es lo que
-     *    convierte recoger cosas en una decisión: llevarlo todo encima tiene un precio.
-     *    Se puede apagar con `deathDropInventory`, porque para un servidor de pruebas es
-     *    molesto.
-     * 3. REAPARECE en el templo con la vida llena. Es lo único que puede hacer: dejarlo
-     *    a cero de vida en el sitio sería dejarlo atrapado sin poder jugar.
+     * 1. PIERDE EXPERIENCIA, SKILLS Y NIVEL MÁGICO, el mismo porcentaje de las tres cosas
+     *    (`deathLosePercent`, ver `Muerte.porcentajeDePerdida`), con un 8 % menos por cada
+     *    bendición y un 30 % menos si su vocación es una promoción. Sin castigo, morir no cuesta
+     *    nada y el combate deja de tener tensión; es la razón de que en Tibia importe no morir.
+     * 2. PIERDE COSAS. Con `deathItemLoss` (config.js, el modo de TFS) queda su CUERPO donde cayó
+     *    y dentro va lo que pierde: la mochila con todo lo de dentro (100 % sin bendiciones) y
+     *    cada objeto equipado con un 10 %; cada bendición baja las dos probabilidades y con las
+     *    cinco no se pierde nada. Sin `deathItemLoss`, el modo de antes: TODO al suelo. Y con
+     *    `deathDropInventory: false`, nada (para un servidor de pruebas).
+     * 3. SE GASTAN SUS BENDICIONES, todas: hay que volver a comprarlas.
+     * 4. REAPARECE en el templo con la vida llena. Es lo único que puede hacer: dejarlo a cero de
+     *    vida en el sitio sería dejarlo atrapado sin poder jugar.
      *
-     * @returns {Array} lo que soltó
+     * Y SE AVISA con `onPlayerDeath(jugador, asesino, soltado, info)`: `info` lleva lo que el
+     * historial de muertes guarda (nivel AL MORIR, quién lo mató, si fue otro jugador y si fue
+     * injusta) y lo que perdió, para que nadie tenga que deducirlo comparando antes y después.
+     *
+     * @param {Object} [opciones] `unjustified`: si la mató otro jugador sin derecho (handleDeath)
+     * @returns {Array} lo que soltó (lo que va dentro del cuerpo, o al suelo)
      */
-    handlePlayerDeath(player, killer) {
-        const dropped = [];
+    handlePlayerDeath(player, killer, opciones) {
+        const opts = opciones || {};
+        const vocacion = this.world.vocationOf ? this.world.vocationOf(player) : VOCACION_BASE;
+        const bendiciones = Muerte.contarBendiciones(player);
+        const nivelAlMorir = player.level;
+        const dondeCayo = { x: player.position.x, y: player.position.y, z: player.position.z };
+        const killerIsPlayer = Boolean(killer && killer.isPlayer && killer.isPlayer());
+        const perdida = { porcentaje: 0, experiencia: 0, skills: {}, magia: null, bendiciones: bendiciones };
 
-        // --- 1. La experiencia ---
-        const percent = this.config.deathLosePercent === undefined
-            ? 10 : Number(this.config.deathLosePercent);
+        // --- 1. La experiencia, las skills y el nivel mágico ---
+        const porcentaje = Muerte.porcentajeDePerdida(player, vocacion, {
+            deathLosePercent: this.config.deathLosePercent,
+            bendiciones: bendiciones
+        });
+        perdida.porcentaje = porcentaje;
 
-        if (percent > 0 && player.experience > 0) {
-            const lost = Math.floor(player.experience * percent / 100);
+        if (porcentaje > 0 && player.experience > 0) {
+            const lost = Math.floor(player.experience * porcentaje / 100);
             player.experience = Math.max(0, player.experience - lost);
             player.level = levelForExperience(player.experience, 1);
+            perdida.experiencia = lost;
+        }
+        if (porcentaje > 0) {
+            const skills = Muerte.aplicarPerdidaDeSkills(player, vocacion, porcentaje);
+            perdida.skills = skills.skills;
+            perdida.magia = skills.magia;
         }
 
-        // --- 2. El inventario ---
-        if (this.config.deathDropInventory !== false &&
+        // --- 2. Las cosas ---
+        let dropped = [];
+        let corpse = null;
+        if (this.config.deathItemLoss === true) {
+            corpse = this._cuerpoDeJugador(player, killer, dondeCayo);
+            if (this.config.deathDropInventory !== false) {
+                dropped = this._perderObjetosAlMorir(player, corpse, dondeCayo, bendiciones);
+            }
+        } else if (this.config.deathDropInventory !== false &&
             player.inventory instanceof Array && player.inventory.length > 0) {
 
             /*
-             * SE SUELTAN TODOS, Y LA MOCHILA LA ULTIMA.
+             * EL MODO DE ANTES: SE SUELTAN TODOS, Y LA MOCHILA LA ULTIMA.
              *
              * Suelta primero lo que NO es el contenedor y deja el contenedor para el final, y ese
              * orden es la diferencia entre soltar todo y soltar casi todo: la mochila no se puede
@@ -796,7 +837,10 @@ class Combat {
             }
         }
 
-        // --- 3. Reaparecer: en el templo de SU ciudad (reglas.js), y ya fuera de combate ---
+        // --- 3. Las bendiciones se gastan, todas (TFS `Player::death`) ---
+        Muerte.quitarTodas(player);
+
+        // --- 4. Reaparecer: en el templo de SU ciudad (reglas.js), y ya fuera de combate ---
         const temple = this.world.templeOf ? this.world.templeOf(player)
             : (this.world.map ? this.world.map.getWaypoint('temple') : null);
         const spawn = this.config.templePosition ||
@@ -825,6 +869,34 @@ class Combat {
             }
         });
 
+        // Lo que ha perdido, dicho: el nivel como en TFS («You were downgraded...»), y que las
+        // bendiciones se han ido, que si no nadie se entera hasta la siguiente muerte.
+        if (this.world.sendTextMessage) {
+            if (player.level < nivelAlMorir) {
+                this.world.sendTextMessage(player.id, 'Has bajado del nivel ' + nivelAlMorir +
+                    ' al nivel ' + player.level + '.');
+            }
+            if (bendiciones > 0) {
+                this.world.sendTextMessage(player.id, 'Tus bendiciones te protegieron y se han gastado.');
+            }
+        }
+
+        const info = {
+            time: this.world.now(),
+            level: nivelAlMorir,
+            killedBy: killer && killer.name ? killer.name : '',
+            isPlayer: killerIsPlayer,
+            unjustified: killerIsPlayer && opts.unjustified === true,
+            // Quien hizo MÁS daño no se lleva todavía (el combate no apunta el daño por atacante): se
+            // deja vacío en vez de repetir al asesino, que sería un dato inventado.
+            mostDamageBy: '',
+            mostDamageIsPlayer: false,
+            position: dondeCayo,
+            corpse: corpse,
+            loss: perdida
+        };
+        this.lastPlayerDeath = info;
+
         /*
          * Se avisa DESPUÉS de resucitarlo, y ese orden importa: quien escuche el aviso
          * y mire al jugador tiene que verlo vivo y en el templo, no a cero de vida y en
@@ -832,9 +904,161 @@ class Combat {
          * con un muerto, que es lo que se quiere evitar.
          */
         this.world.emit('onDeath', player, killer || null, dropped);
-        this.world.emit('onPlayerDeath', player, killer || null, dropped);
+        this.world.emit('onPlayerDeath', player, killer || null, dropped, info);
 
         return dropped;
+    }
+
+    /**
+     * ¿La mató otro jugador SIN DERECHO? Como `notePvpKill` (extras.js): un jugador que mata a otro
+     * que no lleva calavera y no va en su grupo. Es la columna `unjustified` del historial.
+     */
+    _muerteInjusta(victima, killer) {
+        if (!killer || !killer.isPlayer || !killer.isPlayer() || killer === victima || !this.world) {
+            return false;
+        }
+        if (this.world.sameParty && this.world.sameParty(killer, victima)) {
+            return false;
+        }
+        return !(this.world.skullOf && this.world.skullOf(victima));
+    }
+
+    /**
+     * EL CUERPO DEL JUGADOR, donde cayó: un contenedor del suelo como el de un monstruo (el mismo
+     * `createCorpse`, con el `playerCorpseId` de config.js), que se pudre y desaparece. Se crea
+     * siempre en el modo de TFS, aunque no se pierda nada: en Tibia el cuerpo queda igual.
+     */
+    _cuerpoDeJugador(player, killer, dondeCayo) {
+        if (!this.world.createCorpse) {
+            return null;
+        }
+        const id = Number(this.config.playerCorpseId) || CUERPO_DE_JUGADOR;
+        const corpse = this.world.createCorpse({
+            name: player.name,
+            position: dondeCayo,
+            monsterType: { corpse: id }
+        });
+        if (corpse && corpse.attributes && killer && killer.name) {
+            corpse.attributes.killedBy = killer.name;
+        }
+        return corpse;
+    }
+
+    /**
+     * LO QUE SE PIERDE AL MORIR, AL CUERPO (data/scripts/creaturescripts/others/droploot.lua de TFS).
+     *
+     * ESTÁ TODO AQUÍ A PROPÓSITO, y sólo con la API pública del mundo (`equipmentOf`, `contentsOf`,
+     * `addToGroundContainer`, `dropItemAt`, `equipStartingContainer`): el modelo del inventario
+     * -hoy una lista plana con la ranura `inside` para lo de dentro de la mochila- va a cambiar, y
+     * esta es la única función que hay que adaptar cuando cambie.
+     *
+     *   - Cada pieza EQUIPADA se tira a suertes (`this.random`, inyectable en las pruebas): el
+     *     contenedor con `contenedor` %, lo demás con `objeto` % (Muerte.probabilidadesDePerdida).
+     *     Con la calavera roja, todo; con el amuleto de pérdida («amulet of loss», si existe en
+     *     items.xml) puesto y sin calavera roja, nada, y el amuleto se gasta.
+     *   - La mochila va ENTERA, con lo de dentro dentro de ella, y no suelto en el cuerpo.
+     *   - Si no cabe en el cuerpo (o no hay cuerpo), cae al suelo donde murió: perderlo siempre es
+     *     mejor que hacerlo desaparecer.
+     *   - Y si se quedó sin mochila se le pone la de inicio, como la bolsa que da TFS: sin
+     *     contenedor no se puede coger nada del suelo, ni siquiera lo que acaba de perder.
+     *   - Un personaje sin vocación (`None`, el de Rookgaard) no pierde nada, como en TFS.
+     *
+     * @returns {Array} lo que perdió: los objetos del cuerpo (o del suelo)
+     */
+    _perderObjetosAlMorir(player, corpse, dondeCayo, bendiciones) {
+        const world = this.world;
+        const perdido = [];
+        if (!(player.inventory instanceof Array) || player.inventory.length === 0) {
+            return perdido;
+        }
+        const vocacion = world.vocationOf ? world.vocationOf(player) : null;
+        if (!vocacion || Number(vocacion.id) === 0) {
+            return perdido;
+        }
+
+        const roja = (world.skullOf ? world.skullOf(player) : player.skull) === 'roja';
+        const amuleto = this._typeIdByName('amulet of loss');
+        const collar = amuleto ? world.equipmentOf(player).find((e) => e.typeId === amuleto) : null;
+        if (collar && !roja) {
+            player.inventory.splice(player.inventory.indexOf(collar), 1);
+            this._despuesDeQuitar(player);
+            return perdido;
+        }
+
+        const chances = Muerte.probabilidadesDePerdida(bendiciones, roja);
+        const pierde = (p) => p >= 100 || (p > 0 && this.random() * 100 < p);
+
+        const contenedor = world.containerOf(player);
+        world.equipmentOf(player).forEach((entry) => {
+            const esContenedor = entry === contenedor || world.isContainerEntry(entry);
+            if (!pierde(esContenedor ? chances.contenedor : chances.objeto)) {
+                return;
+            }
+            const dentro = entry === contenedor ? world.contentsOf(player)
+                : (Array.isArray(entry.contents) ? entry.contents : []);
+            const item = this._alCuerpo(corpse, entry, dentro, dondeCayo);
+            if (!item) {
+                return;
+            }
+            [entry, ...dentro].forEach((e) => {
+                const i = player.inventory.indexOf(e);
+                if (i !== -1) {
+                    player.inventory.splice(i, 1);
+                }
+            });
+            perdido.push(item);
+        });
+
+        if (perdido.length > 0) {
+            this._despuesDeQuitar(player);
+            if (world.equipStartingContainer) {
+                world.equipStartingContainer(player);
+            }
+        }
+        return perdido;
+    }
+
+    /**
+     * Mete una entrada del inventario (y lo que lleve dentro) en el cuerpo, con sus atributos. Si no
+     * cabe, al suelo donde cayó. Devuelve el objeto puesto, o null si no se pudo poner en ningún sitio.
+     */
+    _alCuerpo(corpse, entry, dentro, dondeCayo) {
+        const world = this.world;
+        const conAtributos = (item, de) => {
+            if (item && de.attributes && Object.keys(de.attributes).length > 0 && !world.esApilable(de.typeId)) {
+                item.attributes = { ...item.attributes, ...de.attributes };
+            }
+            return item;
+        };
+        const puesto = corpse && corpse.isContainer
+            ? conAtributos(world.addToGroundContainer(corpse, entry.typeId, entry.count), entry)
+            : null;
+        const item = puesto || conAtributos(world.createItem(entry.typeId, entry.count, dondeCayo), entry);
+        if (!item) {
+            return null;
+        }
+        // Lo de dentro, y lo de dentro de lo de dentro: una bolsa dentro de la mochila lleva lo suyo
+        // en `entry.contents` (engine/world/contenedores.js), y tiene que llegar al cuerpo con ello.
+        const meter = (destino, entradas) => entradas.forEach((e) => {
+            const cosa = conAtributos(world.addToGroundContainer(destino, e.typeId, e.count), e) ||
+                conAtributos(world.createItem(e.typeId, e.count, dondeCayo), e);
+            if (cosa && Array.isArray(e.contents) && e.contents.length > 0) {
+                meter(cosa, e.contents);
+            }
+        });
+        meter(item, dentro);
+        return item;
+    }
+
+    /** Después de quitar cosas del inventario: posiciones seguidas, el equipo recalculado y el aviso. */
+    _despuesDeQuitar(player) {
+        player.inventory.forEach((entry, index) => {
+            entry.position = index;
+        });
+        if (this.world.recomputeEquipment) {
+            this.world.recomputeEquipment(player);
+        }
+        this.world.emit('onInventoryChange', player);
     }
 
     /**

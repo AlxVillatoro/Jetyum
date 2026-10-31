@@ -127,8 +127,10 @@ function main() {
 
         // Ya estan leidos todos los ficheros, asi que ahora si se pueden contar los que crea
         // el propio JavaScript. Ver la explicacion de arriba.
+        // Y los que se ponen a mano a un elemento creado (`estilo.id = 'diagnostico-estilos'`).
         sourceCache.forEach((text) => {
             [...text.matchAll(/id="([^"]+)"/g)].forEach((match) => defined.add(match[1]));
+            [...text.matchAll(/\.id\s*=\s*'([^']+)'/g)].forEach((match) => defined.add(match[1]));
         });
 
         const missing = [...wanted.keys()].filter((id) => !defined.has(id));

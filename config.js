@@ -169,8 +169,20 @@ module.exports = {
     // El inventario se suelta en el sitio donde cayó, lo que convierte llevar cosas
     // encima en una decisión. Para un servidor de pruebas es molesto, así que se puede
     // apagar.
+    //
+    // `deathLosePercent` es el porcentaje de experiencia, de skills y de nivel mágico que se
+    // pierde (-1: la fórmula de TFS por nivel). Cada bendición lo baja un 8 % y ser de una
+    // vocación promocionada un 30 % (engine/world/muerte.js).
+    //
+    // `deathItemLoss` es el modo de TFS: queda el CUERPO del jugador (`playerCorpseId`, un «dead
+    // human») donde cayó y dentro va lo que pierde: la mochila entera con un 100 % - 20 % por
+    // bendición y cada objeto equipado con un 10 % - 2 % por bendición; con las cinco
+    // bendiciones, nada. En false se suelta TODO al suelo, como antes. Y `deathDropInventory:
+    // false` hace que no se pierda ningún objeto.
     deathLosePercent: 10,
     deathDropInventory: true,
+    deathItemLoss: true,
+    playerCorpseId: 12246,
 
     // -----------------------------------------------------------------------
     // Scripting
@@ -199,6 +211,17 @@ module.exports = {
     // El cofre de DEPÓSITO (cada jugador guarda allí lo suyo, y se guarda con él). Se pone uno
     // junto al templo al arrancar (data/scripts/globalevents/arranque.js).
     depotItemId: 11112,
+
+    // LAS CASAS (engine/world/casas.js), como en TFS. Una casa cuesta `housePriceEachSQM` de oro por
+    // cada casilla y se compra con `!buyhouse` mirando su puerta, con el saldo del BANCO y a partir de
+    // `houseLevel`. El alquiler (el `rent` de cada casa en el mapa) se cobra del banco cada
+    // `houseRentPeriod`: 'never' | 'daily' | 'weekly' | 'monthly'; tras 7 avisos sin pagar se pierde.
+    // `bedItems`: las camas (cabecera, pies al sur, y sus dibujos ocupadas); un objeto con el
+    // atributo `bed` en items.xml también lo es.
+    housePriceEachSQM: 1000,
+    houseLevel: 1,
+    houseRentPeriod: 'monthly',
+    bedItems: [{ head: 21050, foot: 21051, headOccupied: 21052, footOccupied: 21053 }],
 
     // PvP: matar a `redSkullKills` jugadores sin calavera en `redSkullTime` da la calavera ROJA, que
     // dura eso mismo. Atacar a quien no la lleva pone la BLANCA durante `whiteSkullTime`.

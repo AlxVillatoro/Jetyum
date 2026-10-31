@@ -1,5 +1,12 @@
 /**
- * LAS VENTANAS DE LOS CONTENEDORES DEL SUELO: los cuerpos o cajas que abres con clic derecho.
+ * LAS VENTANAS DE LOS CONTENEDORES: los del suelo (los cuerpos o cajas que abres con clic derecho,
+ * el depósito) y LOS QUE LLEVAS (una bolsa dentro de tu mochila, a cualquier profundidad).
+ *
+ * LAS DOS CLASES SE PINTAN IGUAL Y SE DISTINGUEN POR EL SIGNO DEL ID (`CONTAINER_ID` en
+ * `shared/js/protocol.mjs`): positivo, un objeto del mundo; negativo, uno tuyo. Lo único que cambia
+ * es lo que se le pide al motor al arrastrar desde o hacia la ventana (`data-destino`), y que en las
+ * tuyas no hay «coger todo»: ya es tuyo. Dentro de una ventana, CLIC DERECHO SOBRE OTRA BOLSA LA ABRE
+ * en su propia ventana, y SOLTAR ALGO ENCIMA DE UNA BOLSA lo mete dentro de ella.
  *
  * Puede haber varios abiertos a la vez, como en Tibia, y CADA UNO SE ABRE DEBAJO DE LO QUE YA
  * TENÍAS ABIERTO. Si ya no cabe, se cierra el último contenedor que tenías abierto en esa columna
@@ -10,8 +17,9 @@
  * alejas o el cuerpo se pudre.
  */
 
-import { iconoDeObjeto } from './panels.js';
+import { iconoDeObjeto, numeroDeEsquina } from './panels.js';
 import { pintarIconos } from './iconos.js';
+import { CONTAINER_ID } from '../../../shared/js/protocol.mjs';
 
 function escapar(texto) {
     return String(texto).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -25,6 +33,7 @@ function escapar(texto) {
  * @param {Function} [o.ambos] () => boolean, si se están pulsando los dos botones (mirar)
  * @param {Function} o.cerrar (id) => void
  * @param {Object} o.gestor el gestor de ventanas (las coloca)
+ * @param {Function} [o.esContenedor] (typeId) => boolean, para decir en su título que se abre
  */
 export function crearVentanaContenedor(o) {
     const { provider, coger, cerrar, gestor } = o;
@@ -36,6 +45,8 @@ export function crearVentanaContenedor(o) {
         const caja = document.createElement('section');
         caja.className = 'ventana ventana-contenedor';
         caja.dataset.contenedorId = String(id);
+        // Una tuya (una bolsa de tu mochila) o una del suelo: ver `CONTAINER_ID`.
+        caja.dataset.propio = CONTAINER_ID.esPropio(id) ? '1' : '';
         // Temporal y con su número de orden: se coloca DEBAJO de lo que ya estaba abierto.
         caja.dataset.temporal = '1';
         orden += 1;
@@ -79,24 +90,32 @@ export function crearVentanaContenedor(o) {
         const v = abiertos.get(id);
         const { datos, caja } = v;
         v.pendiente = datos.items.some((it) => provider && provider.dibujoListo && !provider.dibujoListo(it.typeId));
+        const propio = CONTAINER_ID.esPropio(datos.id);
         const huecos = [];
         for (let i = 0; i < datos.capacity; i += 1) {
             const it = datos.items[i];
+            // Una bolsa de dentro se ABRE con clic derecho, y lo que se suelta encima va dentro de ella.
+            const bolsa = it && o.esContenedor && o.esContenedor(it.typeId);
             huecos.push(it
-                ? '<div class="objeto arrastrable" data-contenedor="' + datos.id + '" data-hueco="' + it.index +
-                  '" title="' + escapar(it.name) + (it.count > 1 ? ' x' + it.count : '') +
-                  ' (arrástralo para moverlo; clic derecho: usarlo; los dos botones: mirarlo)">' +
+                ? '<div class="objeto arrastrable' + (bolsa ? ' es-contenedor' : '') + '" data-contenedor="' + datos.id +
+                  '" data-hueco="' + it.index + '"' + (bolsa ? ' data-bolsa="1"' : '') +
+                  ' title="' + escapar(it.name) + (it.count > 1 ? ' x' + it.count : '') +
+                  (bolsa ? ' (arrástralo para moverlo; clic derecho: abrirlo; los dos botones: mirarlo)">'
+                      : ' (arrástralo para moverlo; clic derecho: usarlo; los dos botones: mirarlo)">') +
                   iconoDeObjeto(it.typeId, provider, 32, it.count) +
-                  (it.count > 1 ? '<span class="cuantas">' + it.count + '</span>' : '') + '</div>'
+                  numeroDeEsquina(it) + '</div>'
                 : '<div class="objeto hueco-vacio"></div>');
         }
         caja.innerHTML =
-            '<div class="ventana-cabecera"><span class="titulo">' + escapar(datos.name) + '</span>' +
-            '<button type="button" class="boton-icono" data-coger-todo data-icono="coger" title="Coger todo (a tu mochila)"></button>' +
+            '<div class="ventana-cabecera"><span class="titulo"' +
+            (propio ? ' title="Llevas esto: arrastra aquí para meter algo dentro."' : '') + '>' + escapar(datos.name) + '</span>' +
+            // «Coger todo» sólo en los del suelo: lo de una bolsa tuya ya lo llevas.
+            (propio ? '' : '<button type="button" class="boton-icono" data-coger-todo data-icono="coger" title="Coger todo (a tu mochila)"></button>') +
             '<button type="button" class="boton-icono" data-minimizar data-icono="minimizar" title="Minimizar"></button>' +
             '<button type="button" class="boton-icono" data-cerrar data-icono="cerrar" title="Cerrar"></button></div>' +
             // El cuerpo de la ventana es un DESTINO: lo que sueltas en él va dentro de este contenedor.
-            '<div class="ventana-cuerpo" data-destino="contenedor-suelo" data-contenedor-id="' + datos.id + '">' +
+            '<div class="ventana-cuerpo" data-destino="' + (propio ? 'contenedor-propio' : 'contenedor-suelo') +
+            '" data-contenedor-id="' + datos.id + '">' +
             '<div class="rejilla-contenedor">' + huecos.join('') + '</div>' +
             (datos.items.length === 0 ? '<span class="vacio">vacío</span>' : '') + '</div>';
         pintarIconos(caja);

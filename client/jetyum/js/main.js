@@ -13,7 +13,7 @@
  * trampa desde aquí.
  */
 
-import { CLIENT, SERVER, OFFSET_TO_WALK, MOVE_ITEM_FIELD } from '/shared/js/protocol.mjs';
+import { CLIENT, SERVER, OFFSET_TO_WALK, MOVE_ITEM_FIELD, CONTAINER_ID } from '/shared/js/protocol.mjs';
 import { IDIOMAS, idioma, idiomaDelServidor, setIdioma } from '/shared/js/i18n.mjs';
 import { montarSelectorDeIdioma, traducirPagina } from '/shared/js/i18n-dom.mjs';
 import '/shared/i18n/juego.mjs';
@@ -33,6 +33,8 @@ import { crearMinimapa } from './minimapa.js';
 import { crearLateral } from './lateral.js';
 import { crearVentanaContenedor } from './contenedor.js';
 import { crearVentanaComercio } from './comercio.js';
+import { crearVentanaIntercambio, origenDeIntercambio, mensajeIntercambio, AYUDA_INTERCAMBIO } from './intercambio.js';
+import { crearMenuObjeto } from './menuobjeto.js';
 import { crearDialogo } from './dialogo.js';
 import { crearHotkeys } from './hotkeys.js';
 import { crearCruz, destinoDeClic } from './usarcon.js';
@@ -216,7 +218,9 @@ class Game {
             gestor: this.ventanas,
             provider: this.provider,
             coger: (id, indice) => this.connection && this.connection.send([CLIENT.CONTAINER_TAKE, id, indice]),
-            usar: (id, indice) => this.connection && this.connection.send([CLIENT.USE_CONTAINER, id, indice]),
+            usar: (id, indice) => this.usarDeContenedor(id, indice),
+            // Para que una bolsa de dentro diga en su título que se abre con clic derecho.
+            esContenedor: (typeId) => itemtypes.esContenedor(typeId),
             ambos: () => performance.now() < (this.mirandoHasta || 0),
             cerrar: (id) => this.connection && this.connection.send([CLIENT.CLOSE_CONTAINER, id])
         });
@@ -262,17 +266,7 @@ class Game {
          * BATALLA -esa criatura-; en cualquier otro sitio se cancela.
          */
         this.cruz = crearCruz({
-            destinoEn: (e) => {
-                const fila = e.target && e.target.closest ? e.target.closest('[data-criatura]') : null;
-                if (fila) {
-                    return { criatura: Number(fila.dataset.criatura) };
-                }
-                if (e.target !== this.canvas || !this.world.playerId) {
-                    return null;
-                }
-                const casilla = this._tileEnPantalla(e.clientX, e.clientY);
-                return destinoDeClic(casilla, this.world.creaturesAt(casilla.x, casilla.y, casilla.z));
-            },
+            destinoEn: (e) => this._destinoDeCruz(e),
             enviar: (mensaje) => this.connection && this.connection.send(mensaje),
             estado: document.getElementById('status'),
             aviso: (texto) => this.consola.servidor(texto)
@@ -282,6 +276,34 @@ class Game {
         this.modosCombate = crearModosCombate({
             raiz: document.getElementById('modos-combate'),
             enviar: (mensaje) => this.connection && this.connection.send(mensaje)
+        });
+
+        /*
+         * EL INTERCAMBIO CON OTRO JUGADOR (intercambio.js): Ctrl + clic derecho sobre un objeto abre su
+         * menú (menuobjeto.js); «Comerciar con…» pone OTRA cruz -la misma de «usar con», con su propio
+         * mensaje- y el clic en un jugador se lo ofrece. La ventana la abre y la cierra el motor.
+         */
+        this.menuObjeto = crearMenuObjeto();
+        this.cruzIntercambio = crearCruz({
+            destinoEn: (e) => this._destinoDeCruz(e),
+            enviar: (mensaje) => {
+                const pedido = mensajeIntercambio(mensaje[1], mensaje[2]);
+                const quien = pedido ? this.world.creatures.get(pedido[2]) : null;
+                if (!pedido || !quien || quien.kind !== 0) {
+                    this.consola.servidor('Para comerciar, haz clic en un jugador.');
+                    return;
+                }
+                if (this.connection) {
+                    this.connection.send(pedido);
+                }
+            }
+        });
+        this.intercambio = crearVentanaIntercambio({
+            gestor: this.ventanas,
+            provider: this.provider,
+            mirar: (suya, indice) => this.connection && this.connection.send([CLIENT.TRADE_LOOK, suya ? 1 : 0, indice]),
+            aceptar: () => this.connection && this.connection.send([CLIENT.TRADE_ACCEPT]),
+            cancelar: () => this.connection && this.connection.send([CLIENT.TRADE_CLOSE])
         });
 
         this.comercio = crearVentanaComercio({
@@ -330,8 +352,11 @@ class Game {
                 this.world = new ClientWorld();
                 this.camera.setCenter(0, 0, 7);
 
-                // La cruz de «usar con» es de la partida que se acaba de perder.
+                // La cruz de «usar con» es de la partida que se acaba de perder (y el intercambio).
                 this.cruz.cancelar();
+                this.cruzIntercambio.cancelar();
+                this.menuObjeto.cerrar();
+                this.intercambio.cerrar();
 
                 // Y si el jugador estaba arrastrando algo, el fantasma que sigue al raton se
                 // queda colgado en la pantalla para siempre: no hay raton que lo suelte, porque
@@ -386,8 +411,17 @@ class Game {
                 } else {
                     this.consola.privado(event.from, event.from, event.text);
                 }
+            } else if (event.type === 'trade') {
+                this.intercambio.abrir(event.ventana);
+            } else if (event.type === 'tradeClose') {
+                this.intercambio.cerrar();
             } else if (event.type === 'popup') {
                 this.dialogo.abrir(event.titulo, event.texto);
+            } else if (event.type === 'textWindow') {
+                const id = event.id;
+                this.dialogo.abrirTexto(event.ventana, event.ventana.editable
+                    ? (texto) => this.connection && this.connection.send([CLIENT.TEXT_WINDOW_SAVE, id, texto])
+                    : null);
             } else if (event.type === 'party') {
                 this.consola.servidor(event.lider
                     ? 'Tu grupo: ' + event.miembros.join(', ') + ' (manda ' + event.lider + '). Escribe «/p texto» para hablarles.'
@@ -481,6 +515,63 @@ class Game {
     // Arrastrar
     // -----------------------------------------------------------------------
 
+    /**
+     * Sobre qué cae un clic con una cruz («usar con», «comerciar con»): una fila de la LISTA DE
+     * BATALLA (esa criatura) o el MAPA (la criatura de esa casilla, tú incluido, o la casilla). En
+     * cualquier otro sitio, null: se cancela.
+     */
+    _destinoDeCruz(e) {
+        const fila = e.target && e.target.closest ? e.target.closest('[data-criatura]') : null;
+        if (fila) {
+            return { criatura: Number(fila.dataset.criatura) };
+        }
+        if (e.target !== this.canvas || !this.world.playerId) {
+            return null;
+        }
+        const casilla = this._tileEnPantalla(e.clientX, e.clientY);
+        return destinoDeClic(casilla, this.world.creaturesAt(casilla.x, casilla.y, casilla.z));
+    }
+
+    /**
+     * EL MENÚ DE UN OBJETO (Ctrl + clic derecho) en ese punto de la pantalla, si ahí hay algo que se
+     * mueve: de tu mochila o tu equipo, de una ventana abierta o lo de arriba de una casilla.
+     *
+     * @returns {boolean} si había algo y se abrió
+     */
+    abrirMenuObjeto(clientX, clientY) {
+        const desde = this.world.playerId ? this._origenEnPunto(clientX, clientY) : null;
+        const origen = desde ? origenDeIntercambio(desde.origen) : null;
+        if (!origen) {
+            return false;
+        }
+        this.menuObjeto.abrir(clientX, clientY, [
+            { texto: 'Mirar', accion: () => this._mirarOrigen(desde.origen) },
+            { texto: 'Comerciar con…', accion: () => this.empezarIntercambio(origen) }
+        ]);
+        return true;
+    }
+
+    /** «Comerciar con…»: la cruz, y el siguiente clic en un jugador se lo ofrece. */
+    empezarIntercambio(origen) {
+        this.cruz.cancelar();
+        this.cruzIntercambio.empezar(origen);
+        this.consola.servidor(AYUDA_INTERCAMBIO + '.');
+    }
+
+    /** Mirar lo que dice un origen del arrastre (el «Mirar» del menú de un objeto). */
+    _mirarOrigen(origen) {
+        if (!this.connection) {
+            return;
+        }
+        if (origen.kind === 'inventory') {
+            this.connection.send([CLIENT.LOOK_ITEM, 'inventory', Number(origen.index)]);
+        } else if (origen.kind === 'ground') {
+            this.look(origen.x, origen.y, origen.z);
+        } else {
+            this.connection.send([CLIENT.LOOK_ITEM, 'container', Number(origen.id), Number(origen.index)]);
+        }
+    }
+
     /** El tile que hay debajo de un punto de la pantalla. */
     _tileEnPantalla(clientX, clientY) {
         const rect = this.canvas.getBoundingClientRect();
@@ -509,14 +600,16 @@ class Game {
 
         const entradaDom = elemento.closest('.arrastrable');
 
-        // Un objeto de la ventana del cuerpo abierto: se arrastra al mapa, a una ranura o a la mochila.
+        // Un objeto de la ventana de un contenedor abierto: se arrastra al mapa, a una ranura, a la
+        // mochila o a otra ventana. El signo del id dice si es del suelo o una bolsa tuya.
         if (entradaDom && entradaDom.dataset.contenedor) {
-            const objeto = this.contenedor.objetoEn(Number(entradaDom.dataset.contenedor), Number(entradaDom.dataset.hueco));
+            const id = Number(entradaDom.dataset.contenedor);
+            const objeto = this.contenedor.objetoEn(id, Number(entradaDom.dataset.hueco));
             if (!objeto) {
                 return null;
             }
             return {
-                origen: { kind: 'container', id: Number(entradaDom.dataset.contenedor), index: objeto.index },
+                origen: { kind: CONTAINER_ID.esPropio(id) ? 'inventoryContainer' : 'container', id: id, index: objeto.index },
                 typeId: objeto.typeId,
                 dibujo: dibujoParaArrastrar(objeto.typeId, this.provider)
             };
@@ -571,6 +664,30 @@ class Game {
             return null;
         }
 
+        // ENCIMA DE UNA BOLSA de una ventana abierta: dentro de esa bolsa (el motor lo decide con
+        // `TO_INDEX`: si lo de ese hueco es un contenedor, va dentro de él).
+        const bolsaEnVentana = elemento.closest('[data-contenedor][data-hueco][data-bolsa]');
+        if (bolsaEnVentana) {
+            const id = Number(bolsaEnVentana.dataset.contenedor);
+            return {
+                destino: {
+                    kind: CONTAINER_ID.esPropio(id) ? 'inventoryContainer' : 'groundContainer',
+                    id: id,
+                    index: Number(bolsaEnVentana.dataset.hueco)
+                },
+                elemento: bolsaEnVentana
+            };
+        }
+
+        // ENCIMA DE UNA BOLSA DE TU MOCHILA (en su panel): dentro de esa bolsa.
+        const bolsaEnMochila = elemento.closest('[data-index][data-bolsa]:not([data-contenedor])');
+        if (bolsaEnMochila) {
+            return {
+                destino: { kind: 'inventory', index: Number(bolsaEnMochila.dataset.index) },
+                elemento: bolsaEnMochila
+            };
+        }
+
         const ranura = elemento.closest('[data-destino="ranura"]');
         if (ranura) {
             return {
@@ -590,6 +707,15 @@ class Game {
             return {
                 destino: { kind: 'groundContainer', id: Number(delSuelo.dataset.contenedorId) },
                 elemento: delSuelo
+            };
+        }
+
+        // La ventana de una bolsa que llevas: dentro de esa bolsa.
+        const propio = elemento.closest('[data-destino="contenedor-propio"]');
+        if (propio) {
+            return {
+                destino: { kind: 'inventoryContainer', id: Number(propio.dataset.contenedorId) },
+                elemento: propio
             };
         }
 
@@ -623,8 +749,11 @@ class Game {
             return itemtypes.encajaEn(typeId, destino.slot);
         }
 
-        if (destino.kind === 'groundContainer') {
-            return !itemtypes.esContenedor(typeId);
+        // Dentro de un contenedor (del suelo o tuyo) cabe cualquier cosa, otra bolsa también: los
+        // huecos, el peso y que no vaya dentro de sí misma los mira el motor.
+        if (destino.kind === 'groundContainer' || destino.kind === 'inventoryContainer' ||
+                destino.kind === 'inventory') {
+            return true;
         }
 
         if (destino.kind === 'container') {
@@ -654,13 +783,15 @@ class Game {
             ? [destino.kind, 0, 0, 0, destino.slot]
             : [destino.kind, destino.x || 0, destino.y || 0, destino.z || 0, 0];
 
-        // Del cuerpo abierto: además, de qué contenedor (FROM_ID va al final del mensaje); y a
-        // la ventana de un contenedor del suelo, a cuál (TO_ID).
+        // De una ventana abierta: además, de cuál (FROM_ID va al final del mensaje); y a una
+        // ventana, a cuál (TO_ID). El signo del id dice si es del suelo o una bolsa tuya.
         const mensaje = [CLIENT.MOVE_ITEM].concat(desde, hasta);
-        mensaje[MOVE_ITEM_FIELD.FROM_ID] = origen.kind === 'container' ? origen.id : 0;
-        if (destino.kind === 'groundContainer') {
-            mensaje[MOVE_ITEM_FIELD.TO_ID] = destino.id;
-        }
+        mensaje[MOVE_ITEM_FIELD.FROM_ID] = origen.kind === 'container' || origen.kind === 'inventoryContainer'
+            ? origen.id : 0;
+        mensaje[MOVE_ITEM_FIELD.TO_ID] = destino.kind === 'groundContainer' || destino.kind === 'inventoryContainer'
+            ? destino.id : 0;
+        // El hueco sobre el que se soltó (una bolsa): si lo es, va dentro de ella.
+        mensaje[MOVE_ITEM_FIELD.TO_INDEX] = destino.index === undefined ? -1 : Number(destino.index);
         this.connection.send(mensaje);
     }
 
@@ -773,6 +904,23 @@ class Game {
         }
         if (this.connection) {
             this.connection.send([CLIENT.USE_INVENTORY, Number(indice)]);
+        }
+    }
+
+    /**
+     * Usar algo de DENTRO de un contenedor abierto (clic derecho en su ventana). Si es de una bolsa
+     * TUYA y se usa sobre algo (una runa con cargas, una herramienta), primero la cruz, igual que
+     * desde la mochila; si no, se le pide al motor, que lo usa o, si es otra bolsa, la abre.
+     */
+    usarDeContenedor(id, indice) {
+        const objeto = this.contenedor.objetoEn(Number(id), Number(indice));
+        if (objeto && CONTAINER_ID.esPropio(id) && itemtypes.usaConObjetivo(objeto.typeId) &&
+                (!itemtypes.esRuna(objeto.typeId) || objeto.charges > 0)) {
+            this.cruz.empezar({ contenedor: Number(id), hueco: Number(indice) });
+            return;
+        }
+        if (this.connection) {
+            this.connection.send([CLIENT.USE_CONTAINER, Number(id), Number(indice)]);
         }
     }
 
@@ -995,6 +1143,9 @@ class Game {
         this.world = new ClientWorld();
         this.objetivo = null;
         this.cruz.cancelar();
+        this.cruzIntercambio.cancelar();
+        this.menuObjeto.cerrar();
+        this.intercambio.cerrar();
         this.contenedor.cerrar();
         limpiarPaneles();
         this.consola.limpiar();
@@ -1133,6 +1284,7 @@ class Game {
             this.lateral.actualizar(this.world, this.objetivo);
             // Los dibujos llegan por HTTP: si en el cuerpo abierto faltaba alguno, se repinta.
             this.contenedor.repintar();
+            this.intercambio.repintar();
         }
 
         requestAnimationFrame((next) => this._frame(next));
@@ -1387,6 +1539,18 @@ function boot() {
     };
     document.addEventListener('contextmenu', usarEntrada);
     document.addEventListener('dblclick', usarEntrada);
+
+    // CTRL + CLIC DERECHO sobre un objeto (tu mochila, tu equipo, una ventana abierta, el suelo): su
+    // MENÚ, con «Mirar» y «Comerciar con…». Se escucha antes que nadie para que no lo use ni ataque.
+    window.addEventListener('contextmenu', (e) => {
+        if (!e.ctrlKey || e.target.closest('input, textarea') || game.cruz.activa() || game.cruzIntercambio.activa()) {
+            return;
+        }
+        if (game.abrirMenuObjeto(e.clientX, e.clientY)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }
+    }, true);
 
     // MIRAR algo de un panel (tu mochila, tu equipo, un cuerpo abierto): los dos botones a la vez.
     document.addEventListener('mousedown', (e) => {

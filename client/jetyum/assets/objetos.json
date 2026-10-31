@@ -15529,6 +15529,67 @@
     "onBottom": true,
     "blocksPathfind": true
    }
+  },
+  "21040": {
+   "banderas": {
+    "blocksSolid": true
+   }
+  },
+  "21041": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true
+   }
+  },
+  "21042": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true
+   }
+  },
+  "21043": {
+   "banderas": {
+    "pickupable": true,
+    "isContainer": true,
+    "containerSize": "10"
+   }
+  },
+  "21044": {
+   "banderas": {
+    "pickupable": true,
+    "isContainer": true,
+    "containerSize": "10"
+   }
+  },
+  "21045": {
+   "banderas": {
+    "pickupable": true,
+    "useable": true
+   }
+  },
+  "21050": {
+   "banderas": {
+    "blocksSolid": true,
+    "useable": true
+   }
+  },
+  "21051": {
+   "banderas": {
+    "blocksSolid": true,
+    "useable": true
+   }
+  },
+  "21052": {
+   "banderas": {
+    "blocksSolid": true,
+    "useable": true
+   }
+  },
+  "21053": {
+   "banderas": {
+    "blocksSolid": true,
+    "useable": true
+   }
   }
  }
 }

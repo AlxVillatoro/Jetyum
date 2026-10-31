@@ -58,6 +58,11 @@ const TIENDA = {
         { id: 21002, buy: 175, name: 'runa de curacion' },
         { id: 21005, buy: 40, name: 'runa de proyectil ligero' },
         { id: 21004, buy: 125, name: 'runa de proyectil' },
+        // El correo (engine/world/correo.js), a los precios de Tibia: la carta, el paquete y la
+        // etiqueta que lleva dentro para decir a quién va. Se mandan echándolos en un buzón.
+        { id: 21041, buy: 8, name: 'carta' },
+        { id: 21043, buy: 15, name: 'paquete' },
+        { id: 21045, buy: 1, name: 'etiqueta' },
         { id: 12166, sell: 2, name: 'hueso' },
         { id: 12207, sell: 250, name: 'zafiro pequeno' },
         { id: 12211, sell: 250, name: 'rubi pequeno' },
@@ -192,6 +197,17 @@ module.exports = {
                 } else {
                     npc.say('No he podido hacer la venta.');
                 }
+            }
+        },
+
+        {
+            // El correo: como el anillo, una palabra concreta despues de "comprar" (quien dice
+            // "comprar carta" quiere comprarla, no que se la expliquen).
+            words: ['correo', 'carta', 'cartas', 'paquete', 'paquetes', 'buzon',
+                'mail', 'letter', 'letters', 'parcel', 'parcels', 'mailbox'],
+            say: (npc) => {
+                npc.say('Vendo cartas, paquetes y etiquetas. Escribe en la primera linea el nombre de ' +
+                    'quien lo recibe y en la segunda su ciudad, y echalo en un buzon: le llega al deposito.');
             }
         },
 

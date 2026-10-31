@@ -3241,7 +3241,17 @@
         {"id":21030,"name":"shovel","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"multiUse":true},"sprites":[9227]},
         {"id":21031,"name":"pick","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"multiUse":true},"sprites":[9228]},
         {"id":21032,"name":"pile of stones","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"forceUse":true,"notMoveable":true},"sprites":[9229]},
-        {"id":21033,"name":"hole","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notMoveable":true,"notPathable":true,"translucent":true,"minimap":204},"sprites":[2193]}
+        {"id":21033,"name":"hole","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notMoveable":true,"notPathable":true,"translucent":true,"minimap":204},"sprites":[2193]},
+        {"id":21040,"name":"mailbox","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"notMoveable":true},"sprites":[9230]},
+        {"id":21041,"name":"letter","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"forceUse":true,"writable":{"maxLength":500}},"sprites":[9231]},
+        {"id":21042,"name":"stamped letter","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"forceUse":true},"sprites":[9232]},
+        {"id":21043,"name":"parcel","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"container":true},"sprites":[9233]},
+        {"id":21044,"name":"stamped parcel","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"container":true},"sprites":[9234]},
+        {"id":21045,"name":"label","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"pickupable":true,"forceUse":true,"writable":{"maxLength":100}},"sprites":[9235]},
+        {"id":21050,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9236]},
+        {"id":21051,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9237]},
+        {"id":21052,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9238]},
+        {"id":21053,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9239]}
     ],
     "outfits": [
         {"id":1,"name":"aspecto 1","width":1,"height":1,"exactSize":32,"layers":1,"patternX":4,"patternY":1,"patternZ":1,"frames":3,"flags":{},"sprites":[885,882,879,888,886,883,880,889,887,884,881,890],"animation":{"mode":"async","loop":0,"start":0,"durations":[[200,200],[200,200],[200,200]]}},

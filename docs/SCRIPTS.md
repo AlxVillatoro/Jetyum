@@ -14,7 +14,7 @@ toque, y al arrancar el motor lo carga solo. Para recargarlos sin reiniciar el s
 | `action` | `actions` | `data/scripts/actions/` | `onUse(player, item, fromPos, target, toPos, isHotkey)` |
 | `movement` | `movements` | `data/scripts/movements/` | `onStepIn`, `onStepOut`, `onEquip`, `onDeEquip`, `onAddItem`, `onRemoveItem` |
 | `talkaction` | `talkactions` | `data/scripts/talkactions/` | `onSay(player, words, param, type)` |
-| `event` | `creaturescripts` | `data/scripts/events/` | `onKill`, `onDeath`, `onAdvance`, `onLogin`, `onLogout`, `onAttack` |
+| `event` | `creaturescripts` | `data/scripts/events/` | `onKill`, `onDeath`, `onAdvance`, `onLogin`, `onLogout`, `onAttack`, `onTradeRequest`, `onTradeAccept` |
 | `spell` | `spells` | `data/scripts/spells/` | `onCastSpell(player, target, param)` |
 | `quest` | `quests.xml` | `data/scripts/quests/` | (definición: misiones por storages) |
 | `globalevent` | `globalevents` | `data/scripts/globalevents/` | `onStartup`, `onShutdown`, `onThink(interval)`, `onTime(hora)` |
@@ -288,6 +288,36 @@ module.exports = {
 
 `onLogout(player)` se lanza al salir, todavía en el mundo (para guardar algo en un storage).
 
+## Comerciar entre jugadores (`onTradeRequest`, `onTradeAccept`)
+
+El intercambio entre jugadores (`engine/world/intercambio.js`, el «Trade with...» de Tibia) avisa a
+los scripts como los `events/player.lua` de TFS. Con `false`, no se deja:
+
+```js
+module.exports = [{
+    type: 'event',
+    event: 'traderequest',
+    onTradeRequest(player, target, item) {         // al ofrecer (o contestar con) algo
+        if (item.getId() === 2160 && player.getLevel() < 20) {
+            player.sendCancelMessage('No puedes comerciar con eso hasta el nivel 20.');
+            return false;
+        }
+        return true;
+    }
+}, {
+    type: 'event',
+    event: 'tradeaccept',
+    onTradeAccept(player, target, item, targetItem) { // los dos han aceptado, antes de cambiar
+        return true;                                  // false: se cancela y no se cambia nada
+    }
+}];
+```
+
+`item` es lo que ofrece `player` (un objeto del inventario, o uno del suelo) y `targetItem` lo de
+`target`; `onTradeAccept` llega con `player` el último en aceptar. Las reglas que pone el motor
+antes de preguntar: a dos casillas en la misma planta, que se pueda coger, que no sea el depósito ni
+tenga `uniqueId`, como mucho 100 objetos y que ninguno comercie con otro.
+
 ## Usar con una hotkey (`target` es una criatura)
 
 Una hotkey de objeto (Ctrl+K en el cliente) usa el primero que lleves de ese tipo **en ti o en tu
@@ -454,6 +484,105 @@ Clic derecho (o doble clic) sobre algo de tu mochila o de tu equipo lo **usa**: 
 
 ---
 
+## El depósito y el correo
+
+**Un depósito por ciudad.** Cada jugador tiene un depósito en cada ciudad del mapa
+(`player.depositos`, `{ idDeCiudad: [árboles] }`, que se guarda con el personaje). Un cofre de
+depósito abre el de SU ciudad: la de su atributo `townId` si lo tiene, si no la del templo más
+cercano en su planta, y si no hay ninguno en su planta la del más cercano en cualquiera. Un
+personaje de cuando había un depósito solo (`player.deposito`) lo encuentra en el de su ciudad.
+
+**El correo** (`engine/world/correo.js`, los objetos de `tools/generar-correo.mjs`): el Tendero
+vende la carta (21041, 8 de oro), el paquete (21043, 15) y la etiqueta (21045, 1). La carta o la
+etiqueta se usan y se escriben: en la **primera línea** el nombre de quien lo recibe y en la
+**segunda**, si se quiere, la ciudad (sin ella, la suya). Un paquete lleva la etiqueta dentro. Se
+manda echándolo en un **buzón** (21040): arrastrándolo a su casilla o, la carta, usándola sobre él.
+Se sella (la carta sellada es la 21042, el paquete sellado la 21044) y llega al depósito de esa
+ciudad: al momento si está dentro («Te ha llegado correo nuevo.»), y si no, al entrar («Tienes
+correo nuevo.»; espera en la tabla `player_mail`). Si no se puede mandar —no dice a quién, no
+existe esa persona o esa ciudad, lleva un depósito o demasiadas bolsas unas dentro de otras— no se
+mueve y se dice por qué. Las acciones están en `actions/correo.js` y la entrega al entrar en
+`events/correo.js`.
+
+**Dejar algo en el depósito de alguien**, desde el motor (lo usa el correo y lo usan las casas
+para devolver lo que había en una casa a su antiguo dueño):
+
+```js
+world.entregarEnDeposito(personaje, guardado, { townId, remitente, aviso })   // → true / false
+```
+
+- `personaje`: su id de personaje (`characterId`, un número) o su nombre (sin mayúsculas).
+- `guardado`: el objeto como árbol `{ typeId, count, attributes, contents? }`, el formato de
+  `world.objetoParaGuardar(item)` (y de `contenidoParaGuardar` para lo que se lleva). Se copia.
+- `townId`: la ciudad del depósito; sin él, la de quien lo recibe. Una que no existe → `false`.
+- `remitente`: quién lo manda (se apunta con el correo que espera); `aviso`: lo que se le dice si
+  está dentro (por defecto «Te ha llegado correo nuevo.»; `false`, nada).
+- Si está dentro, va a su depósito de esa ciudad (delante de lo que hubiera, sin tope de huecos,
+  como en TFS; si tiene la ventana abierta, se pone al día sola). Si no, se apunta en `player_mail`
+  y se le entrega al entrar. `false` si no existe, si el objeto no existe en `items.xml`, o si no
+  está dentro y el servidor no tiene base de datos.
+
+**Las camas** (21050 la cabecera, con los pies 21051 en la casilla del sur; 21052 y 21053 con
+alguien durmiendo) sólo se dibujan aquí: llevan `bed`, `bedPart` (`head`/`foot`),
+`partnerDirection` y el id de su otra versión (`occupiedId` / `freeId`). Lo que hacen es de las casas.
+
+---
+
+## Las casas y el banco
+
+Como en TFS 8.60 (`engine/world/casas.js`). **El banco** es el `balance` de TFS: monedas de oro
+guardadas con el personaje (`players.balance`), que no pesan y **no se pierden al morir**. El
+Banquero (`data/npc/ciudad/banquero.js`) entiende «depositar 500» / «deposit all», «retirar 500»,
+«saldo» y «transferir 500 a Pepe» (también por pasos), y cada operación espera un «si»; transferir
+vale también a quien no está conectado (va por la base). Lo que mueve saldo sin mover monedas
+(transferir, comprar, el alquiler) se escribe en la base al momento.
+
+**Las casas** salen del mapa (`houses` y el `houseId` de cada casilla) y su estado de la base
+(`houses`, `house_lists`, `house_items`). Los comandos (`data/scripts/talkactions/casas.js`):
+
+| Comando | Qué hace |
+|---|---|
+| `!buyhouse` | Compra la casa de la **puerta que tienes delante**, con el saldo del banco: `housePriceEachSQM` × casillas, desde `houseLevel`, si no tienes ya una y está libre (no se pide premium) |
+| `!leavehouse` | Deja la casa en la que estás, si es tuya: lo de dentro va a tu depósito de la ciudad de la casa (`entregarEnDeposito`), las listas se borran y sale todo el mundo |
+| `aleta sio` | La lista de **invitados** de la casa en la que estás, en una ventana de texto (el dueño y los subdueños) |
+| `aleta som` | La lista de **subdueños** (sólo el dueño) |
+| `aleta grav` | La lista de la **puerta** que tienes delante (sólo el dueño) |
+| `alana sio "nombre` | Echa a alguien de la casa en la que estás (sólo a quien tiene menos acceso); sin nombre, te echas tú |
+
+`!sellhouse` no está: en TFS hace falta un comercio con un documento de la casa.
+
+- **Las listas**: un nombre por línea, sin mayúsculas; `*` vale cualquier cosa y `?` una letra;
+  `!` delante excluye (`!Pepe`); `#` empieza un comentario.
+- **Quién entra**: el dueño, los subdueños y los invitados; a una casa sin dueño, nadie; un
+  monstruo o un NPC, nunca; el personal, siempre. Quien no puede, no pisa sus casillas, no coge ni
+  deja nada en ellas, y si se teletransporta (o entra al juego) dentro aparece en la salida. Al
+  quitarle de una lista estando dentro, sale a la puerta.
+- **Las puertas**: el dueño y los subdueños las abren siempre; si la puerta tiene lista, sólo quien
+  esté en ella; si no, quien pueda entrar. Mirar una puerta de casa dice «Pertenece a la casa
+  'X'. Pepe es su dueño.» o lo que cuesta (`world.houseLookText(x, y, z)`).
+- **El alquiler** (el `rent` de cada casa) se cobra del banco cada `houseRentPeriod` (`'never'`,
+  `'daily'`, `'weekly'`, `'monthly'`), esté el dueño conectado o no; el primero, en la primera
+  vuelta del reloj (cada hora) después de comprar. Sin saldo, un aviso al día; tras 7 avisos, la
+  casa se pierde y lo de dentro va al depósito del que era su dueño.
+- **Lo de dentro se guarda**: lo que se puede coger (`pickupable`) que hay en las casillas de la
+  casa, con lo que lleve dentro, y lo que hay dentro de los armarios y cofres del mapa. Lo demás
+  (paredes, puertas, camas) es del mapa.
+- **Las camas** (`data/scripts/actions/camas.js`): usar una cama de una casa en la que estás
+  invitado te acuesta y te saca del juego; al volver recuperas 1 de vida y 1 de maná cada 30
+  segundos y 1 alma cada 15 minutos, hasta el máximo. Si está ocupada: «Pepe está durmiendo ahí.».
+  Una cama es un objeto con `bed` en items.xml o uno de `bedItems` (config.js).
+
+Desde un script, el jugador tiene `getBankBalance()`, `setBankBalance(n)`, `depositMoney(n)`,
+`withdrawMoney(n)`, `transferMoney(nombre, n)`, `getHouse()` (la suya), `getTileHouse()` (en la que
+está), `buyHouse()`, `leaveHouse()`, `editHouseList('guests'|'subowners'|'door')`,
+`kickFromHouse(nombre)` y `sleepInBed(item)`: todos devuelven `{ ok, reason, ... }` (ver la tabla
+de abajo). Una casa (`getHouse()`) tiene `getId()`, `getName()`, `getTownId()`, `getRent()`,
+`getPrice()`, `getTileCount()`, `getOwnerGuid()`, `getOwnerName()`, `getPaidUntil()`,
+`getRentWarnings()`, `getExitPosition()`, `getDoors()`, `getAccessList(256|257|puerta)` y
+`getAccessLevel(player)` (0 nada, 1 invitado, 2 subdueño, 3 dueño).
+
+---
+
 ## Lo que un script puede usar
 
 **`Game`** (global):
@@ -494,19 +623,28 @@ Los tipos de daño (`type`): `physical`, `fire`, `energy`, `earth`, `ice`, `holy
 | `addItem(id, cantidad)` → `{ ok, reason }` | Darle un objeto (comprueba mochila, huecos y peso; `reason`: `noContainer`, `backpackFull`, `tooHeavy`, `unknownItem`). Lo apilable va en **pilas de 100 como mucho**: `addItem(3031, 250)` deja pilas de 100, 100 y 50, y cada pila nueva ocupa un hueco |
 | `removeItem(id, cantidad)` → `true/false` | Quitárselo, sólo si los tiene todos |
 | `getMoney()`, `addMoney(n)`, `removeMoney(n)` | El dinero: la suma de todas las monedas (oro 1, platino 100, cristal 10 000; `world.coinTypes`). `addMoney` da las monedas más grandes y `removeMoney` cobra con las que haga falta y devuelve el cambio. Las monedas se cambian con clic derecho (`data/scripts/actions/monedas.js`) |
+| `getBankBalance()`, `setBankBalance(n)` | El saldo del banco, en monedas de oro (`player:getBankBalance` de TFS). `setBankBalance` lo pone sin mover monedas y se escribe en la base al momento |
+| `depositMoney(n)`, `withdrawMoney(n)`, `transferMoney(nombre, n)` → `{ ok, reason, balance }` | Mover dinero entre la mochila y el banco, o a otro personaje (conectado o no). `reason`: `badAmount`, `notEnough`, `cannotPay` (el cambio no cabe), `cannotCarry`, `notFound`, `self`, `noDatabase` |
+| `getHouse()`, `getTileHouse()` | La casa de la que es dueño, y la casa en la que está (o `null`): ver [Las casas y el banco](#las-casas-y-el-banco) |
+| `buyHouse()`, `leaveHouse()`, `editHouseList(tipo)`, `kickFromHouse(nombre)`, `sleepInBed(item)` → `{ ok, reason }` | Lo de los comandos de las casas y las camas. `reason`: `noDoor`, `level`, `alreadyOwner`, `hasOwner`, `noMoney`, `notInside`, `notOwner`, `cannotEdit`, `notFound`, `cannot`, `notInvited`, `inFight`, `occupied` |
 | `getExperience()`, `addExperience(n)` | La experiencia (sube de nivel si llega) |
 | `getItemCountById(id)`, `getInventory()`, `getEquipment()`, `equipItem`, `unequipItem`, `dropItem` | Lo que lleva |
 | `getWeight()`, `getCapacity()`, `getFreeCapacity()`, `getItemWeight(id, n)` | El peso |
 | `getStorageValue(clave)`, `setStorageValue(clave, n)` | La memoria del contenido (se guarda con el personaje) |
+| `hasBlessing(n)`, `addBlessing(n)`, `removeBlessing(n)`, `getBlessingCount()`, `getBlessings()`, `getBlessingCost()`, `getDeathPenalty()`, `getDeathList(n, nombre)` | Las cinco bendiciones de TFS (1 a 5, storages `bendicion:<n>`; se gastan al morir), su precio por nivel, lo que se perdería al morir y el historial de muertes (`engine/world/muerte.js`) |
 | `sendTextMessage(texto)`, `sendCancelMessage(texto)`, `sendPrivateMessage(nombre, texto)` | Mensajes |
 | `getOutfit()`, `setOutfit(...)`, `addOutfit(id)`, `hasOutfit(id)` | Aspectos (`addOutfit` desbloquea uno) |
 | `addMount(id)`, `removeMount(id)`, `hasMount(id)`, `isMounted()` | Monturas de `data/XML/mounts.js` (`addMount` da una bloqueada) |
 | `getGroup()`, `hasGroup(nombre)` | Su grupo de acceso (`{ id, name, access }`) y si tiene ese o uno mayor |
 | `isInFight()`, `isPzLocked()` | En combate (no puede salir) y con PZ lock (no puede entrar en una zona de protección) |
+| `isTrading()`, `getTradePartner()` | Si está en un intercambio con otro jugador (ofreció algo o se lo ofrecieron) y con quién (su jugador, o `null`) |
 | `getParty()`, `partyInvite(nombre)`, `partyJoin(nombre)`, `partyLeave()` | El grupo |
 | `getSkull()` | `''`, `'blanca'` o `'roja'` |
 | `getWeaponType()` | El tipo del arma de la mano (`weaponType` de items.xml: `'sword'`, `'axe'`, `'club'`, `'distance'`...) o `'fist'` |
 | `popupFYI(texto)`, `sendPopup(titulo, texto)` | Le abre un **diálogo** con el texto y un botón «Aceptar» (el `popupFYI` de TFS); los `\n` son saltos de línea |
+| `showTextDialog({ titulo, texto, editable, maximo }, alGuardar)` | Le abre una **ventana de texto**: para leer, o para escribir con `editable: true` (como el `showTextDialog` + `onTextEdit` de TFS). Lo que guarde llega a `alGuardar(texto)`, recortado a `maximo` (1000 si no se dice); sólo puede contestarla ese jugador y una sola vez. Devuelve el id de la ventana |
+| `sendMail(item)` → `true/false` | Manda por correo una carta o un paquete (el `item` que recibe `onUse`), como si lo echara en un buzón. Las reglas y los mensajes, en [El depósito y el correo](#el-depósito-y-el-correo) |
+| `collectMail()` → n | Le entrega el correo que le esperaba (lo hace `events/correo.js` al entrar) |
 | `getSpells()` | Los hechizos de su vocación, por nivel: `[{ words, name, group, level, mana, soul }]` (lo usa `/spells`) |
 
 Y lo de la vocación (ver [VOCACIONES.md](VOCACIONES.md)):
@@ -531,5 +669,5 @@ los efectos cuando cambian.
 
 Las pruebas de todo esto están en `tools/test-scripts.mjs` (la API, los eventos, los hechizos, las
 condiciones, el comercio, los grupos, las calaveras, la munición, el depósito y la luz),
-`tools/test-otsp.mjs` (puertas, eventos globales y raids) y `tools/test-engine.js` (acciones,
-movimientos, comandos y eventos).
+`tools/test-otsp.mjs` (puertas, eventos globales y raids), `tools/test-correo.mjs` (el depósito por
+ciudad y el correo) y `tools/test-engine.js` (acciones, movimientos, comandos y eventos).

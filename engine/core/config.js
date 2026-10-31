@@ -65,6 +65,21 @@ const DEFAULTS = {
      */
     corpseFallbackId: 11109,
     corpseFallbackDuration: 120,
+
+    /**
+     * LA MUERTE DEL JUGADOR (engine/world/combat.js y engine/world/muerte.js): el porcentaje que
+     * se pierde de experiencia, skills y nivel mágico (-1, la fórmula de TFS por nivel), si se
+     * pierden objetos, y si se pierden como en TFS (`deathItemLoss`: al cuerpo, a suertes y menos
+     * con cada bendición) o todos al suelo. `playerCorpseId` es el cuerpo («dead human»).
+     */
+    deathLosePercent: 10,
+    deathDropInventory: true,
+    deathItemLoss: true,
+    playerCorpseId: 12246,
+    // Las casas (engine/world/casas.js): precio por casilla, nivel para comprar y cada cuánto se paga.
+    housePriceEachSQM: 1000,
+    houseLevel: 1,
+    houseRentPeriod: 'monthly',
     rateExperience: 1,
     rateSkill: 1,
     rateMagic: 1,

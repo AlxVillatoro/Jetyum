@@ -478,8 +478,18 @@ async function main() {
             paso(PR.CLIENT.WALK_NORTH, 70, 26, 7) === '70,24,6');
         check('y bajar por la de arriba vuelve a la 7, delante de la escalera',
             paso(PR.CLIENT.WALK_SOUTH, 70, 24, 6) === '70,26,7');
+        // La escalera está DENTRO de la casa, y en una casa sólo entra quien tiene acceso (casas.js):
+        // para bajar, el escalador es su dueño mientras dura la prueba.
+        const piedra = world.map.houses.find((h) => h.name === 'Casa de Piedra');
+        const casaPiedra = piedra && world.houseById ? world.houseById(piedra.id) : null;
+        if (casaPiedra) {
+            world.setHouseOwner(casaPiedra, yo);
+        }
         check('la escalera de la Casa de Piedra baja a la bodega (planta 8)',
             paso(PR.CLIENT.WALK_SOUTH, 24, 55, 7) === '24,57,8');
+        if (casaPiedra) {
+            world.setHouseOwner(casaPiedra, null);
+        }
         check('el agujero del bosque cae a la cueva', paso(PR.CLIENT.WALK_NORTH, 26, 25, 7) === '26,24,8');
         world.teleportPlayer(session.playerId, 36, 32, 8);
         const usar = session.handle([PR.CLIENT.USE_ITEM, 36, 31, 8]);

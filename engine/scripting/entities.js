@@ -22,6 +22,8 @@
 const { Position } = require('../world/position');
 const { normalizeOutfit, canUseOutfit } = require('../world/outfit');
 const { formatWeight } = require('../world/weight');
+// Las bendiciones y el historial de muertes (el bloque «Bendiciones» del jugador).
+const Muerte = require('../world/muerte');
 
 /** Clase base: lo que comparten jugadores y monstruos. */
 class CreatureWrapper {
@@ -342,6 +344,88 @@ class PlayerWrapper extends CreatureWrapper {
     }
 
     // -----------------------------------------------------------------------
+    // El banco y las casas (engine/world/casas.js)
+    // -----------------------------------------------------------------------
+    //
+    // El saldo del banco es el `balance` de TFS: monedas de oro que no se llevan encima. Las cuatro
+    // operaciones devuelven `{ok, reason, ...}` con el motivo en una palabra, y el mensaje lo pone el
+    // script (el banquero, los comandos de las casas).
+
+    /** Su saldo en el banco, en monedas de oro. */
+    getBankBalance() {
+        return this.world.bankBalanceOf(this.world.getPlayer(this.id));
+    }
+
+    /** Le pone el saldo, sin mover monedas (`player:setBankBalance` de TFS). */
+    setBankBalance(cantidad) {
+        return this.world.setBankBalance(this.world.getPlayer(this.id), cantidad);
+    }
+
+    /** Deposita monedas que lleva encima. reason: badAmount, notEnough, cannotPay. */
+    depositMoney(cantidad) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.depositMoney(player, cantidad) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /** Retira del banco a la mochila. reason: badAmount, notEnough, cannotCarry. */
+    withdrawMoney(cantidad) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.withdrawMoney(player, cantidad) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /** Transfiere a otro personaje, conectado o no. reason: badAmount, notEnough, notFound, self, noDatabase. */
+    transferMoney(nombre, cantidad) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.transferMoney(player, nombre, cantidad) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /** La casa de la que es DUEÑO (`player:getHouse()` de TFS), o null. */
+    getHouse() {
+        const casa = this.world.houseOf(this.world.getPlayer(this.id));
+        return casa ? new HouseWrapper(this.world, casa.id) : null;
+    }
+
+    /** La casa en la que está ahora (`player:getTile():getHouse()` de TFS), o null. */
+    getTileHouse() {
+        const casa = this.world.houseOfTile(this.world.getPlayer(this.id));
+        return casa ? new HouseWrapper(this.world, casa.id) : null;
+    }
+
+    /** `!buyhouse`: la casa de la puerta que tiene delante. reason: noDoor, level, alreadyOwner, hasOwner, noMoney. */
+    buyHouse() {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.buyHouse(player) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /** `!leavehouse`: deja la casa en la que está (lo de dentro, a su depósito). reason: notInside, notOwner. */
+    leaveHouse() {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.leaveHouse(player) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /**
+     * Le abre para editar una lista de acceso: 'guests' (`aleta sio`), 'subowners' (`aleta som`) o
+     * 'door' (`aleta grav`, la puerta que tiene delante). reason: notInside, noDoor, cannotEdit.
+     */
+    editHouseList(tipo) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.editHouseList(player, tipo) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /** Echa a alguien (o a sí mismo, sin nombre) de la casa en la que está. reason: notInside, notFound, cannot. */
+    kickFromHouse(nombre) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.kickFromHouse(player, nombre) : { ok: false, reason: 'noPlayer' };
+    }
+
+    /** Duerme en esta cama (la sacan del juego). reason: notBed, notHouse, notInvited, inFight, occupied, broken. */
+    sleepInBed(item) {
+        const player = this.world.getPlayer(this.id);
+        const objeto = item && item.getUniqueId ? this.world.items.get(item.getUniqueId()) : null;
+        return player ? this.world.sleepInBed(player, objeto) : { ok: false, reason: 'noPlayer' };
+    }
+
+    // -----------------------------------------------------------------------
     // Dar y quitar objetos
     // -----------------------------------------------------------------------
 
@@ -405,6 +489,19 @@ class PlayerWrapper extends CreatureWrapper {
     isPzLocked() {
         const player = this.world.getPlayer(this.id);
         return !!(player && this.world.isPzLocked(player));
+    }
+
+    /** ¿Está comerciando con otro jugador (ofreció algo, o alguien le ofreció algo)? */
+    isTrading() {
+        const player = this.world.getPlayer(this.id);
+        return !!(player && this.world.estaComerciando(player));
+    }
+
+    /** Con quién comercia (el jugador), o null. */
+    getTradePartner() {
+        const player = this.world.getPlayer(this.id);
+        const otro = player ? this.world.companeroDeIntercambio(player) : null;
+        return otro ? new PlayerWrapper(this.world, otro.id) : null;
     }
 
     /** Le da una montura de data/XML/mounts.js (aunque esté `unlocked: false`). Se guarda con él. */
@@ -478,6 +575,42 @@ class PlayerWrapper extends CreatureWrapper {
         return this.sendPopup('Información', texto);
     }
 
+    /**
+     * LE ABRE UNA VENTANA DE TEXTO (el `showTextDialog` de TFS): para leer, o para escribir con
+     * `editable: true`; lo escrito llega a `alGuardar(texto)` (como el `onTextEdit` de TFS).
+     *
+     *     player.showTextDialog({ titulo: 'Carta', texto: '', editable: true, maximo: 500 },
+     *         (texto) => item.setAttribute('text', texto));
+     *
+     * @returns {number} el id de la ventana, o 0
+     */
+    showTextDialog(opciones, alGuardar) {
+        const player = this.world.getPlayer(this.id);
+        return player ? this.world.abrirVentanaDeTexto(player, opciones, alGuardar) : 0;
+    }
+
+    /**
+     * MANDA POR CORREO una carta o un paquete (el que recibe `onUse`: lo que lleva o uno del
+     * mundo), como si lo echara en un buzón. Las reglas y los mensajes, en `engine/world/correo.js`.
+     *
+     * @returns {boolean} si se mandó
+     */
+    sendMail(item) {
+        const player = this.world.getPlayer(this.id);
+        if (!player || !item || !this.world.enviarPorCorreo) {
+            return false;
+        }
+        const objeto = item.entry ? null : this.world.getItem(item.getUniqueId ? item.getUniqueId() : 0);
+        const origen = item.entry ? { entry: item.entry } : (objeto ? { item: objeto } : null);
+        return origen ? this.world.enviarPorCorreo(player, origen).ok === true : false;
+    }
+
+    /** Le entrega el correo que le esperaba (al entrar). Devuelve cuántos. */
+    collectMail() {
+        const player = this.world.getPlayer(this.id);
+        return player && this.world.entregarCorreoPendiente ? this.world.entregarCorreoPendiente(player) : 0;
+    }
+
     /** Lo mismo con un título propio. */
     sendPopup(titulo, texto) {
         const player = this.world.getPlayer(this.id);
@@ -548,6 +681,86 @@ class PlayerWrapper extends CreatureWrapper {
         }
         const value = player.storages.get(String(key));
         return value === undefined ? null : value;
+    }
+
+    // -----------------------------------------------------------------------
+    // Bendiciones e historial de muertes (engine/world/muerte.js)
+    // -----------------------------------------------------------------------
+    //
+    // Las cinco bendiciones de TFS 8.60, con su número (1 Escudo Espiritual ... 5 Sabiduría de la
+    // Soledad). Se guardan como storages (`bendicion:<n>`), así que duran con el personaje, y se
+    // gastan todas al morir. Lo que hacen al morir lo decide el combate; aquí sólo se miran y se dan.
+
+    /** ¿Tiene la bendición `n` (1 a 5)? Como `player:hasBlessing(n)` de TFS. */
+    hasBlessing(n) {
+        return Muerte.tieneBendicion(this.world.getPlayer(this.id), n);
+    }
+
+    /** Le da la bendición `n`. Devuelve si se la dio (false si no existe o ya la tenía). */
+    addBlessing(n) {
+        return Muerte.darBendicion(this.world.getPlayer(this.id), n);
+    }
+
+    /** Se la quita. Devuelve si la tenía. */
+    removeBlessing(n) {
+        return Muerte.quitarBendicion(this.world.getPlayer(this.id), n);
+    }
+
+    /** Cuántas tiene (0 a 5). */
+    getBlessingCount() {
+        return Muerte.contarBendiciones(this.world.getPlayer(this.id));
+    }
+
+    /** Las cinco, con su nombre (`nombre` en español, `name` el de TFS) y si las tiene. Una copia. */
+    getBlessings() {
+        const player = this.world.getPlayer(this.id);
+        return Muerte.BENDICIONES.map((b) => ({ ...b, has: Muerte.tieneBendicion(player, b.id) }));
+    }
+
+    /** Lo que le cuesta CADA bendición a su nivel (TFS `getBlessingsCost`: 2000 ... 20 000). */
+    getBlessingCost() {
+        return Muerte.costeBendicion(this.getLevel());
+    }
+
+    /**
+     * Lo que perdería si muriera ahora: `percent` de experiencia, skills y nivel mágico, y la
+     * probabilidad (en %) de perder cada objeto equipado (`item`) y la mochila (`container`).
+     */
+    getDeathPenalty() {
+        const player = this.world.getPlayer(this.id);
+        if (!player) {
+            return null;
+        }
+        const config = (this.world.combat && this.world.combat.config) || {};
+        const bendiciones = Muerte.contarBendiciones(player);
+        const vocacion = this.world.vocationOf(player);
+        const chances = Muerte.probabilidadesDePerdida(bendiciones,
+            (this.world.skullOf ? this.world.skullOf(player) : player.skull) === 'roja');
+        // Lo mismo que decide el combate: sin pérdida de objetos, nada; en el modo de antes, todo;
+        // en el de TFS, a suertes (y nada sin vocación, como en Rookgaard).
+        const objetos = config.deathDropInventory === false ? { objeto: 0, contenedor: 0 }
+            : config.deathItemLoss !== true ? { objeto: 100, contenedor: 100 }
+                : Number(vocacion && vocacion.id) === 0 ? { objeto: 0, contenedor: 0 } : chances;
+        return {
+            percent: Muerte.porcentajeDePerdida(player, vocacion,
+                { deathLosePercent: config.deathLosePercent, bendiciones: bendiciones }),
+            item: objetos.objeto,
+            container: objetos.contenedor,
+            blessings: bendiciones
+        };
+    }
+
+    /**
+     * Sus últimas muertes, o las de otro por su nombre (esté dentro o no), de la más nueva a la más
+     * vieja: `{name, deaths: [{time, level, killedBy, isPlayer, unjustified}]}`. Null si el
+     * personaje no existe, y `{name, deaths: [], noDatabase: true}` si el servidor no guarda nada.
+     */
+    getDeathList(limit, nombre) {
+        const quien = nombre ? String(nombre).trim() : this.getName();
+        if (typeof this.world.historialDeMuertes !== 'function') {
+            return { name: quien, deaths: [], noDatabase: true };
+        }
+        return this.world.historialDeMuertes(quien, limit === undefined ? 10 : limit);
     }
 
     // -----------------------------------------------------------------------
@@ -965,9 +1178,11 @@ class ItemWrapper {
         return dentro ? new ItemWrapper(this.world, dentro.instanceId, null) : null;
     }
 
-    /** Lo que pesa (la pila entera). */
+    /** Lo que pesa (la pila entera, y si es un contenedor, con todo lo que lleve dentro). */
     getWeight() {
-        return this.world.weightOfItem(this.getId(), this.getCount());
+        const item = this._item();
+        return item && this.world.pesoDeObjeto ? this.world.pesoDeObjeto(item)
+            : this.world.weightOfItem(this.getId(), this.getCount());
     }
 
     /** ¿Está en el inventario de alguien? (los del suelo, no). */
@@ -987,10 +1202,15 @@ class ItemWrapper {
         return ok;
     }
 
-    /** Dónde está (una copia), o null si no está en el suelo. */
+    /**
+     * Dónde está (una copia), o null si no está en el mundo. Lo que está DENTRO de un contenedor
+     * del suelo (una espada en una bolsa dentro de un cuerpo) está donde esté el de fuera del todo.
+     */
     getPosition() {
         const item = this._item();
-        return item && item.position ? new Position(item.position.x, item.position.y, item.position.z) : null;
+        const donde = item && (item.parent && this.world.posicionDeObjeto
+            ? this.world.posicionDeObjeto(item) : item.position);
+        return donde ? new Position(donde.x, donde.y, donde.z) : null;
     }
 
     toString() {
@@ -999,9 +1219,10 @@ class ItemWrapper {
 }
 
 /**
- * UN OBJETO QUE LLEVA UN JUGADOR (en la mochila o puesto): lo que recibe `onUse` al usar algo
- * desde el inventario (comer, beber). Las entradas del inventario no son objetos del mundo, así
- * que este envoltorio guarda la entrada misma y su dueño.
+ * UN OBJETO QUE LLEVA UN JUGADOR (en la mochila, puesto o dentro de una bolsa de la mochila, a
+ * cualquier profundidad): lo que recibe `onUse` al usar algo desde el inventario (comer, beber).
+ * Las entradas del inventario no son objetos del mundo, así que este envoltorio guarda la entrada
+ * misma y su dueño. Si es un contenedor, `getItems()` da lo de dentro (ver `engine/world/contenedores.js`).
  */
 class InventoryItemWrapper {
     constructor(world, playerId, entry) {
@@ -1014,9 +1235,15 @@ class InventoryItemWrapper {
         return this.world.getPlayer(this.playerId);
     }
 
+    /** El dueño, si TODAVÍA la lleva (en cualquier sitio de lo que lleva), o null. */
     _vivo() {
         const player = this._player();
-        return player && player.inventory.includes(this.entry) ? player : null;
+        if (!player) {
+            return null;
+        }
+        const la = this.world.tieneEntrada ? this.world.tieneEntrada(player, this.entry)
+            : player.inventory.includes(this.entry);
+        return la ? player : null;
     }
 
     getUniqueId() {
@@ -1084,12 +1311,57 @@ class InventoryItemWrapper {
         return this.entry.slot;
     }
 
+    /** Lo que pesa, con todo lo que lleve dentro si es una bolsa. */
     getWeight() {
-        return this.world.weightOfItem(this.entry.typeId, this.entry.count);
+        const player = this._vivo();
+        if (player && this.world.pesoDeEntrada && this.world.containerOf(player) === this.entry) {
+            // La mochila puesta: lo suyo son las entradas `inside`, no `contents`.
+            return this.world.contenidoDeEntrada(player, this.entry)
+                .reduce((total, e) => total + this.world.pesoDeEntrada(e), this.world.weightOfItem(this.entry.typeId, 1));
+        }
+        return this.world.pesoDeEntrada ? this.world.pesoDeEntrada(this.entry)
+            : this.world.weightOfItem(this.entry.typeId, this.entry.count);
     }
 
     isContainer() {
         return this.world.isContainerType(this.entry.typeId);
+    }
+
+    /**
+     * LO QUE HAY DENTRO, si es un contenedor que lleva (la mochila puesta o una bolsa a cualquier
+     * profundidad), como envoltorios de inventario. Vacío si no es contenedor o ya no lo lleva.
+     */
+    getItems() {
+        const player = this._vivo();
+        if (!player || !this.isContainer()) {
+            return [];
+        }
+        return this.world.contenidoDeEntrada(player, this.entry)
+            .map((dentro) => new InventoryItemWrapper(this.world, this.playerId, dentro));
+    }
+
+    /** Los huecos que tiene, si es un contenedor (`containerSize` de items.xml); 0 si no. */
+    getCapacity() {
+        return this.isContainer() ? this.world.capacityOfType(this.entry.typeId) : 0;
+    }
+
+    /**
+     * Mete objetos NUEVOS dentro, si es un contenedor que lleva, con todas las reglas (huecos, peso,
+     * profundidad). Devuelve el envoltorio de donde quedaron, o null si no se pudo.
+     */
+    addItem(typeId, count, attributes) {
+        const player = this._vivo();
+        if (!player || !this.isContainer()) {
+            return null;
+        }
+        const r = this.world.containerOf(player) === this.entry
+            ? this.world.addItemTo(player, typeId, count, attributes)
+            : this.world.addItemToEntry(player, this.entry, typeId, count, attributes);
+        if (!r.ok) {
+            return null;
+        }
+        const entrada = r.entry || this.world.contentsOf(player).slice(-1)[0];
+        return entrada ? new InventoryItemWrapper(this.world, this.playerId, entrada) : null;
     }
 
     isInInventory() {
@@ -1107,6 +1379,55 @@ class InventoryItemWrapper {
  * La caché es por motor y no global: dos motores en el mismo proceso (por ejemplo
  * dos pruebas) no deben compartir envoltorios.
  */
+/**
+ * Una CASA (engine/world/casas.js), como la clase `House` de TFS. Envuelve el número de la casa: lo
+ * que devuelve se lee al momento, así que un `getOwnerName()` después de un `!buyhouse` ya dice el
+ * nuevo dueño. Cambiarla (comprar, dejar, las listas) se hace por el jugador, que es quien tiene
+ * permiso o no.
+ */
+class HouseWrapper {
+    constructor(world, id) {
+        this.world = world;
+        this.id = id;
+    }
+
+    _info() {
+        return this.world.houseInfo(this.world.houseById(this.id)) || {};
+    }
+
+    getId() { return this.id; }
+    getName() { return this._info().name || ''; }
+    getTownId() { return this._info().townId || 0; }
+    getRent() { return this._info().rent || 0; }
+    /** Lo que cuesta comprarla: `housePriceEachSQM` × casillas. */
+    getPrice() { return this._info().price || 0; }
+    getTileCount() { return this._info().tiles || 0; }
+    /** El id del personaje dueño (0 si no tiene) y su nombre ('' si no tiene). */
+    getOwnerGuid() { return this._info().ownerId || 0; }
+    getOwnerName() { return this._info().ownerName || ''; }
+    /** Hasta cuándo está pagado el alquiler (ms del reloj del mundo; 0 = se cobra en la siguiente vuelta). */
+    getPaidUntil() { return this._info().paidUntil || 0; }
+    getRentWarnings() { return this._info().warnings || 0; }
+    getExitPosition() { return this._info().exit || null; }
+    /** Las puertas: `[{id, x, y, z}]`; el id es el de su lista de acceso. */
+    getDoors() { return this._info().doors || []; }
+
+    /** Una lista de acceso, el texto tal cual: 256 invitados, 257 subdueños, o el número de una puerta. */
+    getAccessList(listId) {
+        return this.world.houseList(this.world.houseById(this.id), listId);
+    }
+
+    /** El acceso de un jugador (su envoltorio): 0 nada, 1 invitado, 2 subdueño, 3 dueño. */
+    getAccessLevel(player) {
+        const p = player && player.getId ? this.world.getPlayer(player.getId()) : null;
+        return this.world.houseAccessLevel(p, this.world.houseById(this.id));
+    }
+
+    toString() {
+        return 'House(' + this.id + ', ' + this.getName() + ')';
+    }
+}
+
 class EntityFactory {
     constructor(world) {
         this.world = world;
@@ -1177,6 +1498,7 @@ module.exports = {
     MonsterWrapper,
     ItemWrapper,
     InventoryItemWrapper,
+    HouseWrapper,
     EntityFactory,
     Position
 };

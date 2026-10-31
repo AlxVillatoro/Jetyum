@@ -305,8 +305,37 @@ export class ClientWorld {
                     events.push({ type: 'privateMessage', from: message[1], text: message[2], canal: message[3] });
                     break;
 
+                case P.SERVER.TEXT_WINDOW: {
+                    // Lo que escribió un jugador (una carta) no se traduce; lo del servidor, sí.
+                    const v = message[2] || {};
+                    events.push({ type: 'textWindow', id: message[1], ventana: {
+                        titulo: traducir(v.titulo || ''),
+                        texto: v.editable ? String(v.texto || '') : traducir(String(v.texto || '')),
+                        editable: v.editable === true,
+                        maximo: Number(v.maximo) || 1000
+                    } });
+                    break;
+                }
+
                 case P.SERVER.POPUP:
                     events.push({ type: 'popup', titulo: traducir(message[1]), texto: traducir(message[2]) });
+                    break;
+
+                case P.SERVER.TRADE: {
+                    // El intercambio con otro jugador: las dos ofertas en lista plana y quién aceptó.
+                    const v = message[1] || {};
+                    events.push({ type: 'trade', ventana: {
+                        companero: String(v.companero || ''),
+                        tuya: Array.isArray(v.tuya) ? v.tuya : [],
+                        suya: Array.isArray(v.suya) ? v.suya : null,
+                        aceptaste: v.aceptaste === true,
+                        acepto: v.acepto === true
+                    } });
+                    break;
+                }
+
+                case P.SERVER.TRADE_CLOSE:
+                    events.push({ type: 'tradeClose' });
                     break;
 
                 case P.SERVER.WORLD_LIGHT:

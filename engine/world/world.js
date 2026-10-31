@@ -54,8 +54,11 @@ const COMPACT_EVERY_TICKS = 600;
 /** Hasta cuántas casillas se puede lanzar un objeto (arrastrarlo de un sitio del mapa a otro). */
 const THROW_RANGE = 7;
 
-/** Lo máximo que cabe en una pila (monedas, flechas…), como en Tibia. */
-const MAX_PILA = 100;   // a 20 Hz, cada 30 segundos
+/**
+ * Lo máximo que cabe en una pila (monedas, flechas…), como en Tibia. Vive en `contenedores.js`,
+ * que es donde están las reglas de lo que cabe dentro de qué, junto al tope de anidamiento.
+ */
+const { MAX_PILA, MAX_ANIDADO } = require('./contenedores');
 
 /**
  * Los huecos de un contenedor que no dice cuántos tiene (`containerSize` en items.xml): los de
@@ -602,6 +605,13 @@ class World {
             return { moved: false, reason: check.reason };
         }
 
+        // LAS CASAS (casas.js): sólo entran el dueño, los subdueños y los invitados; nunca un monstruo.
+        const casa = this.bloqueoDeCasa ? this.bloqueoDeCasa(creature, to) : null;
+        if (casa) {
+            creature.faceTowards(to);
+            return { moved: false, reason: casa };
+        }
+
         // EL PZ LOCK: quien acaba de atacar a otro jugador no puede refugiarse en una zona de
         // protección hasta que se le pase (reglas.js). Desde dentro sí puede moverse.
         if (creature.isPlayer && creature.isPlayer() && this.isPzLocked(creature)) {
@@ -688,7 +698,13 @@ class World {
      * Por eso no pasa por `moveCreature` ni paga coste de movimiento.
      */
     teleportCreature(creature, position) {
-        const target = Position.from(position);
+        let target = Position.from(position);
+
+        // Quien no puede estar en una casa aparece en su puerta, no dentro (casas.js).
+        const salida = this.salidaDeCasaPara ? this.salidaDeCasaPara(creature, target) : null;
+        if (salida) {
+            target = Position.from(salida);
+        }
 
         if (!this.map.inBounds(target.x, target.y, target.z)) {
             return { moved: false, reason: 'outOfBounds' };
@@ -1049,12 +1065,16 @@ class World {
         item.parent = null;
     }
 
+    /** Lo de dentro se pierde (un cuerpo que se pudre en huesos): deja el mundo, a cualquier profundidad. */
     _forgetContents(container) {
-        (container.contents || []).forEach((inner) => this.items.delete(inner.instanceId));
+        (container.contents || []).forEach((inner) => this._olvidarObjeto(inner));
         container.contents = [];
     }
 
-    /** ¿Lo tiene al alcance de la mano (al lado y en su planta)? */
+    /**
+     * ¿Lo tiene al alcance de la mano (al lado y en su planta)? Para un contenedor que está DENTRO de
+     * otro (una bolsa en un cuerpo) se le pasa `posicionDeObjeto(bolsa)`: la casilla de su raíz.
+     */
     canReach(creature, position) {
         return !!(creature && position && creature.position.z === position.z &&
             Math.max(Math.abs(creature.position.x - position.x), Math.abs(creature.position.y - position.y)) <= 1);
@@ -1073,7 +1093,9 @@ class World {
                 index: index,
                 typeId: item.typeId,
                 count: item.count,
-                name: item.getName() || ('objeto ' + item.typeId)
+                name: item.getName() || ('objeto ' + item.typeId),
+                // Las cargas de una runa, para su esquina (0 si no tiene).
+                charges: item.getAttribute('charges') !== undefined ? Number(item.getAttribute('charges')) || 0 : 0
             }))
         };
     }
@@ -1087,10 +1109,11 @@ class World {
      */
     takeFromContainer(creature, containerId, index) {
         const container = this.items.get(Number(containerId));
-        if (!container || !container.position || !container.isContainer) {
+        const donde = container ? this.posicionDeObjeto(container) : null;
+        if (!container || !donde || !container.isContainer) {
             return { ok: false, reason: 'noContainer' };
         }
-        if (!this.canReach(creature, container.position)) {
+        if (!this.canReach(creature, donde)) {
             return { ok: false, reason: 'tooFar' };
         }
         const contents = this.contentsOfItem(container);
@@ -1104,10 +1127,16 @@ class World {
         if (!this.fitsInBackpack(creature, item.typeId, 0, item.count)) {
             return { ok: false, reason: 'backpackFull', slots: this.backpackCapacity(creature) };
         }
-        if (!this.canCarry(creature, this.weightOfItem(item.typeId, item.count))) {
-            return { ok: false, reason: 'tooHeavy' };
+        // Una bolsa con cosas viene CON ELLAS: entra en la mochila (nivel 1) con su árbol entero.
+        if (1 + this.alturaDeObjeto(item) > MAX_ANIDADO) {
+            return { ok: false, reason: 'tooDeep', max: MAX_ANIDADO };
         }
-        this._addToContainer(creature, item.typeId, item.count, item.attributes);
+        // Y pesa con todo lo que lleve dentro.
+        const peso = this.pesoDeObjeto(item);
+        if (!this.canCarry(creature, peso)) {
+            return { ok: false, reason: 'tooHeavy', weight: peso, free: this.capacityOf(creature) - this.weightOf(creature) };
+        }
+        this._ponerEntradaEn(creature, null, this._entradaDesdeObjeto(item));
         contents.splice(Number(index), 1);
         this.items.delete(item.instanceId);
         item.parent = null;
@@ -1251,10 +1280,12 @@ class World {
     /**
      * ¿Se puede sacar esta entrada de su sitio?
      *
-     * EL CONTAINER NO SE PUEDE MOVER CON COSAS DENTRO, y no es un capricho: en este motor el
-     * contenido es una lista plana con la ranura `inside`, no viaja dentro del objeto. Soltar la
-     * mochila con cosas dejaria esas cosas "dentro" de nada: no se podrian sacar ni coger, porque
-     * no habria contenedor. Se prefiere decir que no a dejar un inventario roto.
+     * LA MOCHILA PUESTA NO SE PUEDE QUITAR "A NINGUNA PARTE" CON COSAS DENTRO. Con los contenedores
+     * anidados (`contenedores.js`) la mochila viaja con todo lo suyo -al suelo, a un cuerpo, al
+     * depósito-, pero QUITÁRSELA sin más la dejaría dentro de sí misma, que es lo único que no
+     * puede ser: no habría ningún contenedor puesto que la contuviera. Vacía sí se puede (queda
+     * "en la mano", sin poner, y se vuelve a poner cuando se quiera). Esto lo usan quitarse y
+     * cambiarse de mochila con `equipItem`; arrastrarla al suelo o a otro contenedor no pasa por aquí.
      *
      * @returns {string|null} el motivo por el que no se puede, o null si si
      */
@@ -1435,6 +1466,11 @@ class World {
 
         entry.slot = slot;
 
+        // Una bolsa con cosas que pasa a ser LA mochila: lo suyo pasa a ser lo de dentro de la mochila.
+        if (!previous && this.containerOf(creature) === entry) {
+            this._desplegarComoMochila(creature, entry);
+        }
+
         const stats = this.recomputeEquipment(creature);
 
         return { ok: true, slot: slot, replaced: previous, stats: stats };
@@ -1515,6 +1551,10 @@ class World {
         if (creature.position.z !== Number(z) || distance > 1) {
             return { ok: false, reason: 'tooFar' };
         }
+        // De una casa en la que no estás invitado no se coge nada (casas.js).
+        if (this.objetoEnCasaAjena && this.objetoEnCasaAjena(creature, x, y, z)) {
+            return { ok: false, reason: 'notInvited' };
+        }
 
         const tile = this.map.getTile(Number(x), Number(y), Number(z));
         if (!tile) {
@@ -1557,6 +1597,10 @@ class World {
         if (!this.fitsInBackpack(creature, top.typeId, 0, top.count)) {
             return { ok: false, reason: 'backpackFull', slots: this.backpackCapacity(creature) };
         }
+        // Una bolsa del suelo CON LO SUYO entra en la mochila (nivel 1): su árbol tiene que caber.
+        if (1 + this.alturaDeObjeto(top) > MAX_ANIDADO) {
+            return { ok: false, reason: 'tooDeep', max: MAX_ANIDADO };
+        }
 
         /*
          * ¿CABE?
@@ -1568,7 +1612,8 @@ class World {
          * El peso se devuelve en el motivo para que el mensaje pueda decir CUÁNTO sobra, que
          * es lo que el jugador necesita para decidir qué soltar.
          */
-        const weight = this.weightOfItem(top.typeId, top.count);
+        // Con todo lo que lleve dentro, si es una bolsa: se coge entera.
+        const weight = this.pesoDeObjeto(top);
 
         if (!this.canCarry(creature, weight)) {
             return {
@@ -1593,7 +1638,8 @@ class World {
          * Cada pila llega a MAX_PILA (100) como mucho; lo que sobra hace pilas nuevas.
          */
         const antes = creature.inventory.length;
-        this._addToContainer(creature, top.typeId, Math.max(1, top.count), top.attributes);
+        // Se convierte en entrada CON LO DE DENTRO (que deja la tabla de objetos sueltos) y se mete.
+        this._ponerEntradaEn(creature, null, this._entradaDesdeObjeto(top));
         const stacked = creature.inventory.length === antes;
 
         // Se quita del tile Y de la tabla de objetos sueltos, si estaba en ella. Las dos
@@ -1641,46 +1687,38 @@ class World {
             return { ok: false, reason: 'badSlot' };
         }
 
-        const entry = inventory[slot];
-        const definition = this.itemTypes.get(entry.typeId);
+        return this._soltarEntrada(creature, inventory[slot], position);
+    }
+
+    /**
+     * SUELTA EN UNA CASILLA UNA ENTRADA QUE LLEVA, esté donde esté: puesta, en la mochila o dentro de
+     * una bolsa a cualquier profundidad. `dropItemAt` es esto mismo para una entrada de la lista
+     * plana, por su índice.
+     *
+     * UN CONTENEDOR SE SUELTA CON TODO LO QUE LLEVE DENTRO: la mochila puesta con lo suyo (sus
+     * entradas `inside`), una bolsa con su `contents`, y cada bolsa de dentro con lo suyo. En el
+     * suelo es un objeto con su árbol entero, y vuelve contigo si lo recoges o te lo pones.
+     */
+    _soltarEntrada(creature, entry, position) {
+        const definition = entry ? this.itemTypes.get(entry.typeId) : null;
 
         if (!definition) {
             return { ok: false, reason: 'unknownItem' };
         }
 
-        // LA MOCHILA CON COSAS DENTRO SE SUELTA CON ELLAS: lo que llevabas dentro se va con la
-        // mochila al suelo (y vuelve contigo si te la vuelves a poner).
-        const conTodo = this.containerOf(creature) === entry ? this.contentsOf(creature) : [];
-
-        const item = new Item(definition, {
-            count: entry.count,
-            attributes: entry.attributes || null
-        });
-        item.instanceId = this._allocateItemId();
-        this.items.set(item.instanceId, item);
-        if (conTodo.length > 0) {
-            item.contents = conTodo.map((dentro) => {
-                const def = this.itemTypes.get(dentro.typeId);
-                const objeto = new Item(def, { count: dentro.count, attributes: dentro.attributes || null });
-                objeto.instanceId = this._allocateItemId();
-                objeto.parent = item;
-                this.items.set(objeto.instanceId, objeto);
-                return objeto;
-            });
-        }
+        const item = this._objetoDesdeEntrada(entry, null, this.contenidoDeEntrada(creature, entry));
 
         // Se pone JUNTANDO: si ahí hay una pila del mismo objeto apilable, se suma a ella.
         const puesto = this._ponerJuntando(item, position);
         if (!puesto.ok) {
             // Si no se pudo poner en el suelo, se deshace todo: dejar el objeto en la
             // tabla sin tile sería un objeto invisible que nadie puede recoger.
-            this.items.delete(item.instanceId);
+            this._olvidarObjeto(item);
             return { ok: false, reason: 'noTile' };
         }
 
-        inventory.splice(slot, 1);
-        conTodo.forEach((dentro) => inventory.splice(inventory.indexOf(dentro), 1));
-        this._reindexInventory(inventory);
+        // Y sale del inventario, con lo suyo si es la mochila puesta.
+        this._desprenderEntrada(creature, entry);
 
         /*
          * Y SE RECALCULA EL EQUIPO, que esto faltaba: soltar la espada que llevas puesta dejaba
@@ -1699,10 +1737,10 @@ class World {
     /**
      * MUEVE UN OBJETO DE UN SITIO A OTRO.
      *
-     * ORIGEN Y DESTINO. El origen es una casilla del suelo o una entrada del inventario; el
-     * destino, una casilla, una ranura de equipo o dentro de la mochila. Con esas dos piezas salen
-     * las cuatro direcciones que pide el juego -suelo -> mochila, mochila -> ranura, ranura ->
-     * ranura y ranura -> mochila- sin un mensaje distinto por cada una.
+     * ORIGEN Y DESTINO. El origen es una casilla del suelo, una entrada del inventario, el hueco de
+     * un contenedor del mundo o el de un contenedor que llevas; el destino, una casilla, una ranura
+     * de equipo, la mochila, un contenedor del mundo o uno que llevas. Con esas dos piezas salen
+     * todas las direcciones del arrastrar sin un mensaje distinto por cada una.
      *
      * AQUI SE VALIDA TODO Y NO SE FIA NADA DEL CLIENTE: que el objeto sea movible, que este donde
      * dice, que se pueda alcanzar, que la ranura sea la que le toca por su `slotType` y que haya
@@ -1710,12 +1748,15 @@ class World {
      * que poder decir algo util en vez de no hacer nada.
      *
      * NO DUPLICA LAS REGLAS DE NADIE: cada destino acaba llamando a la operacion que ya existia
-     * para ese camino -recoger, soltar, equipar-, asi que la regla vive en un sitio. Lo que hace
-     * esta funcion es traducir "esto va alli" a la operacion que ya sabe hacerlo.
+     * para ese camino -recoger, soltar, equipar, y `moverADentro` para meter algo en cualquier
+     * contenedor (contenedores.js)-, asi que la regla vive en un sitio. Lo que hace esta funcion es
+     * traducir "esto va alli" a la operacion que ya sabe hacerlo.
      *
      * @param {Creature} creature
-     * @param {Object} from { kind: 'ground'|'inventory', x,y,z | index }
-     * @param {Object} to   { kind: 'ground'|'slot'|'container', x,y,z | slot }
+     * @param {Object} from { kind: 'ground'|'inventory'|'container'|'inventoryContainer',
+     *                        x,y,z | index | id,index }
+     * @param {Object} to   { kind: 'ground'|'slot'|'container'|'groundContainer'|'inventory'|
+     *                        'inventoryContainer', x,y,z | slot | id,index? | index }
      * @returns {{ok: boolean, reason?: string, item?: Object, slot?: string, stacked?: boolean}}
      */
     moveItem(creature, from, to) {
@@ -1739,6 +1780,12 @@ class World {
                 return { ok: false, reason: 'badSource' };
             }
             entry = creature.inventory[index];
+        } else if (source.kind === 'inventoryContainer') {
+            // De DENTRO de un contenedor que llevas (una bolsa en tu mochila): su ventana y el hueco.
+            entry = this.entradaEnContenedorPropio(creature, source.id, source.index);
+            if (!entry) {
+                return { ok: false, reason: 'badSource' };
+            }
         } else if (source.kind === 'ground') {
             // La distancia se comprueba ANTES que el tile y por el mismo motivo que al recoger:
             // sin esto se podria mover lo que hay al otro lado del mapa mandando coordenadas.
@@ -1764,13 +1811,14 @@ class World {
             ground = found.item;
             groundTile = found.tile;
         } else if (source.kind === 'container') {
-            // De DENTRO de un contenedor del suelo (el botín de un cuerpo): hay que estar al lado
-            // del contenedor, como para abrirlo.
+            // De DENTRO de un contenedor del suelo (el botín de un cuerpo, o una bolsa que está
+            // dentro de un cuerpo): hay que estar al lado de donde esté, como para abrirlo.
             const container = this.items.get(Number(source.id));
-            if (!container || !container.position || !container.isContainer) {
+            const donde = container ? this.posicionDeObjeto(container) : null;
+            if (!container || !donde || !container.isContainer) {
                 return { ok: false, reason: 'badSource' };
             }
-            if (!this.canReach(creature, container.position)) {
+            if (!this.canReach(creature, donde)) {
                 return { ok: false, reason: 'tooFar' };
             }
             ground = this.contentsOfItem(container)[Number(source.index)] || null;
@@ -1782,6 +1830,55 @@ class World {
         }
 
         const typeId = entry ? entry.typeId : ground.typeId;
+        const enLaLista = entry ? creature.inventory.indexOf(entry) !== -1 : false;
+
+        // En una casa en la que no estás invitado no se coge ni se deja nada (casas.js).
+        if (this.objetoEnCasaAjena) {
+            const origen = groundTile || (ground ? this.posicionDeObjeto(ground) : null);
+            const contenedor = target.kind === 'groundContainer' ? this.items.get(Number(target.id)) : null;
+            const destino = target.kind === 'ground' ? target : (contenedor ? this.posicionDeObjeto(contenedor) : null);
+            if ((origen && this.objetoEnCasaAjena(creature, origen.x, origen.y, origen.z)) ||
+                    (destino && this.objetoEnCasaAjena(creature, destino.x, destino.y, destino.z))) {
+                return { ok: false, reason: 'notInvited' };
+            }
+        }
+
+        // --- 2. EL DESTINO, YA RESUELTO ----------------------------------------------------
+
+        /*
+         * SOLTAR ENCIMA DE UNA BOLSA (su dibujo en el panel o en una ventana) la mete DENTRO de esa
+         * bolsa, como en Tibia. Si lo de debajo no es un contenedor, va al contenedor donde está.
+         */
+        if (target.kind === 'inventory') {
+            const encima = creature.inventory instanceof Array ? creature.inventory[Number(target.index)] : null;
+            target = encima && encima !== entry && this.isContainerEntry(encima)
+                ? { kind: 'inventoryContainer', entry: encima }
+                : { kind: 'container' };
+        }
+        if (target.kind === 'inventoryContainer' && !target.entry) {
+            const ventana = this.contenedorPropio(creature, target.id);
+            if (!ventana) {
+                return { ok: false, reason: 'badTarget' };
+            }
+            const hueco = target.index === undefined || target.index === null || Number(target.index) < 0
+                ? null : this.contenidoDeEntrada(creature, ventana)[Number(target.index)];
+            target = {
+                kind: 'inventoryContainer',
+                entry: hueco && hueco !== entry && this.isContainerEntry(hueco) ? hueco : ventana
+            };
+        }
+        if (target.kind === 'groundContainer' && target.index !== undefined && target.index !== null &&
+                Number(target.index) >= 0) {
+            const ventana = this.items.get(Number(target.id));
+            const hueco = ventana ? this.contentsOfItem(ventana)[Number(target.index)] : null;
+            if (hueco && hueco !== ground && hueco.isContainer) {
+                target = { kind: 'groundContainer', id: this.adoptItem(hueco) };
+            }
+        }
+        // A LA MOCHILA PUESTA por su ventana es lo mismo que a la mochila.
+        if (target.kind === 'inventoryContainer' && target.entry === this.containerOf(creature)) {
+            target = { kind: 'container' };
+        }
 
         /*
          * EL MISMO OBJETO EN EL MISMO SITIO no es un movimiento.
@@ -1789,51 +1886,60 @@ class World {
          * Pedirlo no puede hacer nada, y hacerlo de verdad -quitarlo y volverlo a poner- tendria
          * un efecto que nadie ha pedido: el objeto se iria al FINAL de la pila de su casilla.
          */
-        if (entry && target.kind === 'slot' && entry.slot === String(target.slot)) {
+        if (entry && target.kind === 'slot' && entry.slot === String(target.slot) && enLaLista) {
             return { ok: false, reason: 'alreadyThere' };
         }
-        if (entry && target.kind === 'container' && entry.slot === SLOT_INSIDE) {
+        if (entry && target.kind === 'container' && entry.slot === SLOT_INSIDE && enLaLista) {
             return { ok: false, reason: 'alreadyThere' };
         }
-        if (ground && target.kind === 'ground' && ground.position &&
+        if (ground && target.kind === 'ground' && ground.position && !ground.parent &&
             Number(target.x) === ground.position.x &&
             Number(target.y) === ground.position.y &&
             Number(target.z) === ground.position.z) {
             return { ok: false, reason: 'alreadyThere' };
         }
 
-        // --- 2. EL DESTINO -----------------------------------------------------------------
-
         // SOLTARLO ENCIMA DE UN CONTENEDOR DEL SUELO (una mochila tirada, un cuerpo) lo mete
-        // DENTRO, como en Tibia, si está al alcance de la mano. Si no, cae en la casilla.
+        // DENTRO, como en Tibia, si está al alcance de la mano. Si no, cae en la casilla. Una
+        // bolsa también: entra con todo lo suyo.
         if (target.kind === 'ground') {
             const encima = this._contenedorArribaEn(target.x, target.y, target.z);
             if (encima && encima !== ground && !(ground && ground.parent === encima) &&
-                !this.isContainerType(typeId) && this.canReach(creature, encima.position)) {
+                this.canReach(creature, encima.position)) {
                 target = { kind: 'groundContainer', id: this.adoptItem(encima) };
             }
         }
 
+        // --- 3. CADA DESTINO, A SU OPERACION -------------------------------------------------
+        const origen = entry ? { entry: entry } : { item: ground, tile: groundTile };
+
         if (target.kind === 'groundContainer') {
             const container = this.items.get(Number(target.id));
-            if (!container || !container.position || !container.isContainer) {
+            const donde = container ? this.posicionDeObjeto(container) : null;
+            if (!container || !donde || !container.isContainer) {
                 return { ok: false, reason: 'badTarget' };
             }
-            if (!this.canReach(creature, container.position)) {
+            if (!this.canReach(creature, donde)) {
                 return { ok: false, reason: 'tooFar' };
             }
-            return this._moveToGroundContainer(creature, entry, ground, groundTile, container);
+            return this.moverADentro(creature, origen, { item: container });
+        }
+
+        if (target.kind === 'inventoryContainer') {
+            return this.moverADentro(creature, origen, { entry: target.entry });
         }
 
         if (target.kind === 'slot') {
             const slot = String(target.slot === undefined ? '' : target.slot);
             const wanted = this.slotOf(typeId);
 
-            // SOLTARLO EN LA RANURA DE LA MOCHILA PUESTA lo mete dentro de ella, como en Tibia
-            // (otra mochila sí se cambia por la que llevas).
+            // SOLTARLO EN LA RANURA DE LA MOCHILA PUESTA lo mete dentro de ella, como en Tibia: la
+            // ranura tiene un contenedor, y lo que se suelta encima de un contenedor va dentro. Otra
+            // mochila también (con todo lo suyo); para cambiar de mochila, se deja la puesta en el
+            // suelo y se pone la otra.
             const mochila = slot === 'backpack' ? this.equippedIn(creature, 'backpack') : null;
-            if (mochila && mochila !== entry && this.isContainerType(mochila.typeId) && !this.isContainerType(typeId)) {
-                return this._moveToContainer(creature, entry, ground);
+            if (mochila && mochila !== entry && this.isContainerType(mochila.typeId)) {
+                return this._moveToContainer(creature, entry, ground, groundTile);
             }
 
             // La ranura de la MUNICION admite cualquier cosa que se pueda llevar, como en Tibia
@@ -1856,12 +1962,16 @@ class World {
             if (!this.hasContainer(creature)) {
                 return { ok: false, reason: 'noContainer' };
             }
-            return this._moveToContainer(creature, entry, ground);
+            return this._moveToContainer(creature, entry, ground, groundTile);
         }
 
         if (target.kind === 'ground') {
             if (!this._withinThrow(creature, target.x, target.y, target.z)) {
                 return { ok: false, reason: 'tooFar' };
+            }
+            // UN BUZÓN: una carta o un paquete que se echa en su casilla se manda (`correo.js`).
+            if (this.buzonEn && this.buzonEn(target.x, target.y, target.z)) {
+                return this.echarAlBuzon(creature, origen);
             }
             if (!this._canHoldItems(target.x, target.y, target.z)) {
                 return { ok: false, reason: 'notEnoughRoom' };
@@ -1963,9 +2073,12 @@ class World {
      * primero las pilas iguales que ya hay y lo que sobra va en pilas nuevas de hasta 100, cada una
      * en su hueco. `excluir` es una entrada que no se rellena (la que se está moviendo).
      *
+     * `opciones.destino`: OTRO contenedor que llevas (una bolsa dentro de la mochila) donde meterlo
+     * en vez de la mochila puesta. Las mismas reglas de pilas, en su lista (`entry.contents`).
+     *
      * @returns {Object} la última entrada que recibió algo
      */
-    _addToContainer(creature, typeId, count, attributes, excluir) {
+    _addToContainer(creature, typeId, count, attributes, excluir, opciones) {
         const id = Number(typeId);
         let quedan = Math.max(1, Math.trunc(Number(count) || 1));
         let ultima = null;
@@ -1974,17 +2087,24 @@ class World {
             creature.inventory = [];
         }
 
+        const destino = opciones && opciones.destino && opciones.destino !== this.containerOf(creature)
+            ? opciones.destino : null;
+        if (destino && !Array.isArray(destino.contents)) {
+            destino.contents = [];
+        }
+        const lista = destino ? destino.contents : creature.inventory;
+
         const nueva = (cuantos) => {
             const entry = {
                 slot: SLOT_INSIDE,
-                position: creature.inventory.length,
+                position: lista.length,
                 typeId: id,
                 count: cuantos,
                 attributes: attributes && Object.keys(attributes).length > 0
                     ? { ...attributes }
                     : null
             };
-            creature.inventory.push(entry);
+            lista.push(entry);
             return entry;
         };
 
@@ -1992,7 +2112,7 @@ class World {
             return nueva(quedan);
         }
 
-        for (const entry of creature.inventory) {
+        for (const entry of lista) {
             if (quedan <= 0) {
                 break;
             }
@@ -2040,9 +2160,16 @@ class World {
         this._reindexInventory(creature.inventory);
     }
 
-    /** Destino: una ranura de equipo. Lo que hubiera vuelve a la mochila. */
+    /**
+     * Destino: una ranura de equipo. Lo que hubiera vuelve a la mochila.
+     *
+     * LA ENTRADA PUEDE VENIR DE DENTRO DE UNA BOLSA (`anidada`): entonces no está en la lista plana,
+     * así que primero se desprende de su bolsa y luego entra en la lista con su ranura; y su hueco
+     * libre no es de la mochila, que es lo que cuenta para ver si lo que se quita cabe.
+     */
     _moveToSlot(creature, entry, ground, groundTile, slot) {
         const previous = this.equippedIn(creature, slot);
+        const anidada = !!entry && creature.inventory.indexOf(entry) === -1;
 
         // LA MISMA PILA YA PUESTA (monedas en la munición): se juntan en vez de cambiarse.
         const tipo = entry ? entry.typeId : ground.typeId;
@@ -2063,13 +2190,12 @@ class World {
                     this._takeFromGround(ground, groundTile);
                 } else {
                     ground.count -= cabe;
-                    if (ground.position) {
+                    if (ground.position && !ground.parent) {
                         this.emit('onTileChanged', ground.position, ground);
                     }
                 }
             } else if (cabe >= entry.count) {
-                creature.inventory.splice(creature.inventory.indexOf(entry), 1);
-                this._reindexInventory(creature.inventory);
+                this._desprenderEntrada(creature, entry);
             } else {
                 entry.count -= cabe;
             }
@@ -2090,24 +2216,18 @@ class World {
             if (!this.hasContainer(creature)) {
                 return { ok: false, reason: 'noContainer' };
             }
-            // Y tiene que caber: si lo que se pone salía de la mochila, deja su hueco libre.
-            const libres = entry && entry.slot === SLOT_INSIDE ? 1 : 0;
+            // Y tiene que caber: si lo que se pone salía DE LA MOCHILA (no de una bolsa de dentro),
+            // deja su hueco libre.
+            const libres = entry && entry.slot === SLOT_INSIDE && !anidada ? 1 : 0;
             if (this.contentsOf(creature).length - libres >= this.backpackCapacity(creature)) {
                 return { ok: false, reason: 'backpackFull', slots: this.backpackCapacity(creature) };
             }
         }
 
-        // PONERSE UNA MOCHILA DEL SUELO CON COSAS DENTRO: sólo si no llevas otra, y lo de dentro
-        // pasa a ser lo que llevas en la mochila.
-        const conTodo = ground && ground.isContainer ? this.contentsOfItem(ground).slice() : [];
-        if (conTodo.length > 0 && replacing) {
-            return { ok: false, reason: 'fullContainer' };
-        }
-
         if (ground) {
-            // Lo que se recoge del suelo pesa de nuevas, asi que se comprueba antes de moverlo.
-            const weight = this.weightOfItem(ground.typeId, ground.count) +
-                conTodo.reduce((total, dentro) => total + this.weightOfItem(dentro.typeId, dentro.count), 0);
+            // Lo que se recoge del suelo pesa de nuevas -con todo lo que lleve dentro, si es una
+            // bolsa-, asi que se comprueba antes de moverlo.
+            const weight = this.pesoDeObjeto(ground);
 
             if (!this.canCarry(creature, weight)) {
                 return {
@@ -2120,30 +2240,27 @@ class World {
                 creature.inventory = [];
             }
 
+            // Se hace entrada CON LO SUYO (lo de dentro deja la tabla de objetos sueltos).
+            const nueva = this._entradaDesdeObjeto(ground);
             this._takeFromGround(ground, groundTile);
-
-            creature.inventory.push({
-                slot: slot,
-                position: creature.inventory.length,
-                typeId: ground.typeId,
-                count: Math.max(1, ground.count),
-                attributes: ground.attributes && Object.keys(ground.attributes).length > 0
-                    ? { ...ground.attributes }
-                    : null
-            });
-            conTodo.forEach((dentro) => {
-                creature.inventory.push({
-                    slot: SLOT_INSIDE,
-                    position: creature.inventory.length,
-                    typeId: dentro.typeId,
-                    count: Math.max(1, dentro.count),
-                    attributes: dentro.attributes && Object.keys(dentro.attributes).length > 0 ? { ...dentro.attributes } : null
-                });
-                this.items.delete(dentro.instanceId);
-            });
-            ground.contents = [];
+            nueva.slot = slot;
+            nueva.position = creature.inventory.length;
+            creature.inventory.push(nueva);
+            // PONERSE UNA MOCHILA DEL SUELO CON COSAS DENTRO: lo de dentro pasa a ser lo que llevas
+            // en la mochila (sólo llega aquí si no llevabas otra: si la llevas, va dentro de ella).
+            if (this.isContainerEntry(nueva) && slot === 'backpack') {
+                this._desplegarComoMochila(creature, nueva);
+            }
         } else {
+            if (anidada) {
+                this._desprenderEntrada(creature, entry);
+                entry.position = creature.inventory.length;
+                creature.inventory.push(entry);
+            }
             entry.slot = slot;
+            if (this.isContainerEntry(entry) && slot === 'backpack' && this.containerOf(creature) === entry) {
+                this._desplegarComoMochila(creature, entry);
+            }
         }
 
         if (replacing) {
@@ -2164,12 +2281,11 @@ class World {
      * comprobaciones -distancia, objeto de mas arriba, si se puede coger, si hay mochila, si
      * cabe-. Dos copias de esa lista acaban discrepando en la que a una se le olvide, y el
      * sintoma seria un objeto que se puede recoger de una manera y arrastrando no.
+     *
+     * UNA BOLSA CON COSAS ENTRA CON ELLAS (`contenedores.js`), y lo que sale DE DENTRO DE UNA BOLSA
+     * que llevas va por `moverADentro`, que es quien sabe sacar de una bolsa y meter en otra.
      */
     _moveToContainer(creature, entry, ground) {
-        // Una mochila con cosas no va dentro de la tuya (lo de dentro de lo de dentro no se guarda).
-        if (ground && ground.isContainer && this.contentsOfItem(ground).length > 0) {
-            return { ok: false, reason: 'fullContainer' };
-        }
         if (ground && ground.parent) {
             const contents = this.contentsOfItem(ground.parent);
             return this.takeFromContainer(creature, ground.parent.instanceId, contents.indexOf(ground));
@@ -2181,7 +2297,12 @@ class World {
 
         // La mochila no se mete dentro de si misma.
         if (entry === this.containerOf(creature)) {
-            return { ok: false, reason: 'alreadyThere' };
+            return { ok: false, reason: 'containerInItself' };
+        }
+
+        // De dentro de una bolsa que llevas a la mochila.
+        if (creature.inventory.indexOf(entry) === -1) {
+            return this.moverADentro(creature, { entry: entry }, { entry: this.containerOf(creature) });
         }
 
         // Y lo que esta dentro, ya esta dentro.
@@ -2221,43 +2342,6 @@ class World {
     }
 
     /**
-     * Destino: DENTRO de un contenedor del suelo (una mochila tirada, un cuerpo). Desde la
-     * mochila, una ranura, el suelo u otro contenedor. Primero se mete (si no cabe, no se toca
-     * nada) y luego se quita de donde estaba.
-     */
-    _moveToGroundContainer(creature, entry, ground, groundTile, container) {
-        const typeId = entry ? entry.typeId : ground.typeId;
-        const count = Math.max(1, Number(entry ? entry.count : ground.count) || 1);
-        if (ground === container || (ground && ground.parent === container)) {
-            return { ok: false, reason: 'alreadyThere' };
-        }
-        // Un contenedor no va dentro de otro: lo de dentro de lo de dentro no se ve ni se guarda.
-        if (this.isContainerType(typeId)) {
-            return { ok: false, reason: 'containerInContainer' };
-        }
-
-        const antes = this.contentsOfItem(container).length;
-        const puesto = this.addToGroundContainer(container, typeId, count);
-        if (!puesto) {
-            return { ok: false, reason: 'containerFull' };
-        }
-        const atributos = entry ? entry.attributes : ground.attributes;
-        if (this.contentsOfItem(container).length > antes && atributos && Object.keys(atributos).length > 0) {
-            puesto.attributes = { ...atributos };
-        }
-
-        let stats;
-        if (entry) {
-            creature.inventory.splice(creature.inventory.indexOf(entry), 1);
-            this._reindexInventory(creature.inventory);
-            stats = this.recomputeEquipment(creature);
-        } else {
-            this._takeFromGround(ground, groundTile);
-        }
-        return { ok: true, item: puesto, container: container.instanceId, stats: stats };
-    }
-
-    /**
      * Destino: el suelo.
      *
      * Soltar y arrastrar al suelo son la misma operacion -`dropItemAt`-, y mover un objeto de una
@@ -2274,10 +2358,10 @@ class World {
         }
 
         if (entry) {
-            // El indice se busca en la lista y no se copia de `entry.position`, aunque hoy digan
-            // lo mismo: `position` es un campo que alguien podria dejar sin actualizar, y soltar
-            // la entrada equivocada seria soltar otro objeto del que el jugador ha arrastrado.
-            return this.dropItemAt(creature, creature.inventory.indexOf(entry), position);
+            // Se suelta LA ENTRADA MISMA, esté donde esté (puesta, en la mochila o en una bolsa de
+            // dentro), y no la que diga su `position`: ese campo es un número que alguien podría
+            // dejar sin actualizar, y soltar la entrada equivocada sería soltar otro objeto.
+            return this._soltarEntrada(creature, entry, position);
         }
 
         /*
@@ -2538,7 +2622,8 @@ class World {
     countMoney(creature) {
         const valores = new Map(this._monedas().map((m) => [m.id, m.value]));
 
-        return (creature.inventory instanceof Array ? creature.inventory : [])
+        // A CUALQUIER PROFUNDIDAD: las monedas de una bolsa dentro de la mochila también pagan.
+        return this.todasLasEntradas(creature).map((t) => t.entry)
             .filter((entry) => valores.has(entry.typeId))
             .reduce((total, entry) => total + entry.count * valores.get(entry.typeId), 0);
     }
@@ -2607,9 +2692,20 @@ class World {
         return true;
     }
 
-    /** Una copia del inventario, para deshacer una operación que no cabe. */
+    /**
+     * Una copia del inventario, para deshacer una operación que no cabe. ENTERA: lo de dentro de las
+     * bolsas también se copia, porque pagar puede gastar monedas de una bolsa de dentro. Las copias
+     * conservan el `uid`, así que una ventana abierta sigue siendo la de esa bolsa.
+     */
     _copiaInventario(creature) {
-        return (creature.inventory || []).map((e) => ({ ...e, attributes: e.attributes ? { ...e.attributes } : null }));
+        const copiar = (lista) => lista.map((e) => {
+            const copia = { ...e, attributes: e.attributes ? { ...e.attributes } : null };
+            if (Array.isArray(e.contents)) {
+                copia.contents = copiar(e.contents);
+            }
+            return copia;
+        });
+        return copiar(creature.inventory || []);
     }
 
     /** Vuelve el inventario a la copia (las mismas entradas, con sus valores de antes). */
@@ -2672,11 +2768,20 @@ class World {
             return 0;
         }
 
-        for (let index = creature.inventory.length - 1; index >= 0 && remaining > 0;
-            index -= 1) {
-
-            const entry = creature.inventory[index];
+        /*
+         * A CUALQUIER PROFUNDIDAD, como en Tibia: lo de una bolsa de dentro también se puede gastar
+         * o vender. Lo que NO se quita es un contenedor con cosas dentro (vender una bolsa llena se
+         * llevaría lo de dentro sin que nadie lo pidiera): se salta, y quien llama ve que no se
+         * quitó todo.
+         */
+        const todas = this.todasLasEntradas(creature);
+        const tocadas = new Set();
+        for (let index = todas.length - 1; index >= 0 && remaining > 0; index -= 1) {
+            const { entry, lista } = todas[index];
             if (entry.typeId !== id) {
+                continue;
+            }
+            if (this.isContainerEntry(entry) && this.contenidoDeEntrada(creature, entry).length > 0) {
                 continue;
             }
 
@@ -2686,11 +2791,13 @@ class World {
             taken += used;
 
             if (entry.count <= 0) {
-                creature.inventory.splice(index, 1);
+                lista.splice(lista.indexOf(entry), 1);
+                tocadas.add(lista);
             }
         }
 
         this._reindexInventory(creature.inventory);
+        tocadas.forEach((lista) => this._reindexInventory(lista));
 
         return taken;
     }
@@ -2941,7 +3048,8 @@ class World {
     /** Cuántos objetos de un tipo lleva encima. */
     countOf(creature, typeId) {
         const id = Number(typeId);
-        return (creature.inventory instanceof Array ? creature.inventory : [])
+        // A cualquier profundidad: lo de dentro de una bolsa también lo llevas.
+        return this.todasLasEntradas(creature).map((t) => t.entry)
             .filter((entry) => entry.typeId === id)
             .reduce((total, entry) => total + entry.count, 0);
     }
@@ -2964,14 +3072,9 @@ class World {
     weightOf(creature) {
         const inventory = creature.inventory instanceof Array ? creature.inventory : [];
 
-        return inventory.reduce((total, entry) => {
-            const definition = this.itemTypes.get(entry.typeId);
-            const unit = definition && definition.attributes && definition.attributes.weight
-                ? Number(definition.attributes.weight)
-                : 0;
-
-            return total + unit * Math.max(1, entry.count);
-        }, 0);
+        // CON TODO LO DE DENTRO, a cualquier profundidad: una bolsa pesa lo suyo y lo que lleva. Lo
+        // de la mochila puesta son entradas de la lista plana, así que ya cuentan una vez cada una.
+        return inventory.reduce((total, entry) => total + this.pesoDeEntrada(entry), 0);
     }
 
     /**
@@ -3380,5 +3483,13 @@ Object.assign(World.prototype, require('./extras').extras);
 Object.assign(World.prototype, require('./reglas').reglas);
 // Los campos de fuego, energía y veneno, y el muro mágico (`campos.js`).
 Object.assign(World.prototype, require('./campos').campos);
+// Los contenedores anidados: una bolsa dentro de otra, en el inventario y en el mundo (`contenedores.js`).
+Object.assign(World.prototype, require('./contenedores').contenedores);
+// Las casas (comprar, alquiler, listas de acceso, lo de dentro, camas) y el banco (`casas.js`).
+Object.assign(World.prototype, require('./casas').casas);
+// El correo: buzones, cartas y paquetes, y entregar en el depósito de alguien (`correo.js`).
+Object.assign(World.prototype, require('./correo').correo);
+// El intercambio entre jugadores: ofrecer, contestar, aceptar y cambiar (`intercambio.js`).
+Object.assign(World.prototype, require('./intercambio').intercambio);
 
 module.exports = { World, DIRECTION_DELTA, COMPACT_EVERY_TICKS, resetIdCounter };

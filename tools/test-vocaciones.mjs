@@ -415,9 +415,12 @@ async function main() {
             pj.inventory.some((x) => x.typeId === 2401 && x.slot === 'inside') &&
             w.containerOf(pj) && w.containerOf(pj).slot === 'backpack', r.reason);
 
+        // Con los contenedores anidados (engine/world/contenedores.js) una mochila SÍ va dentro de
+        // otra, como en Tibia; las reglas de anidar se prueban en tools/test-contenedores.mjs.
         w.createItem(2412, 1, suelo);
         r = w.moveItem(pj, { kind: 'ground', ...suelo }, { kind: 'groundContainer', id: tirada.instanceId });
-        check('una mochila no va dentro de otra', !r.ok && r.reason === 'containerInContainer', r.reason);
+        check('una mochila va dentro de otra (contenedores anidados)', r.ok && dentro().includes(2412), r.reason);
+        w.contentsOfItem(tirada).splice(w.contentsOfItem(tirada).findIndex((i) => i.typeId === 2412), 1);
 
         // Llenar la mochila puesta hasta sus 20 huecos.
         while (w.contentsOf(pj).length < 20) {

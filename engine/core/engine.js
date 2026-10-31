@@ -40,6 +40,7 @@ const { Combat } = require('../world/combat');
 const { MonsterAI } = require('../world/ai');
 const { ViewManager } = require('../net/view');
 const { SessionManager } = require('../net/session');
+const PROTOCOLO = require('../net/protocol');
 const { PlayerRepository } = require('../persistence/players');
 
 /**
@@ -519,6 +520,18 @@ function createEngine(options) {
         registry.dispatchEvent('advance', [wrap(player), skill, oldLevel, newLevel]);
     });
 
+    // EL INTERCAMBIO (intercambio.js): `onTradeRequest(player, target, item)` y `onTradeAccept(player,
+    // target, item, targetItem)`, como en TFS; con `false`, no. Lo ofrecido llega envuelto: lo que
+    // lleva, como objeto del inventario; lo del suelo, por su instancia.
+    const envolverOferta = (ref) => (!ref ? null : ref.entry
+        ? registry.entities.inventoryItem(ref.playerId, ref.entry)
+        : registry.entities.item(world.adoptItem(ref.item)));
+    world.eventoDeIntercambio = (evento, player, otro, ...ofertas) =>
+        registry.dispatchEvent(evento, [wrap(player), wrap(otro)].concat(ofertas.map(envolverOferta)));
+    // Morir o alejarse (andando o teletransportado) lo cancela.
+    world.on('onPlayerDeath', (player) => world.cancelarIntercambio(player));
+    world.on('onStepIn', (creature) => creature.intercambio && world.revisarIntercambio(creature));
+
     // --- 10. Vista --------------------------------------------------------
     // La vista decide qué ve cada jugador. Se crea aquí y no dentro de la capa de
     // red porque no es red: es una decision sobre el MUNDO (que plantas se ven,
@@ -680,10 +693,43 @@ function createEngine(options) {
         // El GRUPO de acceso se guarda aparte del personaje (`/grupo`, también con él desconectado).
         world.guardarGrupo = (nombre, grupoId) => repository.database.setCharacterGroup(nombre, grupoId);
 
+        // EL HISTORIAL DE MUERTES (tabla `player_deaths`): cada muerte se apunta AL MOMENTO, con lo
+        // que trae el aviso (`info`, ver `Combat.handlePlayerDeath`), y `/muertes` lo lee por nombre.
+        // Un fallo de la base no puede impedir morir y reaparecer: se avisa y se sigue.
+        world.on('onPlayerDeath', (player, killer, dropped, info) => {
+            try {
+                repository.recordDeath(player, info);
+            } catch (error) {
+                log.error('no se pudo apuntar la muerte de ' + player.name + ': ' + error.message);
+            }
+        });
+        world.historialDeMuertes = (nombre, limite) => repository.deathsOf(nombre, limite);
+
+        // EL CORREO a quien no está dentro (tabla `player_mail`, `engine/world/correo.js`): el mundo
+        // busca en la base a quién va, le deja ahí lo que llegue y se lo entrega cuando entra.
+        world.correoEnLaBase = {
+            personaje: (idONombre) => repository.database.findCharacterForMail(idONombre),
+            dejar: (personajeId, carta) => repository.database.addMail(personajeId, carta),
+            pendiente: (personajeId) => repository.database.listMail(personajeId),
+            borrar: (ids) => repository.database.deleteMail(ids),
+            guardar: (player) => repository.save(player)
+        };
+
         log.info('personajes guardados: ' + persistenceStats.players +
             ' en ' + persistenceStats.accounts + ' cuenta(s)');
     } else {
         log.warning('persistencia APAGADA: los personajes viven lo que viva el proceso');
+    }
+
+    // --- 11c. Casas y banco (engine/world/casas.js) -----------------------
+    // DESPUÉS de la persistencia: el dueño, las listas y lo que hay dentro de cada casa están en la
+    // base (`houses`, `house_lists`, `house_items`), y el banco es el `balance` de cada personaje.
+    // Sin base, las casas viven lo que viva el proceso, como los personajes.
+    world.baseDeCasas = repository ? repository.database : null;
+    const casasStats = world.cargarCasas(config);
+    if (casasStats.casas > 0) {
+        log.info('casas: ' + casasStats.casas + ' (' + casasStats.conDueno + ' con dueño, ' +
+            casasStats.restauradas + ' con lo de dentro guardado)');
     }
 
     const stats = {
@@ -731,6 +777,11 @@ function createEngine(options) {
         stats: stats,
 
         dispatchAction(itemId, context) {
+            // UNA PUERTA DE CASA sólo la abre quien tiene acceso (casas.js): se corta antes del script
+            // de las puertas, que no sabe nada de casas.
+            if (world.puertaDeCasaBloqueada && world.puertaDeCasaBloqueada(context)) {
+                return { handled: true, blocked: 'notInvited' };
+            }
             return registry.dispatchAction(itemId, context);
         },
 
@@ -800,6 +851,8 @@ function createEngine(options) {
                     log.error('al apagar no se pudo guardar a ' + result.failed +
                         ' jugador(es)');
                 }
+                // Y las casas: su estado y lo que hay dentro (casas.js).
+                world.guardarCasas();
                 repository.close();
             }
 
@@ -839,6 +892,8 @@ function createEngine(options) {
     if (repository) {
         const autosave = () => {
             const result = repository.saveAll();
+            // Lo que hay dentro de las casas (sólo las que han cambiado: casas.js).
+            world.guardarCasas();
             if (result.failed > 0) {
                 log.error('guardado periodico: ' + result.saved + ' guardados, ' +
                     result.failed + ' fallaron');
@@ -891,6 +946,26 @@ function createEngine(options) {
         const session = api.sessions && api.sessions.get(player.id);
         if (session) {
             session.sendPrivateMessage(de, texto, canal);
+        }
+    });
+    // Una ventana de texto (leer o escribir) para un jugador.
+    world.on('onTextWindow', (player, id, ventana) => {
+        const session = api.sessions && api.sessions.get(player.id);
+        if (session) {
+            session.sendTextWindow(id, ventana);
+        }
+    });
+    // La ventana de intercambio entre jugadores, al día o cerrada (intercambio.js).
+    world.on('onTradeUpdate', (player, ventana) => {
+        const session = api.sessions && api.sessions.get(player.id);
+        if (session) {
+            session.sendTrade(ventana);
+        }
+    });
+    world.on('onTradeClose', (player) => {
+        const session = api.sessions && api.sessions.get(player.id);
+        if (session) {
+            session.sendTradeClose();
         }
     });
     // Un diálogo (popupFYI) para un jugador.
@@ -983,6 +1058,24 @@ function createEngine(options) {
             session.sendDeath(killerName, dropped.length);
         }
     });
+
+    /*
+     * DORMIR EN UNA CAMA saca del juego (casas.js), y se sale como al pulsar «Salir»: por la sesión,
+     * que guarda y avisa al cliente. Un jugador sin sesión (uno de prueba) se guarda y se quita.
+     * Devuelve si salió.
+     */
+    world.sacarDelJuego = (player) => {
+        const session = api.sessions && api.sessions.get(player.id);
+        if (session) {
+            const r = session.handle([PROTOCOLO.CLIENT.LOGOUT]);
+            return !!(r && r.ok);
+        }
+        if (repository) {
+            repository.logout(player);
+        }
+        world.removePlayer(player.id);
+        return true;
+    };
 
     /** Crea una sesión con un transporte ya resuelto. Se registra al entrar. */
     api.createSession = (send) => api.sessions.createSession(send);

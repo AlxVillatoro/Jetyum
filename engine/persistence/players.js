@@ -240,6 +240,12 @@ class PlayerRepository {
 
         const player = this._spawnInWorld(state, account.id, created, premium);
 
+        // Si venía de dormir en una cama se despierta con lo recuperado, y si aparece dentro de una
+        // casa en la que ya no puede estar, sale a la puerta (casas.js).
+        if (this.world.casaAlEntrar) {
+            this.world.casaAlEntrar(player);
+        }
+
         this.database.setCharacterOnline(row.id, true);
         this.stats.logins += 1;
 
@@ -275,6 +281,8 @@ class PlayerRepository {
         player.townId = row.townId || 0;
         player.mountId = row.mountId || 0;
         player.mounted = row.mounted === true;
+        // El saldo del banco (casas.js): no se lleva encima, así que no se pierde al morir.
+        player.balance = Math.max(0, Number(row.balance) || 0);
 
         // Lo que da la vocación: maná, almas, skills… y lo que depende del nivel (vida y maná
         // máximos, velocidad) se recalcula con vocations.js, por si han cambiado sus números.
@@ -285,7 +293,14 @@ class PlayerRepository {
         }
         this.world.applyLevel(player, { curar: created });
 
-        player.inventory = state.items.slice();
+        /*
+         * LO DE DENTRO DE LAS BOLSAS VIENE EN EL JSON DE SUS ATRIBUTOS (`CLAVE_CONTENIDO` en
+         * `engine/world/contenedores.js`, donde está contado por qué ahí y no en una columna): se saca
+         * de ahí y se pone en `entry.contents`. Una fila de antes no lo trae y sale tal cual.
+         */
+        player.inventory = this.world.inventarioDesdeFilas
+            ? this.world.inventarioDesdeFilas(state.items)
+            : state.items.slice();
         player.storages = new Map(Object.keys(state.storages)
             .map((key) => [key, state.storages[key]]));
 
@@ -386,6 +401,13 @@ class PlayerRepository {
         if (created || huerfano) {
             this.world.equipStartingContainer(player);
         }
+
+        // 3. LA MOCHILA PUESTA NO LLEVA `contents`: lo suyo son las entradas `inside`. Si una fila
+        //    la trajera (un dato escrito a mano), lo suyo pasa a la mochila en vez de perderse.
+        const mochila = this.world.containerOf(player);
+        if (mochila && Array.isArray(mochila.contents) && this.world._desplegarComoMochila) {
+            this.world._desplegarComoMochila(player, mochila);
+        }
     }
 
     /**
@@ -455,9 +477,13 @@ class PlayerRepository {
                 outfit: player.outfit,
                 townId: player.townId,
                 mountId: player.mountId,
-                mounted: player.mounted === true
+                mounted: player.mounted === true,
+                balance: player.balance
             },
-            items: player.inventory || [],
+            // Las bolsas, con lo de dentro en el JSON de sus atributos (ver `filasParaGuardar`).
+            items: this.world && this.world.filasParaGuardar
+                ? this.world.filasParaGuardar(player.inventory || [])
+                : (player.inventory || []),
             storages: storages
         });
     }
@@ -522,6 +548,52 @@ class PlayerRepository {
         }
         const value = player.storages.get(String(key));
         return value === undefined ? null : value;
+    }
+
+    // -----------------------------------------------------------------------
+    // El historial de muertes
+    // -----------------------------------------------------------------------
+
+    /**
+     * Apunta la muerte de un jugador: lo que trae el aviso `onPlayerDeath` (el `info` de
+     * `Combat.handlePlayerDeath`). SE ESCRIBE AL MOMENTO y no con el guardado periódico, como en
+     * TFS: una muerte es un hecho que no se repite ni se corrige, y es justo lo que se perdería si
+     * el servidor se cayera antes del siguiente guardado.
+     *
+     * Un personaje sin fila en la base (sin `characterId`: uno de prueba) no deja historial.
+     *
+     * @returns {number|null} el id de la fila
+     */
+    recordDeath(player, info) {
+        if (!player || !player.characterId || !this.database.isOpen) {
+            return null;
+        }
+        const i = info || {};
+        return this.database.addDeath(player.characterId, {
+            time: i.time === undefined ? this.now() : i.time,
+            level: i.level === undefined ? player.level : i.level,
+            killedBy: i.killedBy,
+            isPlayer: i.isPlayer,
+            mostDamageBy: i.mostDamageBy,
+            mostDamageIsPlayer: i.mostDamageIsPlayer,
+            unjustified: i.unjustified
+        });
+    }
+
+    /**
+     * Las últimas muertes de un personaje POR SU NOMBRE, esté dentro o no (`/muertes <nombre>`).
+     *
+     * @returns {{name: string, deaths: Array}|null} null si no existe ese personaje
+     */
+    deathsOf(name, limit) {
+        if (!this.database.isOpen) {
+            return null;
+        }
+        const row = this.database.findCharacterByName(String(name || '').trim());
+        if (!row) {
+            return null;
+        }
+        return { name: row.name, deaths: this.database.listDeaths(row.id, limit) };
     }
 
     // -----------------------------------------------------------------------

@@ -28,7 +28,8 @@
  *
  * LO QUE NO HACE, y conviene saberlo: no guarda el mundo (los items del suelo, las
  * criaturas) sino sólo a los jugadores. El mundo se regenera del mapa al arrancar,
- * que es lo que hace TFS.
+ * que es lo que hace TFS. La excepción, también como en TFS, es lo que hay dentro de
+ * las casas (`house_items`, versión 6: ver engine/world/casas.js).
  */
 
 const fs = require('fs');
@@ -36,7 +37,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 /** Versión del esquema. Sube cuando cambie la estructura. */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 7;
 
 /**
  * Las tablas.
@@ -96,6 +97,11 @@ const SCHEMA = [
      * `attributes` es JSON en texto. Los items de Tibia llevan atributos propios
      * (cargas, texto escrito, dueño), y hacer una columna por cada uno posible sería
      * un esquema que crece con cada datapack.
+     *
+     * LOS CONTENEDORES ANIDADOS NO TIENEN FILAS PROPIAS: una bolsa dentro de la mochila es una
+     * fila (`inside`) y lo que lleva dentro va en SU `attributes`, bajo la clave `_contenido`, como
+     * un árbol JSON. Por eso no hubo migración y las filas de antes se cargan igual. El porqué
+     * está en `CLAVE_CONTENIDO` de `engine/world/contenedores.js`.
      */
     `CREATE TABLE IF NOT EXISTS player_items (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -218,6 +224,93 @@ const MIGRATIONS = {
                     }
                 }
             });
+    },
+
+    /**
+     * Versión 5: EL HISTORIAL DE MUERTES, la tabla `player_deaths` de TFS con sus columnas: cuándo
+     * (`time`, en SEGUNDOS como TFS), a qué nivel (el que tenía AL CAER, antes de perder nada), quién
+     * dio el último golpe (`killed_by`, e `is_player` si fue un jugador), quién hizo más daño
+     * (`mostdamage_by`; hoy vacío, porque el combate no apunta el daño por atacante) y si la muerte
+     * fue injusta.
+     *
+     * Una fila por muerte y NUNCA se reescribe: se inserta al morir (el aviso `onPlayerDeath`, en
+     * engine/core/engine.js) y se lee con `/muertes`. El índice es para «las últimas N de este».
+     */
+    5: (db) => {
+        db.exec(`CREATE TABLE IF NOT EXISTS player_deaths (
+            id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_id              INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+            time                   INTEGER NOT NULL,
+            level                  INTEGER NOT NULL,
+            killed_by              TEXT    NOT NULL DEFAULT '',
+            is_player              INTEGER NOT NULL DEFAULT 0,
+            mostdamage_by          TEXT    NOT NULL DEFAULT '',
+            mostdamage_is_player   INTEGER NOT NULL DEFAULT 0,
+            unjustified            INTEGER NOT NULL DEFAULT 0,
+            mostdamage_unjustified INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec('CREATE INDEX IF NOT EXISTS idx_player_deaths_player ON player_deaths(player_id, time)');
+    },
+
+    /**
+     * Versión 6: LAS CASAS, como las tablas `houses`, `house_lists` y `tile_store` de TFS.
+     *
+     * - `houses`: una fila por casa del mapa (el id es el del mapa). `owner` es el id del personaje
+     *   (0 = libre), `paid` hasta cuándo está pagado el alquiler (milisegundos del reloj del mundo)
+     *   y `warnings` cuántos avisos de impago lleva.
+     * - `house_lists`: las listas de acceso, una fila por lista: `listid` 256 = invitados, 257 =
+     *   subdueños, y para una puerta, su id de puerta (como TFS). `list` es el texto tal cual lo
+     *   escribió el dueño, una entrada por línea.
+     * - `house_items`: lo que hay en el suelo de la casa, como árbol JSON (`data`), para que lo
+     *   que se deja en casa siga ahí al reiniciar.
+     * - `players.balance`: el saldo del banco (en monedas de oro), la columna de TFS. De ahí se
+     *   paga el alquiler.
+     */
+    6: (db) => {
+        try {
+            db.exec('ALTER TABLE players ADD COLUMN balance INTEGER NOT NULL DEFAULT 0');
+        } catch (error) {
+            if (!/duplicate column name/i.test(String(error.message))) {
+                throw error;
+            }
+        }
+        db.exec(`CREATE TABLE IF NOT EXISTS houses (
+            id       INTEGER PRIMARY KEY,
+            owner    INTEGER NOT NULL DEFAULT 0,
+            paid     INTEGER NOT NULL DEFAULT 0,
+            warnings INTEGER NOT NULL DEFAULT 0,
+            name     TEXT    NOT NULL DEFAULT '',
+            rent     INTEGER NOT NULL DEFAULT 0,
+            town_id  INTEGER NOT NULL DEFAULT 0
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS house_lists (
+            house_id INTEGER NOT NULL REFERENCES houses(id) ON DELETE CASCADE,
+            listid   INTEGER NOT NULL,
+            list     TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (house_id, listid)
+        )`);
+        db.exec(`CREATE TABLE IF NOT EXISTS house_items (
+            house_id INTEGER PRIMARY KEY REFERENCES houses(id) ON DELETE CASCADE,
+            data     TEXT    NOT NULL DEFAULT '[]'
+        )`);
+    },
+
+    /**
+     * Versión 7: EL CORREO que aún no ha llegado. Una carta o un paquete a alguien que no está
+     * conectado no puede ir a su depósito (el depósito vive con el progreso del personaje), así
+     * que espera aquí y se entrega en cuanto entra: `item` es el objeto como árbol JSON (el de
+     * `objetoParaGuardar`), `town_id` la ciudad de destino y `time` cuándo se envió.
+     */
+    7: (db) => {
+        db.exec(`CREATE TABLE IF NOT EXISTS player_mail (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+            town_id   INTEGER NOT NULL DEFAULT 0,
+            time      INTEGER NOT NULL,
+            sender    TEXT    NOT NULL DEFAULT '',
+            item      TEXT    NOT NULL
+        )`);
+        db.exec('CREATE INDEX IF NOT EXISTS idx_player_mail_player ON player_mail(player_id)');
     }
 };
 
@@ -629,6 +722,8 @@ class Database {
                 townId: Number(row.town_id) || 0,
                 mountId: Number(row.mount_id) || 0,
                 mounted: Number(row.mounted) === 1,
+                /** El saldo del banco, en monedas de oro (versión 6). */
+                balance: Math.max(0, Number(row.balance) || 0),
                 /**
                  * El aspecto. `looktype` a 0 significa que la fila es de ANTES de que
                  * existieran los aspectos, y quien la lea tiene que decidir qué hacer;
@@ -701,6 +796,13 @@ class Database {
                 Number(player.id)
             );
 
+            // El saldo del banco va con lo demás (las monedas que se depositan salen del inventario
+            // en este mismo guardado). Un estado sin saldo, de quien no lo conoce, no lo toca.
+            if (player.balance !== undefined) {
+                this.db.prepare('UPDATE players SET balance = ? WHERE id = ?')
+                    .run(Math.max(0, Math.trunc(Number(player.balance) || 0)), Number(player.id));
+            }
+
             this.db.prepare('DELETE FROM player_items WHERE player_id = ?')
                 .run(Number(player.id));
 
@@ -763,6 +865,252 @@ class Database {
     }
 
     // -----------------------------------------------------------------------
+    // El historial de muertes (versión 5)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Apunta una muerte. `time` en milisegundos (el reloj del mundo) y se guarda en segundos, como
+     * TFS. Los textos se recortan a lo que guarda TFS (255 y 100).
+     *
+     * @returns {number} el id de la fila
+     */
+    addDeath(characterId, death) {
+        const d = death || {};
+        const result = this.db.prepare(
+            `INSERT INTO player_deaths (player_id, time, level, killed_by, is_player, mostdamage_by,
+                mostdamage_is_player, unjustified, mostdamage_unjustified)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+            Number(characterId),
+            Math.floor((d.time === undefined ? this.now() : Number(d.time)) / 1000),
+            Math.max(1, Number(d.level) || 1),
+            String(d.killedBy || '').slice(0, 255),
+            d.isPlayer ? 1 : 0,
+            String(d.mostDamageBy || '').slice(0, 100),
+            d.mostDamageIsPlayer ? 1 : 0,
+            d.unjustified ? 1 : 0,
+            d.mostDamageUnjustified ? 1 : 0
+        );
+        return Number(result.lastInsertRowid);
+    }
+
+    /**
+     * Las últimas muertes de un personaje, de la más nueva a la más vieja (`time` en milisegundos).
+     *
+     * @returns {Array<{time, level, killedBy, isPlayer, mostDamageBy, unjustified}>}
+     */
+    listDeaths(characterId, limit) {
+        const n = Math.max(1, Math.min(100, Math.trunc(Number(limit) || 10)));
+        return this.db.prepare(
+            `SELECT time, level, killed_by, is_player, mostdamage_by, mostdamage_is_player, unjustified
+               FROM player_deaths WHERE player_id = ? ORDER BY time DESC, id DESC LIMIT ?`
+        ).all(Number(characterId), n).map((row) => ({
+            time: Number(row.time) * 1000,
+            level: Number(row.level),
+            killedBy: row.killed_by,
+            isPlayer: Boolean(row.is_player),
+            mostDamageBy: row.mostdamage_by,
+            mostDamageIsPlayer: Boolean(row.mostdamage_is_player),
+            unjustified: Boolean(row.unjustified)
+        }));
+    }
+
+    // -----------------------------------------------------------------------
+    // Las casas (versión 6)
+    // -----------------------------------------------------------------------
+    //
+    // Lo que usa `engine/world/casas.js`: una fila por casa del mapa, sus listas de acceso y lo que
+    // hay dentro (JSON), y el saldo del banco de cada personaje, que es de donde se paga.
+
+    /** Las casas guardadas, con el nombre de su dueño ('' si no tiene, o si el personaje ya no existe). */
+    loadHouses() {
+        return this.db.prepare(
+            `SELECT h.id, h.owner, h.paid, h.warnings, COALESCE(p.name, '') AS owner_name
+               FROM houses h LEFT JOIN players p ON p.id = h.owner`
+        ).all().map((row) => ({
+            id: Number(row.id),
+            owner: Number(row.owner) || 0,
+            ownerName: row.owner_name,
+            paid: Number(row.paid) || 0,
+            warnings: Number(row.warnings) || 0
+        }));
+    }
+
+    /**
+     * Da de alta una casa del mapa, o pone al día su nombre, su alquiler y su ciudad: esos los manda
+     * el mapa. El dueño, el pago y los avisos no se tocan.
+     */
+    syncHouse(house) {
+        this.db.prepare(
+            `INSERT INTO houses (id, name, rent, town_id) VALUES (?, ?, ?, ?)
+             ON CONFLICT (id) DO UPDATE SET name = excluded.name, rent = excluded.rent, town_id = excluded.town_id`
+        ).run(Number(house.id), String(house.name || ''), Number(house.rent) || 0, Number(house.townId) || 0);
+        return true;
+    }
+
+    /** El dueño (id del personaje, 0 = libre), hasta cuándo está pagada (ms) y los avisos. */
+    saveHouse(house) {
+        this.db.prepare('UPDATE houses SET owner = ?, paid = ?, warnings = ? WHERE id = ?')
+            .run(Number(house.owner) || 0, Math.trunc(Number(house.paid) || 0), Number(house.warnings) || 0,
+                Number(house.id));
+        return true;
+    }
+
+    /** Todas las listas de acceso: `[{houseId, listId, list}]`. */
+    loadHouseLists() {
+        return this.db.prepare('SELECT house_id, listid, list FROM house_lists').all().map((row) => ({
+            houseId: Number(row.house_id),
+            listId: Number(row.listid),
+            list: String(row.list || '')
+        }));
+    }
+
+    /** Guarda una lista (256 invitados, 257 subdueños, o el número de una puerta); vacía, la borra. */
+    saveHouseList(houseId, listId, text) {
+        if (!String(text || '').trim()) {
+            this.db.prepare('DELETE FROM house_lists WHERE house_id = ? AND listid = ?')
+                .run(Number(houseId), Number(listId));
+            return true;
+        }
+        this.db.prepare(
+            `INSERT INTO house_lists (house_id, listid, list) VALUES (?, ?, ?)
+             ON CONFLICT (house_id, listid) DO UPDATE SET list = excluded.list`
+        ).run(Number(houseId), Number(listId), String(text));
+        return true;
+    }
+
+    /** Borra todas las listas de una casa (al cambiar de dueño). */
+    clearHouseLists(houseId) {
+        this.db.prepare('DELETE FROM house_lists WHERE house_id = ?').run(Number(houseId));
+        return true;
+    }
+
+    /** Lo que hay dentro de cada casa: un Map de id de casa al árbol guardado (sólo las que tienen fila). */
+    loadHouseItems() {
+        const casas = new Map();
+        this.db.prepare('SELECT house_id, data FROM house_items').all().forEach((row) => {
+            try {
+                casas.set(Number(row.house_id), JSON.parse(row.data || '[]'));
+            } catch (error) {
+                if (this.log) {
+                    this.log.error('lo guardado en la casa ' + row.house_id + ' no se puede leer: ' + error.message);
+                }
+            }
+        });
+        return casas;
+    }
+
+    saveHouseItems(houseId, data) {
+        this.db.prepare(
+            `INSERT INTO house_items (house_id, data) VALUES (?, ?)
+             ON CONFLICT (house_id) DO UPDATE SET data = excluded.data`
+        ).run(Number(houseId), JSON.stringify(data || []));
+        return true;
+    }
+
+    /** El saldo del banco de un personaje, o null si no existe. */
+    getBalance(characterId) {
+        const row = this.db.prepare('SELECT balance FROM players WHERE id = ?').get(Number(characterId));
+        return row ? Math.max(0, Number(row.balance) || 0) : null;
+    }
+
+    setBalance(characterId, balance) {
+        const r = this.db.prepare('UPDATE players SET balance = ? WHERE id = ?')
+            .run(Math.max(0, Math.trunc(Number(balance) || 0)), Number(characterId));
+        return r.changes > 0;
+    }
+
+    /**
+     * Suma (o resta, en negativo) al saldo de un personaje, sin dejarlo por debajo de cero: lo que se
+     * usa con quien no está conectado (una transferencia, el alquiler). Va en una sola sentencia, así
+     * que no hay un momento en que se haya leído y no escrito.
+     *
+     * @returns {boolean} false si no existe o no le alcanza
+     */
+    addBalance(characterId, delta) {
+        const d = Math.trunc(Number(delta) || 0);
+        const r = this.db.prepare('UPDATE players SET balance = balance + ? WHERE id = ? AND balance + ? >= 0')
+            .run(d, Number(characterId), d);
+        return r.changes > 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // El correo (versión 7)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Un personaje para el correo, por su id (un número) o por su nombre (sin mayúsculas): lo justo
+     * para mandarle algo, esté dentro o no. Null si no existe.
+     *
+     * @returns {{id: number, name: string, townId: number}|null}
+     */
+    findCharacterForMail(idOrName) {
+        const porId = typeof idOrName === 'number' || /^\d+$/.test(String(idOrName || ''));
+        const row = porId
+            ? this.db.prepare('SELECT id, name, town_id FROM players WHERE id = ?').get(Number(idOrName))
+            : this.db.prepare('SELECT id, name, town_id FROM players WHERE name = ? COLLATE NOCASE')
+                .get(String(idOrName || '').trim());
+        return row ? { id: Number(row.id), name: row.name, townId: Number(row.town_id) || 0 } : null;
+    }
+
+    /**
+     * Deja correo para un personaje que no está dentro. `item` es el árbol del objeto (el de
+     * `objetoParaGuardar`) y va en JSON; `time` en milisegundos (el reloj del mundo), y se guarda
+     * en segundos, como las muertes.
+     *
+     * @returns {number} el id de la fila
+     */
+    addMail(characterId, mail) {
+        const m = mail || {};
+        const result = this.db.prepare(
+            'INSERT INTO player_mail (player_id, town_id, time, sender, item) VALUES (?, ?, ?, ?, ?)'
+        ).run(
+            Number(characterId),
+            Number(m.townId) || 0,
+            Math.floor((m.time === undefined ? this.now() : Number(m.time)) / 1000),
+            String(m.sender || '').slice(0, 255),
+            JSON.stringify(m.item || null)
+        );
+        return Number(result.lastInsertRowid);
+    }
+
+    /**
+     * El correo que espera a un personaje, del más viejo al más nuevo (`time` en milisegundos). Una
+     * fila cuyo JSON no se puede leer sale con `item` a null: quien entrega decide qué hacer con ella.
+     *
+     * @returns {Array<{id, townId, time, sender, item}>}
+     */
+    listMail(characterId) {
+        return this.db.prepare(
+            'SELECT id, town_id, time, sender, item FROM player_mail WHERE player_id = ? ORDER BY time, id'
+        ).all(Number(characterId)).map((row) => {
+            let item = null;
+            try {
+                item = JSON.parse(row.item);
+            } catch (error) {
+                item = null;
+            }
+            return {
+                id: Number(row.id),
+                townId: Number(row.town_id) || 0,
+                time: Number(row.time) * 1000,
+                sender: row.sender,
+                item: item
+            };
+        });
+    }
+
+    /** Borra las filas de correo ya entregadas. Devuelve cuántas borró. */
+    deleteMail(ids) {
+        const lista = (Array.isArray(ids) ? ids : [ids]).map(Number).filter((n) => n > 0);
+        if (lista.length === 0) {
+            return 0;
+        }
+        const borrar = this.db.prepare('DELETE FROM player_mail WHERE id = ?');
+        return this.transaction(() => lista.reduce((n, id) => n + Number(borrar.run(id).changes), 0));
+    }
+
+    // -----------------------------------------------------------------------
     // Información
     // -----------------------------------------------------------------------
 
@@ -776,6 +1124,7 @@ class Database {
             players: count('players'),
             items: count('player_items'),
             storages: count('player_storages'),
+            deaths: count('player_deaths'),
             saves: this.stats.saves,
             loads: this.stats.loads
         };

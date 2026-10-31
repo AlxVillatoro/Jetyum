@@ -268,6 +268,8 @@ export default {
     // --- dialogo.js ---
     'Información': 'Information',
     'Aceptar': 'OK',
+    'Cancelar': 'Cancel',
+    'Guardar': 'Save',
 
     // --- comercio.js: la tienda de un NPC ---
     'Comprar': 'Buy',

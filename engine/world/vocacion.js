@@ -202,8 +202,12 @@ function progresoParaGuardar(jugador) {
         magicLevel: jugador.magicLevel || 0,
         manaSpent: jugador.manaSpent || 0,
         skills: jugador.skills || skillsIniciales(),
-        // El depósito (lo que guardas en el cofre de depósito) y la calavera, que duran aunque salgas.
+        // Los depósitos (uno por ciudad, `{ idDeCiudad: [árboles] }`: ver `depotOf` en extras.js) y la
+        // calavera, que duran aunque salgas. `deposito` es el de su ciudad, como se guardaba cuando
+        // había uno solo: lo lee un motor viejo, y uno nuevo sólo si no encuentra `depositos`.
         deposito: Array.isArray(jugador.deposito) ? jugador.deposito : [],
+        depositos: jugador.depositos && typeof jugador.depositos === 'object' && !Array.isArray(jugador.depositos)
+            ? jugador.depositos : undefined,
         skull: jugador.skull || '',
         skullUntil: jugador.skullUntil || 0,
         unjustifiedKills: Array.isArray(jugador.unjustifiedKills) ? jugador.unjustifiedKills : []
@@ -232,6 +236,7 @@ function cargarProgreso(jugador, guardado) {
         jugador.soul = Number(g.soul);
     }
     jugador.deposito = Array.isArray(g.deposito) ? g.deposito : [];
+    jugador.depositos = g.depositos && typeof g.depositos === 'object' && !Array.isArray(g.depositos) ? g.depositos : null;
     jugador.skull = g.skull || '';
     jugador.skullUntil = Number(g.skullUntil) || 0;
     jugador.unjustifiedKills = Array.isArray(g.unjustifiedKills) ? g.unjustifiedKills : [];
