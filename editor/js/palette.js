@@ -163,6 +163,73 @@ export function nombresDeGrupo() {
 const LADO = 32;
 
 /**
+ * La caja de los píxeles no transparentes de un lienzo, o null si está vacío o no se puede leer
+ * (un lienzo contaminado por una imagen de otro origen lanza al leerlo).
+ */
+export function cajaVisible(lienzo) {
+    if (!lienzo || !lienzo.getContext) {
+        return null;
+    }
+    // Leer los píxeles es caro (el navegador los baja de la tarjeta gráfica): una vez por dibujo.
+    if (CAJAS.has(lienzo)) {
+        return CAJAS.get(lienzo);
+    }
+    const caja = medirCaja(lienzo);
+    CAJAS.set(lienzo, caja);
+    return caja;
+}
+
+/** La caja ya medida de cada dibujo (los proveedores guardan cada dibujo en su lienzo). */
+const CAJAS = new WeakMap();
+
+function medirCaja(lienzo) {
+    try {
+        const datos = lienzo.getContext('2d').getImageData(0, 0, lienzo.width, lienzo.height).data;
+        let x0 = lienzo.width;
+        let y0 = lienzo.height;
+        let x1 = -1;
+        let y1 = -1;
+        for (let y = 0; y < lienzo.height; y += 1) {
+            for (let x = 0; x < lienzo.width; x += 1) {
+                if (datos[(y * lienzo.width + x) * 4 + 3] === 0) {
+                    continue;
+                }
+                if (x < x0) { x0 = x; }
+                if (y < y0) { y0 = y; }
+                if (x > x1) { x1 = x; }
+                if (y > y1) { y1 = y; }
+            }
+        }
+        return x1 < 0 ? null : { x: x0, y: y0, ancho: x1 - x0 + 1, alto: y1 - y0 + 1 };
+    } catch (error) {
+        return null;
+    }
+}
+
+/**
+ * PINTA UN DIBUJO ENTERO DENTRO DE UN HUECO de `lado` x `lado`: recortado a lo que tiene píxeles,
+ * centrado y, si no cabe, REDUCIDO. Es lo que hace que en una paleta se vea el objeto completo:
+ * uno de dos casillas de alto (1x2), uno de 2x2 o uno que sólo tiene dibujo en dos de sus cuatro
+ * casillas (una pieza diagonal) se enseñan enteros en vez de cortados a la casilla del ancla. Lo
+ * que cabe se pinta a su tamaño, píxel a píxel; lo que se reduce, suavizado (reducir sin suavizar
+ * se come las líneas finas).
+ *
+ * @param {CanvasRenderingContext2D} ctx el del hueco (se limpia antes)
+ * @param {number} lado el lado del hueco
+ * @param {HTMLCanvasElement} origen el dibujo compuesto (todas sus casillas)
+ */
+export function pintarEncajado(ctx, lado, origen) {
+    ctx.clearRect(0, 0, lado, lado);
+    const caja = cajaVisible(origen) || { x: 0, y: 0, ancho: origen.width, alto: origen.height };
+    const escala = Math.min(1, lado / caja.ancho, lado / caja.alto);
+    const ancho = caja.ancho * escala;
+    const alto = caja.alto * escala;
+    ctx.imageSmoothingEnabled = escala < 1;
+    ctx.drawImage(origen, caja.x, caja.y, caja.ancho, caja.alto,
+        Math.round((lado - ancho) / 2), Math.round((lado - alto) / 2), ancho, alto);
+}
+
+/**
  * La paleta en pantalla.
  *
  * Recibe las definiciones de `items.xml` y un proveedor de sprites, y construye un
@@ -190,6 +257,29 @@ export class PaletteView {
         this.filtro = '';
         /** La categoría a la vista (el «tileset» de RME); vacía, todas. */
         this.grupo = '';
+        /** El último que se enseñó con `mostrar`: desde él siguen las flechas si no hay nada elegido. */
+        this.mostrado = null;
+
+        /*
+         * SÓLO SE PINTA LO QUE SE VE. La paleta tiene miles de botones y pintarlos todos al abrir
+         * un mapa (cada dibujo hay que medirlo) dejaba el navegador sin responder: cada botón se
+         * pinta cuando entra en pantalla (o le falta poco). Donde no hay `IntersectionObserver`
+         * (las pruebas) se pintan todos, como antes.
+         */
+        this.porBoton = new Map();
+        this.observador = typeof IntersectionObserver === 'undefined' ? null
+            : new IntersectionObserver((cambios) => {
+                cambios.forEach((cambio) => {
+                    const entrada = this.porBoton.get(cambio.target);
+                    if (!entrada) {
+                        return;
+                    }
+                    entrada.enVista = cambio.isIntersecting;
+                    if (entrada.enVista) {
+                        this._refrescar(entrada);
+                    }
+                });
+            }, { rootMargin: '300px 0px' });
     }
 
     /**
@@ -198,6 +288,10 @@ export class PaletteView {
      * @param {Map<number, Object>} itemTypes las definiciones, por id
      */
     setItems(itemTypes) {
+        if (this.observador) {
+            this.observador.disconnect();
+        }
+        this.porBoton.clear();
         this.contenedor.innerHTML = '';
         this.entradas = [];
         this.elegido = null;
@@ -245,6 +339,10 @@ export class PaletteView {
             (titulo.dataset.grupo === GRUPO_HOJA ? ' hoja' : '');
         boton.dataset.id = String(definicion.id);
         boton.dataset.grupo = titulo.dataset.grupo;
+        // El nombre y el id son DATOS (los de items.xml), no textos de la interfaz: no se traducen.
+        // Pasarlos por el traductor (miles de botones, cada uno contra todo el diccionario) era lo
+        // más lento de abrir un mapa. Los títulos de las secciones sí se traducen.
+        boton.setAttribute('translate', 'no');
 
         /*
          * EL NOMBRE COMPLETO VA EN EL `title`, que es lo único que cabe: en la rejilla de la
@@ -277,7 +375,9 @@ export class PaletteView {
             lienzo: lienzo,
             titulo: titulo,
             /** El último sprite pintado, para saber cuándo hay uno nuevo. */
-            pintado: null
+            pintado: null,
+            /** Si está en pantalla (o cerca): sólo esos se pintan. */
+            enVista: !this.observador
         };
 
         boton.addEventListener('click', () => {
@@ -285,6 +385,10 @@ export class PaletteView {
         });
 
         this.entradas.push(entrada);
+        this.porBoton.set(boton, entrada);
+        if (this.observador) {
+            this.observador.observe(boton);
+        }
 
         return boton;
     }
@@ -319,6 +423,66 @@ export class PaletteView {
         }
 
         return entrada !== undefined;
+    }
+
+    /**
+     * LAS FLECHAS EN LA PALETA: elige el que está `paso` botones antes o después del elegido, entre
+     * los que están a la vista (con el filtro y la categoría puestos), y lo deja a la vista en la
+     * lista, pasando de una sección a la siguiente. Sin nada elegido empieza por el primero.
+     * Devuelve si ha elegido algo.
+     */
+    mover(paso) {
+        const visibles = this.entradas.filter((entrada) => !entrada.boton.hidden);
+        if (visibles.length === 0) {
+            return false;
+        }
+        // Sin nada elegido, desde el último que se enseñó con `mostrar` (si sigue a la vista).
+        const desde = this.elegido !== null ? this.elegido : this.mostrado;
+        const actual = visibles.findIndex((entrada) => entrada.definicion.id === desde);
+        const indice = actual < 0 ? 0 : Math.max(0, Math.min(visibles.length - 1, actual + paso));
+        const destino = visibles[indice];
+        if (actual >= 0 && destino === visibles[actual]) {
+            return false;
+        }
+        this._elegir(destino);
+        if (destino.boton.scrollIntoView) {
+            destino.boton.scrollIntoView({ block: 'nearest' });
+        }
+        return true;
+    }
+
+    /**
+     * ENSEÑA UN OBJETO EN LA PALETA, SIN ELEGIRLO: desplaza la lista hasta él y lo resalta un
+     * momento. Si el buscador o la categoría lo tapan, los quita (y lo dice: `{ quitoFiltro }`),
+     * porque lo que se pide es verlo. Es el «dónde está esto en la paleta» del menú del botón
+     * derecho; elegirlo para pintar es otra cosa (`elegirPorId`). Devuelve null si no está.
+     */
+    mostrar(id) {
+        const entrada = this.entradas.find((candidata) => candidata.definicion.id === Number(id));
+        if (!entrada) {
+            return null;
+        }
+        let quitoFiltro = false;
+        if (entrada.boton.hidden) {
+            this.filtro = '';
+            this.grupo = '';
+            this._aplicarFiltro();
+            quitoFiltro = true;
+        }
+        this.mostrado = entrada.definicion.id;
+        if (entrada.boton.scrollIntoView) {
+            entrada.boton.scrollIntoView({ block: 'center' });
+        }
+        entrada.boton.classList.add('resaltado');
+        setTimeout(() => entrada.boton.classList.remove('resaltado'), 1600);
+        return { quitoFiltro, grupo: entrada.titulo.dataset.grupo };
+    }
+
+    /** ¿Lo elegido está en la rejilla de la hoja (donde arriba y abajo saltan una fila entera)? */
+    elegidoEnRejilla() {
+        const id = this.elegido !== null ? this.elegido : this.mostrado;
+        const entrada = this.entradas.find((candidata) => candidata.definicion.id === id);
+        return !!entrada && entrada.titulo.dataset.grupo === GRUPO_HOJA;
     }
 
     /**
@@ -422,92 +586,42 @@ export class PaletteView {
         let pintados = 0;
 
         this.entradas.forEach((entrada) => {
-            const sprite = this.proveedor.get(entrada.definicion.id);
-
-            // `!==` y no `!=`: lo que se compara es la IDENTIDAD del sprite, porque el
-            // proveedor devuelve uno distinto cuando pasa del respaldo al dibujo bueno.
-            if (!sprite || sprite === entrada.pintado) {
-                return;
+            if (entrada.enVista && this._refrescar(entrada)) {
+                pintados += 1;
             }
-
-            this._pintar(entrada, sprite);
-            pintados += 1;
         });
 
         return pintados;
     }
 
-    /**
-     * Pinta un sprite dentro del hueco de la paleta.
-     *
-     * EL DIBUJO SE CENTRA, y hace falta. El de un objeto va APOYADO EN EL SUELO de su
-     * casilla —un sprite de 32x32 con una moneda en la mitad de abajo—, así que pintarlo
-     * tal cual dejaría la mitad de arriba vacía y el objeto pegado al borde inferior. Se
-     * recorta a lo que tiene píxeles y se centra: en la paleta lo que se mira es el
-     * objeto, no dónde cae dentro de su casilla.
-     */
-    _pintar(entrada, sprite) {
-        const ctx = entrada.lienzo.getContext('2d');
+    /** Pinta una entrada si su dibujo ha cambiado. Devuelve si la ha pintado. */
+    _refrescar(entrada) {
+        if (!this.proveedor) {
+            return false;
+        }
+        const sprite = this.proveedor.get(entrada.definicion.id);
 
-        ctx.clearRect(0, 0, LADO, LADO);
-        ctx.imageSmoothingEnabled = false;
-
-        const caja = this._cajaVisible(sprite.canvas);
-
-        if (!caja) {
-            // Sin píxeles que mirar —o sin permiso para leerlos— se pinta tal cual, que
-            // es peor encuadre pero nunca deja el hueco en blanco.
-            ctx.drawImage(sprite.canvas, 0, 0);
-            entrada.pintado = sprite;
-            return;
+        // `!==` y no `!=`: lo que se compara es la IDENTIDAD del sprite, porque el
+        // proveedor devuelve uno distinto cuando pasa del respaldo al dibujo bueno.
+        if (!sprite || sprite === entrada.pintado) {
+            return false;
         }
 
-        ctx.drawImage(sprite.canvas,
-            Math.round((LADO - caja.ancho) / 2 - caja.x),
-            Math.round((LADO - caja.alto) / 2 - caja.y));
-
-        entrada.pintado = sprite;
+        this._pintar(entrada, sprite);
+        return true;
     }
 
     /**
-     * La caja de los píxeles no transparentes de un lienzo.
+     * Pinta un sprite dentro del hueco de la paleta: ENTERO (`pintarEncajado`).
      *
-     * Devuelve null si no se puede leer —un lienzo contaminado por una imagen de otro
-     * origen lanza aquí— o si está vacío. Quien llama tiene salida por los dos lados.
+     * EL DIBUJO SE CENTRA, y hace falta. El de un objeto va APOYADO EN EL SUELO de su
+     * casilla —un sprite de 32x32 con una moneda en la mitad de abajo—, así que pintarlo
+     * tal cual dejaría la mitad de arriba vacía y el objeto pegado al borde inferior. Y SE
+     * REDUCE SI NO CABE: un objeto de varias casillas (1x2, 2x2, una pieza diagonal) se ve
+     * completo, no cortado a su casilla del ancla.
      */
-    _cajaVisible(lienzo) {
-        if (!lienzo || !lienzo.getContext) {
-            return null;
-        }
-
-        try {
-            const ctx = lienzo.getContext('2d');
-            const datos = ctx.getImageData(0, 0, lienzo.width, lienzo.height).data;
-
-            let x0 = lienzo.width;
-            let y0 = lienzo.height;
-            let x1 = -1;
-            let y1 = -1;
-
-            for (let y = 0; y < lienzo.height; y += 1) {
-                for (let x = 0; x < lienzo.width; x += 1) {
-                    if (datos[(y * lienzo.width + x) * 4 + 3] === 0) {
-                        continue;
-                    }
-                    if (x < x0) { x0 = x; }
-                    if (y < y0) { y0 = y; }
-                    if (x > x1) { x1 = x; }
-                    if (y > y1) { y1 = y; }
-                }
-            }
-
-            if (x1 < 0) {
-                return null;
-            }
-
-            return { x: x0, y: y0, ancho: x1 - x0 + 1, alto: y1 - y0 + 1 };
-        } catch (error) {
-            return null;
-        }
+    _pintar(entrada, sprite) {
+        pintarEncajado(entrada.lienzo.getContext('2d'), LADO, sprite.canvas);
+        entrada.pintado = sprite;
     }
 }

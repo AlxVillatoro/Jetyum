@@ -88,8 +88,13 @@ section('2. El motor lo carga, con todo el contenido');
         crudo.spawns.filter((a) => !map.isWalkable(a.x, a.y, a.z)).map((a) => clave(a.x, a.y, a.z)).join(' '));
     check('y los monstruos aparecen al arrancar', world.monsters.size >= crudo.spawns.reduce((n, a) => n + a.monsters.length, 0) * 0.9,
         world.monsters.size + ' monstruos');
-    check('15 casas alquilables, cada una de una ciudad y con su cama', map.houses.length === 15 &&
+    check(map.houses.length + ' casas alquilables, cada una de una ciudad y con su cama', map.houses.length >= 20 &&
         crudo.houses.every((h) => crudo.tiles.some((t) => t.houseId === h.id && (t.items || []).some((i) => i.id === 21050))));
+    // Encima de cada casa hay algo en la planta 6: su tejado o su piso de arriba (el cliente lo esconde al entrar).
+    const enSeis = new Set(crudo.tiles.filter((t) => t.z === 6 && t.ground).map((t) => t.x + ',' + t.y));
+    check('todas las casas tienen tejado o piso de arriba', crudo.houses.every((h) =>
+        crudo.tiles.some((t) => t.z === 7 && t.houseId === h.id && enSeis.has(t.x + ',' + t.y))));
+    check('y algunas tienen piso de arriba (dos plantas)', crudo.houses.filter((h) => crudo.tiles.some((t) => t.z === 6 && t.houseId === h.id)).length >= 3);
     check('las salidas de las casas se pisan', crudo.houses.every((h) => map.isWalkable(h.exit[0], h.exit[1], h.exit[2])));
 }
 
@@ -234,7 +239,7 @@ const alcanzable = new Set();
         sinLlegar(crudo.spawns).map((s) => clave(s.x, s.y, s.z)).join(' '));
     const lugares = Object.entries(crudo.waypoints).filter(([, p]) => !llega(p[0], p[1], p[2]));
     check('todos los lugares de `/ir` (' + Object.keys(crudo.waypoints).length + ')', lugares.length === 0, lugares.map(([n]) => n).join(', '));
-    check('las salidas y puertas de las 15 casas', crudo.houses.every((h) => llega(h.exit[0], h.exit[1], h.exit[2])));
+    check('las salidas y puertas de las ' + crudo.houses.length + ' casas', crudo.houses.every((h) => llega(h.exit[0], h.exit[1], h.exit[2])));
     const cofres = crudo.tiles.filter((c) => (c.items || []).some((i) => i.id === 11112 && i.attributes && i.attributes.townId));
     check('los ' + cofres.length + ' cofres de depósito y los buzones (desde al lado)', cofres.every((c) => alLado(c.x, c.y, c.z)) &&
         crudo.tiles.filter((c) => (c.items || []).some((i) => i.id === 21040 && !i.attributes)).every((c) => alLado(c.x, c.y, c.z)));
@@ -243,6 +248,9 @@ const alcanzable = new Set();
     const museo = crudo.tiles.filter((t) => t.z === Z_MUSEO && (t.items || []).some((i) => i.attributes && i.attributes.actionId >= AID.efecto));
     check('todas las marcas del museo (efectos, proyectiles y aspectos)', museo.every((t) => llega(t.x, t.y, t.z)),
         museo.filter((t) => !llega(t.x, t.y, t.z)).length + ' sin llegar');
+    const cimas = crudo.tiles.filter((t) => t.z === 6 && t.ground === 10139 || (t.z === 6 && t.ground === 10145 && !t.houseId));
+    check('se sube a las montañas: ' + cimas.filter((t) => llega(t.x, t.y, 6)).length + ' casillas de cima alcanzables',
+        cimas.filter((t) => llega(t.x, t.y, 6)).length > 500);
     const carteles = crudo.tiles.filter((t) => t.z === Z_MUSEO && (t.items || []).some((i) => i.id === 11277));
     check('las ' + carteles.length + ' salas del museo', carteles.every((t) => alLado(t.x, t.y, t.z)));
 }

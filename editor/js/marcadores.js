@@ -442,11 +442,34 @@ export function zonaQueCubre(mapa, x, y, z) {
  * @returns {Array<Object>} bloques `{z, x, y, celdas, x0, y0, x1, y1, ancho, alto}`
  */
 export function bloquesProtegidos(mapa, z) {
-    const bloques = [];
-
     if (!mapa || !mapa.tiles) {
+        return [];
+    }
+    /*
+     * UNA VEZ POR CAMBIO DEL MAPA, no en cada repintado: sacar las zonas es recorrer todas las
+     * casillas, y en un mapa grande (el continente, 100.000 casillas) eso en cada movimiento de la
+     * vista dejaba el navegador sin responder. Se guarda con la revisión del mapa (`markDirty` la
+     * sube) y la planta; un mapa sin revisión (el de las pruebas) se calcula siempre.
+     */
+    const revision = mapa.revision;
+    if (revision !== undefined) {
+        const clave = z + ':' + revision + ':' + (mapa.tiles.size === undefined ? mapa.tiles.length : mapa.tiles.size);
+        const guardado = ZONAS_CALCULADAS.get(mapa);
+        if (guardado && guardado.clave === clave) {
+            return guardado.bloques;
+        }
+        const bloques = calcularBloquesProtegidos(mapa, z);
+        ZONAS_CALCULADAS.set(mapa, { clave, bloques });
         return bloques;
     }
+    return calcularBloquesProtegidos(mapa, z);
+}
+
+/** Las zonas ya calculadas de cada mapa (se olvidan solas cuando el mapa deja de usarse). */
+const ZONAS_CALCULADAS = new WeakMap();
+
+function calcularBloquesProtegidos(mapa, z) {
+    const bloques = [];
 
     const sueltas = [];
 

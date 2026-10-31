@@ -166,6 +166,7 @@ Y en el chat:
 | `exevo flam hur` | Onda de fuego hacia donde miras (hechiceros, nivel 18) |
 | `exori` | Tajo a todo lo que tienes alrededor (caballeros) |
 | `utani hur`, `utevo lux`, `exana pox` | Correr más, dar luz, quitarte el veneno |
+| `exani tera` | De pie en un punto de cuerda, te sube a la planta de arriba (como usar la cuerda) |
 | `/spells` | Un diálogo con todos los hechizos de tu vocación: palabras, nivel y maná (los que aún no puedes, marcados con ✗) |
 | `/party invitar Nombre`, `/party unirse Nombre`, `/party salir` | Grupos: la experiencia de lo que matáis juntos se reparte (con un 20 % más), y lleváis un escudo junto al nombre |
 

@@ -21,6 +21,18 @@ export default {
     // editor/index.html: la barra de iconos del mapa
     'Herramientas del mapa': 'Map tools',
     'El archivo de data/world que se edita': 'The data/world file being edited',
+    'Los archivos de data/world: elige uno y pulsa «Abrir» para cargarlo': 'The data/world files: choose one and press «Open» to load it',
+    'Abrir': 'Open',
+    'Abrir: cargar el mapa elegido en la lista (un mapa grande tarda unos segundos)': 'Open: load the map chosen in the list (a big map takes a few seconds)',
+    '— elige un mapa —': '— choose a map —',
+    'elige un mapa en la lista y pulsa «Abrir»': 'choose a map in the list and press «Open»',
+    'elegido {nombre}: pulsa «Abrir» para cargarlo': '{nombre} chosen: press «Open» to load it',
+    'Hay {n} cambio(s) sin guardar en {mapa}. ¿Abrir otro mapa y perderlos?': 'There are {n} unsaved change(s) in {mapa}. Open another map and lose them?',
+    'Cargando…': 'Loading…',
+    'Abriendo {nombre}…': 'Opening {nombre}…',
+    'descargando el mapa y el catálogo de objetos': 'downloading the map and the item catalog',
+    'preparando {n} casillas': 'preparing {n} tiles',
+    'preparando la paleta y dibujando': 'preparing the palette and drawing',
     'Recargar': 'Reload',
     'Recargar: volver a leer el archivo del disco: se pierde lo que no se haya guardado': 'Reload: read the file from disk again: anything unsaved is lost',
     'Guardar': 'Save',
@@ -132,7 +144,7 @@ export default {
     'Cerrar': 'Close',
     'Cerrar el panel de propiedades': 'Close the properties panel',
     'El objeto de la casilla': 'The tile item',
-    'ninguno — con nada en la mano, pincha una\n                            casilla para elegir lo que hay en ella; el botón derecho enseña sus\n                            detalles.': 'none — with nothing in hand, click a tile to pick what is on it; right click shows its details.',
+    'ninguno — con nada en la mano, pincha una\n                            casilla para elegir lo que hay en ella; el botón derecho abre el\n                            menú de la casilla.': 'none — with nothing in hand, click a tile to pick what is on it; right click opens the tile menu.',
     '▲ Subir': '▲ Up',
     'Se dibuja mas arriba en la pila de su casilla': 'Drawn higher in its tile stack',
     '▼ Bajar': '▼ Down',
@@ -153,7 +165,7 @@ export default {
     'ninguno — pulsa «Elegir» sobre un respawn,\n                            un monstruo, un NPC o una zona protegida.': 'none — use "Pick" on a respawn, a monster, an NPC or a protected zone.',
 
     // editor/index.html: la barra de estado
-    'izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho enseña sus detalles · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo': 'left click paints · right click ERASES THE BRUSH BLOCK · Shift adds to the stack on release · with nothing in hand, left click picks from the map and DRAGS what is on the tile, and right click shows its details · with "Pick", left click drags the respawn (with its monsters), the NPC or the protected zone · Escape drops or cancels the drag · [ and ] the brush · wheel zoom · Ctrl+wheel floor · arrows move the view (Shift, faster) · middle button, Space+drag or Alt+right moves the view · 0 show all',
+    'izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho abre el menú de la casilla (Ctrl+derecho, con cualquier herramienta) · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo': 'left click paints · right click ERASES THE BRUSH BLOCK · Shift adds to the stack on release · with nothing in hand, left click picks from the map and DRAGS what is on the tile, and right click opens the tile menu (Ctrl+right, with any tool) · with "Pick", left click drags the respawn (with its monsters), the NPC or the protected zone · Escape drops or cancels the drag · [ and ] the brush · wheel zoom · Ctrl+wheel floor · arrows move the view (Shift, faster) · middle button, Space+drag or Alt+right moves the view · 0 show all',
     'nada elegido': 'nothing picked',
     'La planta del mapa en la que se trabaja (Ctrl+rueda o RePág/AvPág también la cambian)': 'The map floor you are working on (Ctrl+wheel or PgUp/PgDn also change it)',
     'Alejar (tecla -)': 'Zoom out (key -)',
@@ -230,7 +242,7 @@ export default {
     'Filtra la lista por identificador o por nombre, sin distinguir mayúsculas': 'Filters the list by ID or name, case-insensitive',
 
     // editor/js/main.js: la mano y el pincel
-    'nada elegido — el clic izquierdo elige lo que hay en la casilla y el derecho enseña sus detalles. Elige un objeto de la paleta para pintar.': 'nothing picked — left click picks what is on the tile and right click shows its details. Choose an item from the palette to paint.',
+    'nada elegido — el clic izquierdo elige lo que hay en la casilla y el derecho abre el menú de la casilla. Elige un objeto de la paleta para pintar.': 'nothing picked — left click picks what is on the tile and right click opens the tile menu. Choose an item from the palette to paint.',
     '{nombre} (id {id}) — se pinta como SUELO: sustituye el de la casilla, no se apila. Pincel {tamano}: {n} casilla(s) por clic.': '{nombre} (ID {id}) — painted as GROUND: replaces the tile ground, does not stack. Brush {tamano}: {n} tile(s) per click.',
     '{nombre} (id {id}) — se pinta como objeto: Mayús lo anade a la pila. Pincel {tamano}: {n} casilla(s) por clic.': '{nombre} (ID {id}) — painted as an item: Shift adds it to the stack. Brush {tamano}: {n} tile(s) per click.',
     'pincel de {tamano}: {n} casilla(s) por clic, pintando, borrando y arrastrando': '{tamano} brush: {n} tile(s) per click, when painting, erasing and dragging',
@@ -240,12 +252,12 @@ export default {
     'arrastre cancelado: {aviso}': 'drag cancelled: {aviso}',
     'nada se ha movido': 'nothing was moved',
     'arrastre cancelado: la ventana ha perdido el foco': 'drag cancelled: the window lost focus',
-    'nada en la mano: el clic izquierdo elige lo que hay en la casilla y el derecho ensena sus detalles': 'nothing in hand: left click picks what is on the tile and right click shows its details',
+    'nada en la mano: el clic izquierdo elige lo que hay en la casilla y el derecho abre el menu de la casilla': 'nothing in hand: left click picks what is on the tile and right click opens the tile menu',
 
     // editor/js/main.js: el objeto elegido de una casilla
     'elegido {nombre} (id {id}) en ({pos}), posicion {p} de la pila de la casilla': 'picked {nombre} (ID {id}) at ({pos}), position {p} in the tile stack',
     'elegido {nombre} (id {id}) en ({pos}), posicion {p} de la pila de la casilla — los detalles, en el panel': 'picked {nombre} (ID {id}) at ({pos}), position {p} in the tile stack — details in the panel',
-    'ninguno — con nada en la mano, pincha una casilla para elegir lo que hay en ella; el botón derecho enseña sus detalles.': 'none — with nothing in hand, click a tile to pick what is on it; right click shows its details.',
+    'ninguno — con nada en la mano, pincha una casilla para elegir lo que hay en ella; el botón derecho abre el menú de la casilla.': 'none — with nothing in hand, click a tile to pick what is on it; right click opens the tile menu.',
     '{nombre} (id {id}) en ({pos})  ·  es el SUELO de la casilla  ·  posicion {p} de la pila': '{nombre} (ID {id}) at ({pos})  ·  it is the tile GROUND  ·  position {p} in the stack',
     '{nombre} (id {id}) en ({pos})  ·  posicion {p} de la pila': '{nombre} (ID {id}) at ({pos})  ·  position {p} in the stack',
     'el suelo': 'the ground',

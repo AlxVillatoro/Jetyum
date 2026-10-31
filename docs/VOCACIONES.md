@@ -90,6 +90,7 @@ escribiéndolos en el chat; el motor comprueba la vocación, el nivel, el maná 
 | `utani hur` | Correr más durante 33 s | 14 | 60 | todas |
 | `utevo lux` | Luz durante 5 min | 8 | 20 | todas |
 | `exana pox` | Quitar el veneno | 10 | 30 | todas |
+| `exani tera` | Subir por un punto de cuerda (de pie en él), como la cuerda | 9 | 20 | todas |
 
 ---|---|:-:|:-:|---|
 | `exura` | Curación ligera | 1 | 20 | todas |

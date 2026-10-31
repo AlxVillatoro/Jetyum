@@ -5277,4 +5277,11 @@
 	<item id="21052" article="a" name="bed"><attribute key="blocksSolid" value="1" /><attribute key="useable" value="1" /><attribute key="bed" value="1" /><attribute key="bedPart" value="head" /><attribute key="partnerDirection" value="south" /><attribute key="occupied" value="1" /><attribute key="freeId" value="21050" /></item>
 	<item id="21053" article="a" name="bed"><attribute key="blocksSolid" value="1" /><attribute key="useable" value="1" /><attribute key="bed" value="1" /><attribute key="bedPart" value="foot" /><attribute key="partnerDirection" value="north" /><attribute key="occupied" value="1" /><attribute key="freeId" value="21051" /></item>
 	<!-- CORREO:fin -->
+	<!-- MUROS:inicio · Piezas de muro teñidas (generado por tools/generar-piezas-de-muro.mjs: no editar a mano) -->
+	<item id="21100" article="a" name="wall"><attribute key="onBottom" value="1" /><attribute key="blocksSolid" value="1" /><attribute key="blocksProjectile" value="1" /></item>
+	<item id="21101" article="a" name="mountain"><attribute key="onBottom" value="1" /><attribute key="blocksSolid" value="1" /><attribute key="blocksProjectile" value="1" /></item>
+	<item id="21102" article="a" name="mountain"><attribute key="onBottom" value="1" /><attribute key="blocksSolid" value="1" /><attribute key="blocksProjectile" value="1" /></item>
+	<item id="21103" article="a" name="mountain"><attribute key="onBottom" value="1" /><attribute key="blocksSolid" value="1" /><attribute key="blocksProjectile" value="1" /></item>
+	<item id="21104" article="a" name="mountain"><attribute key="onBottom" value="1" /><attribute key="blocksSolid" value="1" /><attribute key="blocksProjectile" value="1" /></item>
+	<!-- MUROS:fin -->
 </items>

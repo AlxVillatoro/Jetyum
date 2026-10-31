@@ -604,6 +604,30 @@
         background: #12121a; border: 1px solid #3a3a4a; border-radius: 4px; padding: 8px 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.6); z-index: 5; }
     #map-dialogo[hidden] { display: none; }
     #map-dialogo .cerrar { float: right; padding: 0 6px; }
+    /* La carga de un mapa: un velo sobre el lienzo con una rueda, el mapa y la fase. */
+    #map-cargando { position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 10px; background: rgba(8, 8, 12, 0.78); color: #d8d8e2; font-size: 13px; }
+    #map-cargando[hidden] { display: none; }
+    #map-cargando-fase { color: #8a8aa0; font-size: 11px; }
+    .cargando-rueda { width: 38px; height: 38px; border: 4px solid #2a2a3a; border-top-color: #ffd24a; border-radius: 50%;
+        animation: cargando-gira 0.9s linear infinite; }
+    @keyframes cargando-gira { to { transform: rotate(360deg); } }
+    /* «Mostrar en la paleta»: el objeto se resalta un momento. */
+    .palette-item.resaltado { outline: 2px solid #ffd24a; outline-offset: -2px; background: #3a3420; transition: background 0.3s; }
+    /* El menú del botón derecho de una casilla (js/menucasilla.js). */
+    .menu-casilla { position: fixed; z-index: 50; min-width: 210px; max-width: 360px; max-height: 80vh; overflow-y: auto;
+        background: #12121a; border: 1px solid #3a3a4a; border-radius: 4px; padding: 4px 0; box-shadow: 0 6px 24px rgba(0,0,0,0.6); font-size: 12px; }
+    .menu-casilla-titulo { padding: 4px 10px 6px; color: #9aa6b8; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        border-bottom: 1px solid #23232f; margin-bottom: 3px; }
+    .menu-casilla-entrada { display: block; width: 100%; text-align: left; background: none; border: 0; color: #d8d8e2; padding: 4px 12px;
+        cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 0; }
+    .menu-casilla-entrada:hover:not(:disabled) { background: #2a3a56; color: #fff; }
+    .menu-casilla-entrada:disabled { color: #55556a; cursor: default; }
+    .menu-casilla-entrada.marcada { color: #ffd24a; }
+    .menu-casilla-entrada.marcada::before { content: '▸ '; }
+    .menu-casilla-separador { height: 1px; background: #23232f; margin: 3px 0; }
+    #map-dialogo .error-guardado { color: #ff8a80; margin: 6px 0; font-size: 12px; white-space: normal; word-break: break-word; }
+    #map-dialogo .problema-guardado { font-size: 11px; color: #c8c8d4; margin: 2px 0; white-space: normal; word-break: break-word; }
     .resultado { display: flex; gap: 6px; padding: 2px 4px; cursor: pointer; font-size: 11px; border-radius: 3px; }
     .resultado:hover { background: #1e2a3a; }
     .resultado em { color: #6a6a80; font-style: normal; margin-left: auto; }
@@ -690,7 +714,9 @@
 
         <div id="map-barra" role="toolbar" aria-label="Herramientas del mapa">
             <div class="grupo-barra">
-                <select id="map-select" title="El archivo de data/world que se edita"></select>
+                <select id="map-select" title="Los archivos de data/world: elige uno y pulsa «Abrir» para cargarlo"></select>
+                <button type="button" id="btn-abrir-mapa" class="plain" data-icono="abrir"
+                        title="Abrir: cargar el mapa elegido en la lista (un mapa grande tarda unos segundos)">Abrir</button>
                 <button type="button" id="btn-reload" class="plain" data-icono="recargar"
                         title="Recargar: volver a leer el archivo del disco: se pierde lo que no se haya guardado">Recargar</button>
                 <button type="button" id="btn-save" data-icono="guardar"
@@ -925,6 +951,12 @@
                     <canvas id="map-canvas" tabindex="0"></canvas>
                     <canvas id="minimapa" width="200" height="200" title="Minimapa de la planta: clic para ir"></canvas>
                     <div id="map-dialogo" hidden></div>
+                    <!-- Mientras se carga un mapa: qué mapa y en qué va (descargando, preparando, dibujando). -->
+                    <div id="map-cargando" hidden role="status" aria-live="polite">
+                        <div class="cargando-rueda"></div>
+                        <div id="map-cargando-texto">Cargando…</div>
+                        <div id="map-cargando-fase"></div>
+                    </div>
                 </div>
             </div>
 
@@ -937,14 +969,14 @@
                 <div id="map-inspector-cuerpo">
                     <!--
                         EL OBJETO DE UNA CASILLA. Con nada en la mano, el clic izquierdo elige lo que
-                        hay en la casilla y el derecho enseña sus detalles. La pila se enseña de
+                        hay en la casilla y el derecho abre su menú (Ctrl+derecho, con cualquier herramienta). La pila se enseña de
                         arriba abajo, que es el orden en el que se dibuja.
                     -->
                     <section class="insp-seccion">
                         <div class="sub-title">El objeto de la casilla</div>
                         <div id="objeto-info" class="nota">ninguno — con nada en la mano, pincha una
-                            casilla para elegir lo que hay en ella; el botón derecho enseña sus
-                            detalles.</div>
+                            casilla para elegir lo que hay en ella; el botón derecho abre el
+                            menú de la casilla.</div>
                         <div id="objeto-pila" hidden></div>
                         <div class="row" id="objeto-acciones" hidden>
                             <button type="button" id="btn-objeto-subir" class="plain"
@@ -993,7 +1025,7 @@
 
         <!-- ============ La barra de estado ============ -->
         <footer id="map-pie"
-            title="izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho enseña sus detalles · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo · P plantas de abajo · Q sombra · Ctrl+L planta de arriba · F7 diagnóstico">
+            title="izquierdo pinta · derecho BORRA EL BLOQUE del pincel · Mayús añade a la pila al soltar · sin nada en la mano, el izquierdo elige del mapa y ARRASTRA lo que hay en la casilla, y el derecho abre el menú de la casilla (Ctrl+derecho, con cualquier herramienta) · con «Elegir», el izquierdo arrastra el respawn (con sus monstruos), el NPC o la zona protegida · Escape suelta o cancela el arrastre · [ y ] el pincel · rueda zoom · Ctrl+rueda planta · flechas mueven la vista (Mayús, más deprisa) · botón central, Espacio+arrastrar o Alt+derecho mueve la vista · 0 ver todo · P plantas de abajo · Q sombra · Ctrl+L planta de arriba · F7 diagnóstico">
             <span id="map-status">—</span>
             <span id="mano-info" class="nota">nada elegido</span>
             <span id="map-pos">—</span>

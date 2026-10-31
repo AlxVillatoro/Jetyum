@@ -35,7 +35,8 @@ import { ApiClient } from './apiclient.js';
 import { filasDeDetalle } from './detalle.js';
 import { EditorMap } from './editormap.js';
 import { MapCanvas } from './mapcanvas.js';
-import { PaletteView } from './palette.js';
+import { PaletteView, HOJA_TERRENO } from './palette.js';
+import { abrirMenuDeCasilla, cerrarMenuDeCasilla } from './menucasilla.js';
 import { ItemsView } from './itemsview.js';
 import { SpritesView } from './spritesview.js';
 import { pintarIconos, ponerIcono } from './iconos.js';
@@ -199,7 +200,7 @@ function refrescarMano() {
 
     if (!enLaMano) {
         info.textContent = 'nada elegido — el clic izquierdo elige lo que hay en la casilla y el ' +
-            'derecho enseña sus detalles. Elige un objeto de la paleta para pintar.';
+            'derecho abre el menú de la casilla. Elige un objeto de la paleta para pintar.';
         info.className = 'nota';
     } else {
         info.textContent = enLaMano.nombre + ' (id ' + enLaMano.typeId + ')' +
@@ -365,7 +366,7 @@ function refrescarObjeto() {
 
     if (!elegido) {
         info.textContent = 'ninguno — con nada en la mano, pincha una casilla para elegir lo ' +
-            'que hay en ella; el botón derecho enseña sus detalles.';
+            'que hay en ella; el botón derecho abre el menú de la casilla.';
         return;
     }
 
@@ -447,6 +448,128 @@ function moverEnPila(direccion) {
     setMapStatus(resultado.aviso || 'movido en la pila');
 }
 
+/** Copia un texto al portapapeles y lo dice en la barra de estado. */
+function copiarAlPortapapeles(texto, que) {
+    const decir = () => setMapStatus('copiado ' + que + ': ' + texto);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(texto).then(decir, () => setMapStatus('no se pudo copiar ' + que + ': ' + texto, true));
+    } else {
+        setMapStatus(que + ': ' + texto);
+    }
+}
+
+/**
+ * DÓNDE ESTÁ UN OBJETO EN LA PALETA: pasa a la paleta de objetos, baja hasta él y lo resalta, sin
+ * ponerlo en la mano. Si el buscador o la categoría lo tapaban, se quitan (y se dice). Luego las
+ * flechas siguen desde él.
+ */
+function mostrarEnPaleta(ficha) {
+    modoDePaleta('sueltos');
+    const r = state.palette.mostrar(ficha.id);
+    if (!r) {
+        setMapStatus('el objeto ' + ficha.id + ' no está en la paleta', true);
+        return;
+    }
+    if (r.quitoFiltro) {
+        document.getElementById('palette-filter').value = '';
+        document.getElementById('palette-grupo').value = '';
+    }
+    state.focoEnPaleta = true;
+    setMapStatus(ficha.nombre + ' (' + ficha.id + ') en la paleta: ' + r.grupo +
+        (r.quitoFiltro ? ' (se quitó el filtro, que lo tapaba)' : ''));
+}
+
+/**
+ * EL MENÚ DEL BOTÓN DERECHO de una casilla, como el de Remere's: arriba, lo que hay en la casilla
+ * (de arriba abajo, y se pincha para actuar sobre otro objeto); debajo, lo que se puede hacer con
+ * el objeto marcado. Las acciones son las mismas que las del panel «El objeto de la casilla»: aquí
+ * sólo se ponen a mano.
+ *
+ * Sale con el botón derecho cuando no se lleva nada en la mano, y con Ctrl + botón derecho con
+ * cualquier herramienta (sin Ctrl, con un pincel en la mano, el derecho sigue borrando).
+ */
+function menuDeCasilla(cell, event) {
+    if (!state.map || !cell) {
+        return;
+    }
+    const z = state.canvas.z;
+    const pila = state.map.pilaDe(cell.x, cell.y, z);
+    if (pila.length === 0) {
+        setMapStatus('en (' + cell.x + ',' + cell.y + ',' + z + ') no hay nada');
+        return;
+    }
+    // Por defecto, lo que se ve encima; si en esa casilla ya había uno elegido, ese.
+    const actual = state.map.objetoElegido();
+    let objetivo = (actual && actual.x === cell.x && actual.y === cell.y && actual.z === z
+        && pila.find((f) => f.stackpos === actual.stackpos)) || pila[pila.length - 1];
+    const posicion = cell.x + ', ' + cell.y + ', ' + z;
+
+    const elegir = () => {
+        state.map.seleccionarObjeto(objetivo.x, objetivo.y, objetivo.z, objetivo.stackpos);
+        refrescarObjeto();
+    };
+    const pintar = () => {
+        const tile = state.map.tileAt(cell.x, cell.y, z);
+        const item = objetivo.esSuelo || !tile ? null : tile.items[objetivo.indice];
+        const destino = item && item.attributes && item.attributes.teleportDestination;
+        const entradas = pila.slice().reverse().map((ficha) => ({
+            texto: ficha.nombre + ' (' + ficha.id + ')' + (ficha.count > 1 ? ' x' + ficha.count : '') +
+                (ficha.esSuelo ? ' · suelo' : ''),
+            marcada: ficha === objetivo,
+            mantener: true,
+            titulo: 'Actuar sobre este objeto',
+            accion: () => {
+                objetivo = ficha;
+                pintar();
+            }
+        }));
+        entradas.push({ separador: true },
+            {
+                texto: 'Propiedades',
+                titulo: 'Lo elige y enseña su ficha y sus atributos en el panel',
+                accion: () => {
+                    elegir();
+                    elegirCompuestoDeCasilla(cell);
+                    const panel = document.getElementById('objeto-info');
+                    if (panel && panel.scrollIntoView) {
+                        panel.scrollIntoView({ block: 'nearest' });
+                    }
+                }
+            },
+            {
+                texto: 'Mostrar en la paleta',
+                titulo: 'Abre la paleta de objetos y baja hasta él, sin ponerlo en la mano (las flechas siguen desde ahí)',
+                accion: () => mostrarEnPaleta(objetivo)
+            },
+            {
+                texto: 'Pintar con este objeto',
+                titulo: 'Lo pone en la mano, como elegirlo en la paleta',
+                accion: () => {
+                    if (!state.palette.elegirPorId(objetivo.id)) {
+                        setMapStatus('el objeto ' + objetivo.id + ' no está en la paleta', true);
+                    }
+                }
+            },
+            { separador: true },
+            { texto: 'Subir en la pila', deshabilitado: objetivo.esSuelo, accion: () => { elegir(); moverEnPila(1); } },
+            { texto: 'Bajar en la pila', deshabilitado: objetivo.esSuelo, accion: () => { elegir(); moverEnPila(-1); } },
+            { texto: 'Quitar este objeto', accion: () => { elegir(); borrarObjetoElegido(); } });
+        if (destino && Number.isFinite(Number(destino.x))) {
+            entradas.push({ separador: true }, {
+                texto: 'Ir al destino (' + destino.x + ', ' + destino.y + ', ' + destino.z + ')',
+                titulo: 'Centra la vista en el destino de este teleport',
+                accion: () => irAProblema(Number(destino.x), Number(destino.y), Number(destino.z))
+            });
+        }
+        entradas.push({ separador: true },
+            { texto: 'Copiar posición', accion: () => copiarAlPortapapeles(posicion, 'la posición') },
+            { texto: 'Copiar id', accion: () => copiarAlPortapapeles(String(objetivo.id), 'el id') },
+            { texto: 'Copiar nombre', accion: () => copiarAlPortapapeles(objetivo.nombre, 'el nombre') });
+        abrirMenuDeCasilla(event.clientX, event.clientY, objetivo.nombre + ' (' + objetivo.id + ') · ' + posicion, entradas);
+    };
+    pintar();
+}
+
 /** Quita de la casilla el objeto elegido. */
 function borrarObjetoElegido() {
     if (!state.map) {
@@ -482,6 +605,16 @@ async function loadMapList() {
         return;
     }
 
+    /*
+     * NO SE ABRE NINGUNO SOLO: la lista empieza en «elige un mapa…» y se abre el que se elija con
+     * «Abrir». Antes se abría el primero de la lista al arrancar, y no siempre es el que se quiere
+     * (un mapa grande tarda en cargar para nada). Si ya hay uno abierto, la lista lo deja marcado.
+     */
+    const ninguno = document.createElement('option');
+    ninguno.value = '';
+    ninguno.textContent = '— elige un mapa —';
+    select.appendChild(ninguno);
+
     result.maps.forEach((map) => {
         const option = document.createElement('option');
         option.value = map.name;
@@ -489,6 +622,7 @@ async function loadMapList() {
             'x' + map.floors + ', ' + map.tiles + ' tiles)';
         select.appendChild(option);
     });
+    select.value = state.map ? state.map.name : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -899,7 +1033,42 @@ function borrarMarcador(cell) {
         'ningun NPC que borrar');
 }
 
+/** El velo de carga sobre el lienzo: qué se abre y en qué va. */
+function mostrarCargando(texto, fase) {
+    document.getElementById('map-cargando-texto').textContent = texto;
+    document.getElementById('map-cargando-fase').textContent = fase || '';
+    document.getElementById('map-cargando').hidden = false;
+}
+
+function ocultarCargando() {
+    document.getElementById('map-cargando').hidden = true;
+}
+
+/** Deja que el navegador pinte (el velo, la fase) antes de un trabajo largo que no suelta el hilo. */
+function unFotograma() {
+    return new Promise((resolver) => requestAnimationFrame(() => setTimeout(resolver, 0)));
+}
+
+/**
+ * ABRE UN MAPA, con el velo de carga encima del lienzo mientras tanto: descargar el archivo (el
+ * continente son 6 MB), prepararlo y dibujarlo lleva unos segundos, y sin aviso parecía que el
+ * editor se había colgado. Sin nombre no abre nada: lo dice.
+ */
 async function openMap(name) {
+    if (!name) {
+        setMapStatus('elige un mapa en la lista y pulsa «Abrir»');
+        return;
+    }
+    mostrarCargando('Abriendo ' + name + '…', 'descargando el mapa y el catálogo de objetos');
+    await unFotograma();
+    try {
+        await abrirMapaConCarga(name);
+    } finally {
+        ocultarCargando();
+    }
+}
+
+async function abrirMapaConCarga(name) {
     setMapStatus('abriendo ' + name + '...');
 
     const [mapResult, itemsResult] = await Promise.all([
@@ -915,6 +1084,9 @@ async function openMap(name) {
 
     // Los tipos de objeto hacen falta para saber qué item va por encima de las
     // criaturas y para dibujarlos. Se cargan del mismo sitio que el motor.
+    mostrarCargando('Abriendo ' + name + '…', 'preparando ' + ((mapResult.raw && mapResult.raw.tiles) || []).length + ' casillas');
+    await unFotograma();
+
     const itemTypes = new Map();
     itemsResult.items.forEach((item) => {
         const attributes = item.attributes || {};
@@ -955,6 +1127,8 @@ async function openMap(name) {
      * el cliente. El proveedor es el MISMO objeto que usa el lienzo: si fueran dos, la
      * paleta y el mapa podrían enseñar dibujos distintos del mismo objeto.
      */
+    mostrarCargando('Abriendo ' + name + '…', 'preparando la paleta y dibujando');
+    await unFotograma();
     state.palette.setItems(itemTypes);
     rellenarGruposDePaleta();
 
@@ -978,6 +1152,7 @@ async function openMap(name) {
 
     refreshMapStatus();
     setMapStatus('abierto ' + name);
+    document.getElementById('map-select').value = name;
 
     // Abrir un mapa suelta las dos selecciones: el marcador elegido era de OTRO mapa, y lo mismo
     // el objeto, cuya casilla puede no existir en el mapa nuevo. Mantenerlos dejaría el panel
@@ -1012,7 +1187,37 @@ function refreshMapStatus() {
 function setMapStatus(text, isError) {
     const element = document.getElementById('map-status');
     element.textContent = text;
+    // La barra corta lo largo con «…»: el texto entero, al pasar el ratón.
+    element.title = text;
     element.className = isError ? 'error' : '';
+}
+
+/**
+ * POR QUÉ NO SE GUARDÓ, entero: la barra de estado corta el mensaje, y un error que no se puede
+ * leer no sirve. Se abre en el diálogo de la esquina, con un problema por línea y un botón para
+ * copiarlos.
+ */
+function mostrarErrorDeGuardado(error, problemas) {
+    const dialogo = abrirDialogo('No se guardó');
+    dialogo.dataset.dialogoPropio = '1';
+    dialogo.appendChild(nodo('div', 'hint', 'El archivo no se ha tocado: tus cambios siguen pendientes en el editor.'));
+    dialogo.appendChild(nodo('div', 'error-guardado', error));
+    const lista = (problemas || []).slice(0, 50);
+    lista.forEach((problema) => dialogo.appendChild(nodo('div', 'problema-guardado', '• ' + problema)));
+    if ((problemas || []).length > lista.length) {
+        dialogo.appendChild(nodo('div', 'hint', '…y ' + (problemas.length - lista.length) + ' más.'));
+    }
+    const copiar = nodo('button', '', 'Copiar');
+    copiar.type = 'button';
+    copiar.addEventListener('click', () => {
+        const texto = [error].concat(problemas || []).join('\n');
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(texto).then(() => {
+                copiar.textContent = 'Copiado';
+            }, () => {});
+        }
+    });
+    dialogo.appendChild(copiar);
 }
 
 /** La escala y el modo, en el panel. */
@@ -1063,6 +1268,7 @@ async function saveMap() {
             (result.problems && result.problems.length
                 ? ' — ' + result.problems.slice(0, 3).join('; ') : '') +
             '  (el archivo no se ha tocado)', true);
+        mostrarErrorDeGuardado(result.error, result.problems);
         return;
     }
 
@@ -2690,6 +2896,12 @@ function wireCanvas(canvasElement) {
             return;
         }
 
+        // CTRL + BOTÓN DERECHO: el menú de la casilla, con cualquier herramienta y sin borrar nada.
+        if (event.button === 2 && event.ctrlKey) {
+            menuDeCasilla(cell, event);
+            return;
+        }
+
         // Las herramientas de RME (selección, pegar, cubo, pinceles de terreno, casas...) llevan
         // su propio ratón: ver `herramientas.js`.
         if (state.herramientas && state.herramientas.maneja(state.tool)) {
@@ -2710,12 +2922,12 @@ function wireCanvas(canvasElement) {
             }
 
             /*
-             * Y SIN NADA EN LA MANO, EL DERECHO ENSEÑA LOS DETALLES de lo que hay en la casilla
-             * en vez de borrarlo. Es lo que pidió el usuario, y además es lo prudente: con la
-             * mano vacía no se está editando nada, se está mirando.
+             * Y SIN NADA EN LA MANO, EL DERECHO ABRE EL MENÚ DE LA CASILLA (como en Remere's) en
+             * vez de borrar: con la mano vacía no se está editando nada, se está mirando. Los
+             * detalles siguen a un clic: «Propiedades».
              */
             if (state.tool === 'objeto') {
-                elegirObjetoDeCasilla(cell, true);
+                menuDeCasilla(cell, event);
                 return;
             }
 
@@ -2983,6 +3195,24 @@ function wireTeclado() {
         if (etiqueta === 'SELECT') {
             objetivo.blur();
         }
+        /*
+         * RECIÉN ELEGIDO ALGO EN LA PALETA, las flechas la recorren: arriba y abajo pasan al
+         * objeto anterior o siguiente (y la lista se desplaza con él, de sección en sección); en la
+         * rejilla de la hoja, arriba y abajo saltan una fila y los lados, uno. Al pinchar fuera de
+         * la paleta (el mapa, por ejemplo) vuelven a mover la vista.
+         */
+        const paleta = document.getElementById('palette');
+        if (state.focoEnPaleta && state.palette && paleta && paleta.offsetParent !== null) {
+            const rejilla = state.palette.elegidoEnRejilla();
+            const fila = rejilla ? HOJA_TERRENO.columnas : 1;
+            const paso = flecha[1] !== 0 ? flecha[1] * fila : (rejilla ? flecha[0] : 0);
+            if (paso !== 0) {
+                state.palette.mover(paso);
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+            }
+        }
         const paso = event.shiftKey ? 10 : 1;
         state.canvas.desplazar(flecha[0] * paso, flecha[1] * paso);
         event.preventDefault();
@@ -3012,7 +3242,7 @@ function wireTeclado() {
                 return;
             }
             soltarMano('nada en la mano: el clic izquierdo elige lo que hay en la casilla y el ' +
-                'derecho ensena sus detalles');
+                'derecho abre el menu de la casilla');
             event.preventDefault();
             return;
         }
@@ -3311,6 +3541,11 @@ async function boot() {
      * rellena en cada mapa, porque los objetos del catálogo no cambian al cambiar de
      * mapa.
      */
+    // Lo último que se pinchó, ¿fue la paleta? Entonces las flechas la recorren (`wireTeclado`).
+    document.addEventListener('mousedown', (event) => {
+        state.focoEnPaleta = !!(event.target && event.target.closest && event.target.closest('#palette'));
+    }, true);
+
     state.palette = new PaletteView({
         contenedor: document.getElementById('palette'),
         proveedor: state.canvas.provider,
@@ -3360,7 +3595,7 @@ async function boot() {
 
     document.getElementById('btn-soltar').addEventListener('click',
         () => soltarMano('nada en la mano: el clic izquierdo elige lo que hay en la casilla y ' +
-            'el derecho ensena sus detalles'));
+            'el derecho abre el menu de la casilla'));
 
     // --- El objeto elegido del mapa ---
     document.getElementById('btn-objeto-subir').addEventListener('click', () => moverEnPila(1));
@@ -3513,12 +3748,27 @@ async function boot() {
 
     await loadMapList();
 
+    // ELEGIR EN LA LISTA NO ABRE: se abre con «Abrir» (así cambiar de idea no carga un mapa entero).
     document.getElementById('map-select').addEventListener('change', (event) => {
-        openMap(event.target.value);
+        const nombre = event.target.value;
+        setMapStatus(nombre ? 'elegido ' + nombre + ': pulsa «Abrir» para cargarlo' : 'elige un mapa en la lista y pulsa «Abrir»');
+    });
+
+    document.getElementById('btn-abrir-mapa').addEventListener('click', () => {
+        const nombre = document.getElementById('map-select').value;
+        const pendientes = state.map ? state.map.stats().pending : 0;
+        if (pendientes > 0 && nombre !== state.map.name &&
+            !window.confirm('Hay ' + pendientes + ' cambio(s) sin guardar en ' + state.map.name +
+                '. ¿Abrir otro mapa y perderlos?')) {
+            document.getElementById('map-select').value = state.map.name;
+            return;
+        }
+        openMap(nombre);
     });
 
     document.getElementById('btn-reload').addEventListener('click', () => {
-        const name = document.getElementById('map-select').value;
+        // Recargar es volver a leer EL QUE ESTÁ ABIERTO, no el que esté marcado en la lista.
+        const name = state.map ? state.map.name : document.getElementById('map-select').value;
         // El aviso cuenta TODO lo que se perdería: las casillas y también los respawns y los
         // NPC, que son justo lo que no se ve en el contador de casillas.
         const pendientes = state.map ? state.map.stats().pending : 0;
@@ -3616,7 +3866,8 @@ async function boot() {
     });
 
     showTab('map');
-    openMap(document.getElementById('map-select').value);
+    // No se abre ningún mapa solo: se elige en la lista y se pulsa «Abrir».
+    setMapStatus('elige un mapa en la lista y pulsa «Abrir»');
     escucharCambiosDelLienzo();
 
     // CERRAR LA PESTAÑA CON EL MAPA SIN GUARDAR pide confirmación, como ya hacía la de Sprites: el

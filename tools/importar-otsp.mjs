@@ -156,7 +156,10 @@ export function leerDat(buffer) {
                     valor = [i16(), i16()];
                 } else if (datos === 'mercado') {
                     u16(); u16(); u16();
-                    p += u16();
+                    // El largo del nombre, leído ANTES de sumarlo: `p += u16()` lee `p` antes de que
+                    // `u16()` lo avance y se comería dos bytes.
+                    const largo = u16();
+                    p += largo;
                     u16(); u16();
                 }
                 if (!clave) {

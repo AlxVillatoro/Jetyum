@@ -4,7 +4,7 @@
     "size": 32,
     "columns": 32,
     "rows": 32,
-    "count": 9239,
+    "count": 9259,
     "sheets": [
         "sprites-0000.png",
         "sprites-0001.png",
@@ -27,6 +27,6 @@
         "53a3299ecc57",
         "ab428441a7eb",
         "5c1534167fac",
-        "b3543635efc4"
+        "9284e1cb8f02"
     ]
 }

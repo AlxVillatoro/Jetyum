@@ -265,6 +265,20 @@ function itemsPath() {
 }
 
 /** Nombres de mapa válidos. Se rechaza cualquier cosa con barras o puntos. */
+/**
+ * EL ÚLTIMO GUARDADO QUE FALLÓ, con su motivo entero: se apunta en la consola del servidor y se
+ * enseña en `GET /api/status`. El editor lo dice en la barra de estado, pero ahí un mensaje largo
+ * se corta, y así se puede leer siempre (y consultar sin tocar la página, que perdería los
+ * cambios sin guardar).
+ */
+let ultimoFalloDeGuardado = null;
+
+function apuntarFalloDeGuardado(mapa, error, problemas) {
+    ultimoFalloDeGuardado = { cuando: new Date().toISOString(), mapa, error, problems: problemas || [] };
+    const lista = problemas && problemas.length ? '\n  - ' + problemas.join('\n  - ') : '';
+    console.error('[editor] no se guardó ' + mapa + ': ' + error + lista);
+}
+
 function safeMapName(name) {
     const clean = String(name || '').trim();
     if (!/^[a-zA-Z0-9_-]+$/.test(clean)) {
@@ -1851,18 +1865,21 @@ async function handleApi(request, response, pathname, query) {
 
         const loaded = readMap(name);
         if (!loaded || loaded.error) {
+            apuntarFalloDeGuardado(name, 'no se pudo abrir el mapa ' + name, loaded && loaded.problems);
             sendJson(response, 404, { error: 'no se pudo abrir el mapa ' + name });
             return;
         }
 
         const aplicado = aplicarGuardado(loaded, body);
         if (!aplicado.ok) {
+            apuntarFalloDeGuardado(name, aplicado.error, aplicado.problems);
             sendJson(response, 422, { error: aplicado.error, problems: aplicado.problems });
             return;
         }
 
         const written = writeMap(name, loaded, { dryRun: body.dryRun === true });
         if (!written.ok) {
+            apuntarFalloDeGuardado(name, 'el mapa no se pudo guardar: no se puede volver a leer', written.problems);
             sendJson(response, 422, {
                 error: 'el mapa no se pudo guardar: no se puede volver a leer',
                 problems: written.problems
@@ -2195,7 +2212,8 @@ async function handleApi(request, response, pathname, query) {
             npcs: listNpcs().npcs.length,
             maps: fs.existsSync(mapsDirectory())
                 ? fs.readdirSync(mapsDirectory()).filter((f) => f.endsWith('.map.json')).length
-                : 0
+                : 0,
+            ultimoFalloDeGuardado
         });
         return;
     }

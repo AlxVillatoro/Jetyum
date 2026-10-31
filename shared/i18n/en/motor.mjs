@@ -449,5 +449,6 @@ export default {
     'Ahí no cabe.': 'There is not enough room.',
     'Hay alguien ahí.': 'There is someone there.',
     'Ahí no hay ningún campo.': 'There is no field there.',
-    'No hay sitio arriba.': 'There is no room above.'
+    'No hay sitio arriba.': 'There is no room above.',
+    'Tienes que estar en un punto de cuerda.': 'You have to stand on a rope spot.'
 };

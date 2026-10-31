@@ -176,6 +176,8 @@ export class EditorMap {
 
         /** Las claves que se han tocado desde el último guardado. */
         this.dirty = new Set();
+        /** Cuántas veces ha cambiado una casilla desde que se abrió (ver `markDirty`). */
+        this.revision = 0;
 
         /** Los waypoints: nombre -> [x, y, z]. Se editan con la paleta de waypoints. */
         this.waypoints = JSON.parse(JSON.stringify(raw.waypoints || {}));
@@ -621,6 +623,9 @@ export class EditorMap {
 
     markDirty(x, y, z) {
         this.dirty.add(key(x, y, z));
+        // Cuántas veces ha cambiado una casilla: lo que se calcula sobre el mapa entero (las zonas
+        // protegidas, ver `bloquesProtegidos`) se guarda con este número y sólo se rehace si cambia.
+        this.revision = (this.revision || 0) + 1;
     }
 
     /**

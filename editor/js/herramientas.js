@@ -23,6 +23,7 @@ import {
     copiarSeleccion, borrarCasillas, seleccionDePegado, moverSeleccion
 } from './edicion.js';
 import { Historial } from './historial.js';
+import { pintarEncajado } from './palette.js';
 import { traducir } from '../../shared/js/i18n.mjs';
 import { ponerForma, formaDelPincel, nombreDeTamano } from './pincel.js';
 import { ponerIcono } from './iconos.js';
@@ -909,9 +910,8 @@ export class Herramientas {
         const pinta = () => {
             const sprite = this.lienzo.provider.get(id);
             if (sprite && sprite.canvas) {
-                const ctx = c.getContext('2d');
-                ctx.clearRect(0, 0, TILE, TILE);
-                ctx.drawImage(sprite.canvas, 0, TILE - sprite.canvas.height);
+                // Entero, aunque ocupe varias casillas (un muro de 2x2, un árbol): ver `pintarEncajado`.
+                pintarEncajado(c.getContext('2d'), TILE, sprite.canvas);
             }
         };
         pinta();
@@ -1358,9 +1358,20 @@ export class Herramientas {
         }
         const m = this.mapa;
         const z = this.lienzo.z;
-        const firma = this.versionMapa + ':' + z + ':' + m.tiles.size + ':' + this.minimapa.colores.size;
-        if (this.minimapa.firma !== firma) {
-            this.minimapa.firma = firma;
+        /*
+         * SE REHACE CUANDO CAMBIA EL MAPA O LA PLANTA, y cuando se aprenden colores nuevos (los
+         * dibujos llegan poco a poco), pero esto último COMO MUCHO UNA VEZ POR SEGUNDO: rehacerlo es
+         * recorrer todas las casillas, y mientras llegaban los dibujos se rehacía en cada fotograma.
+         */
+        const base = this.versionMapa + ':' + z + ':' + m.tiles.size;
+        const colores = this.minimapa.colores.size;
+        const ahora = Date.now();
+        const toca = this.minimapa.base !== base ||
+            (this.minimapa.coloresHechos !== colores && ahora - (this.minimapa.hecho || 0) >= 1000);
+        if (toca) {
+            this.minimapa.base = base;
+            this.minimapa.coloresHechos = colores;
+            this.minimapa.hecho = ahora;
             const fuera = this.minimapa.lienzo || document.createElement('canvas');
             fuera.width = m.width;
             fuera.height = m.height;
@@ -1590,15 +1601,25 @@ export class Herramientas {
             return;
         }
 
-        // Las casas: cada una con su color, y su salida con una «S».
+        // Las casas: cada una con su color, y su salida con una «S». SÓLO LAS CASILLAS A LA VISTA:
+        // recorrer el mapa entero en cada repintado (el fuego de los respawns repinta esta capa
+        // varias veces por segundo) dejaba sin responder al navegador con un mapa grande.
         if (this.verCasas && (m.houses.length > 0 || this.state.tool === 'casa')) {
             ctx.save();
-            m.tiles.forEach((tile) => {
-                if (tile.z !== z || !tile.houseId) { return; }
-                const p = lienzo.camera.worldToScreen(tile.x, tile.y, z);
-                ctx.fillStyle = colorDeCasa(tile.houseId, tile.houseId === this.casaElegida ? 0.4 : 0.22);
-                ctx.fillRect(p.x, p.y, paso, paso);
-            });
+            const cam = lienzo.camera;
+            const medioAncho = Math.ceil(lienzo.vista.ancho / paso / 2) + 2;
+            const medioAlto = Math.ceil(lienzo.vista.alto / paso / 2) + 2;
+            const cx = Math.round(cam.centerX);
+            const cy = Math.round(cam.centerY);
+            for (let y = Math.max(0, cy - medioAlto); y <= Math.min(m.height - 1, cy + medioAlto); y += 1) {
+                for (let x = Math.max(0, cx - medioAncho); x <= Math.min(m.width - 1, cx + medioAncho); x += 1) {
+                    const tile = m.tileAt(x, y, z);
+                    if (!tile || !tile.houseId) { continue; }
+                    const p = cam.worldToScreen(x, y, z);
+                    ctx.fillStyle = colorDeCasa(tile.houseId, tile.houseId === this.casaElegida ? 0.4 : 0.22);
+                    ctx.fillRect(p.x, p.y, paso, paso);
+                }
+            }
             m.houses.forEach((h) => {
                 if (!h.exit || h.exit[2] !== z) { return; }
                 const p = lienzo.camera.worldToScreen(h.exit[0], h.exit[1], z);

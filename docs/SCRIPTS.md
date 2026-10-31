@@ -481,7 +481,8 @@ module.exports = {
 
 Los que hay: `exura`, `exura gran`, `exura vita` (curar); `exori flam`, `exori vis`, `exori frigo`,
 `exori tera` (golpe al objetivo), `exevo flam hur` (onda de fuego), `exori` (tajo alrededor, de
-caballeros); `utani hur` (correr), `utevo lux` (luz) y `exana pox` (quitar el veneno). Y los
+caballeros); `utani hur` (correr), `utevo lux` (luz), `exana pox` (quitar el veneno) y `exani tera`
+(la cuerda mágica; está junto a la cuerda, en `data/scripts/actions/herramientas.js`). Y los
 **conjuros** de runas (más abajo).
 
 **Un conjuro** no necesita script: `conjurar: { de, a, cargas }` convierte una runa en blanco (`de`) que

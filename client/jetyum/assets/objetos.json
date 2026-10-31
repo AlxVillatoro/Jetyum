@@ -15590,6 +15590,41 @@
     "blocksSolid": true,
     "useable": true
    }
+  },
+  "21100": {
+   "banderas": {
+    "onBottom": true,
+    "blocksSolid": true,
+    "blocksProjectile": true
+   }
+  },
+  "21101": {
+   "banderas": {
+    "onBottom": true,
+    "blocksSolid": true,
+    "blocksProjectile": true
+   }
+  },
+  "21102": {
+   "banderas": {
+    "onBottom": true,
+    "blocksSolid": true,
+    "blocksProjectile": true
+   }
+  },
+  "21103": {
+   "banderas": {
+    "onBottom": true,
+    "blocksSolid": true,
+    "blocksProjectile": true
+   }
+  },
+  "21104": {
+   "banderas": {
+    "onBottom": true,
+    "blocksSolid": true,
+    "blocksProjectile": true
+   }
   }
  }
 }

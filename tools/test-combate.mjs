@@ -344,6 +344,25 @@ section('6. Las herramientas');
     check('la cuerda en el punto de cuerda te sube', cuerda.used === true && pj.position.z === arena.z - 1,
         JSON.stringify(pj.position));
     sesion.close();
+
+    // «exani tera»: lo mismo que la cuerda, pero de pie en el punto de cuerda y sin usar nada.
+    const mago = conectar('Trepador', en(-4, 1), 'Druid');
+    mago.pj.level = 20;
+    mago.pj.maxMana = mago.pj.mana = 100;
+    const punto2 = en(-4, 0);
+    world.createItem(11000, 1, punto2);
+    world.map.getOrCreateTile(punto2.x, punto2.y + 1, punto2.z - 1).setGround(world.createItem(102, 1, null));
+    mago.sesion.handle([P.CLIENT.SAY, 'exani tera']);
+    check('«exani tera» fuera de un punto de cuerda no hace nada ni gasta maná',
+        mago.pj.position.z === arena.z && mago.pj.mana === 100, textos(mago.buzon).slice(-80));
+    avanzar(2000);
+    world.teleportCreature(mago.pj, punto2);
+    mago.sesion.handle([P.CLIENT.SAY, 'exani tera']);
+    check('de pie en el punto de cuerda, «exani tera» te sube a la casilla del sur del agujero',
+        mago.pj.position.z === arena.z - 1 && mago.pj.position.x === punto2.x && mago.pj.position.y === punto2.y + 1,
+        JSON.stringify(mago.pj.position) + ' ' + textos(mago.buzon).slice(-80));
+    check('y gasta su maná', mago.pj.mana === 80, String(mago.pj.mana));
+    mago.sesion.close();
 }
 
 e.shutdown();

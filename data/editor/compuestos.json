@@ -141,6 +141,38 @@
       "parametros": []
     },
     {
+      "id": "capturado",
+      "nombre": "Capturado",
+      "categoria": "Capturados",
+      "celdas": [
+        {"dx":-21,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-19,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-18,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-17,"dy":-21,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-20,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-20,"dz":0,"items":[{"id":1948,"attributes":{"actionId":100}}]},
+        {"dx":-19,"dy":-20,"dz":0,"items":[{"id":112}]},
+        {"dx":-18,"dy":-20,"dz":0,"items":[{"id":1387}]},
+        {"dx":-17,"dy":-20,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-19,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-19,"dz":0,"items":[{"id":3031,"count":50}]},
+        {"dx":-17,"dy":-19,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-18,"dz":0,"items":[{"id":111}]},
+        {"dx":-17,"dy":-18,"dz":0,"items":[{"id":111}]},
+        {"dx":-21,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-20,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-19,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-18,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-17,"dy":-17,"dz":0,"items":[{"id":111}]},
+        {"dx":-11,"dy":-11,"dz":0,"items":[],"suelo":105},
+        {"dx":-10,"dy":-11,"dz":0,"items":[],"suelo":105},
+        {"dx":-1,"dy":-1,"dz":0,"items":[{"id":111}]},
+        {"dx":0,"dy":0,"dz":0,"items":[{"id":111}]}
+      ],
+      "parametros": []
+    },
+    {
       "id": "otsp-muro-piedra-gris-tramo-horizontal",
       "nombre": "Muro Piedra gris: tramo horizontal",
       "categoria": "OTSP · Muros",
@@ -631,7 +663,7 @@
       "categoria": "OTSP · Muros",
       "descripcion": "Seis casillas de muro de este a oeste.",
       "celdas": [
-        {"dx":-5,"dy":0,"dz":0,"items":[{"id":10578}]},
+        {"dx":-5,"dy":0,"dz":0,"items":[{"id":10585}]},
         {"dx":-4,"dy":0,"dz":0,"items":[{"id":10577}]},
         {"dx":-3,"dy":0,"dz":0,"items":[{"id":10577}]},
         {"dx":-2,"dy":0,"dz":0,"items":[{"id":10577}]},
@@ -646,7 +678,7 @@
       "categoria": "OTSP · Muros",
       "descripcion": "Seis casillas de muro de norte a sur.",
       "celdas": [
-        {"dx":0,"dy":-5,"dz":0,"items":[{"id":10578}]},
+        {"dx":0,"dy":-5,"dz":0,"items":[{"id":21100}]},
         {"dx":0,"dy":-4,"dz":0,"items":[{"id":10576}]},
         {"dx":0,"dy":-3,"dz":0,"items":[{"id":10576}]},
         {"dx":0,"dy":-2,"dz":0,"items":[{"id":10576}]},
@@ -661,7 +693,7 @@
       "categoria": "OTSP · Muros",
       "descripcion": "Esquina en L de cuatro por cuatro.",
       "celdas": [
-        {"dx":-3,"dy":-3,"dz":0,"items":[{"id":10578}]},
+        {"dx":-3,"dy":-3,"dz":0,"items":[{"id":21100}]},
         {"dx":-2,"dy":-3,"dz":0,"items":[{"id":10577}]},
         {"dx":-1,"dy":-3,"dz":0,"items":[{"id":10577}]},
         {"dx":0,"dy":-3,"dz":0,"items":[{"id":10577}]},
@@ -677,7 +709,7 @@
       "categoria": "OTSP · Habitaciones",
       "descripcion": "Sala de 5x4 con tarima, puerta al sur.",
       "celdas": [
-        {"dx":-6,"dy":-5,"dz":0,"items":[{"id":10578}],"suelo":10172},
+        {"dx":-6,"dy":-5,"dz":0,"items":[{"id":21100}],"suelo":10172},
         {"dx":-5,"dy":-5,"dz":0,"items":[{"id":10577}],"suelo":10172},
         {"dx":-4,"dy":-5,"dz":0,"items":[{"id":10577}],"suelo":10172},
         {"dx":-3,"dy":-5,"dz":0,"items":[{"id":10577}],"suelo":10172},
@@ -718,7 +750,7 @@
         {"dx":-3,"dy":0,"dz":0,"items":[{"id":12419}],"suelo":10172},
         {"dx":-2,"dy":0,"dz":0,"items":[{"id":10577}],"suelo":10172},
         {"dx":-1,"dy":0,"dz":0,"items":[{"id":10577}],"suelo":10172},
-        {"dx":0,"dy":0,"dz":0,"items":[{"id":10579}],"suelo":10172}
+        {"dx":0,"dy":0,"dz":0,"items":[{"id":10578}],"suelo":10172}
       ],
       "parametros": []
     },
@@ -1019,7 +1051,7 @@
       "categoria": "OTSP · Muros",
       "descripcion": "Seis casillas de muro de este a oeste.",
       "celdas": [
-        {"dx":-5,"dy":0,"dz":0,"items":[{"id":10735}]},
+        {"dx":-5,"dy":0,"dz":0,"items":[{"id":10736}]},
         {"dx":-4,"dy":0,"dz":0,"items":[{"id":10734}]},
         {"dx":-3,"dy":0,"dz":0,"items":[{"id":10734}]},
         {"dx":-2,"dy":0,"dz":0,"items":[{"id":10734}]},
@@ -1034,7 +1066,7 @@
       "categoria": "OTSP · Muros",
       "descripcion": "Seis casillas de muro de norte a sur.",
       "celdas": [
-        {"dx":0,"dy":-5,"dz":0,"items":[{"id":10735}]},
+        {"dx":0,"dy":-5,"dz":0,"items":[{"id":10736}]},
         {"dx":0,"dy":-4,"dz":0,"items":[{"id":10733}]},
         {"dx":0,"dy":-3,"dz":0,"items":[{"id":10733}]},
         {"dx":0,"dy":-2,"dz":0,"items":[{"id":10733}]},
@@ -1049,7 +1081,7 @@
       "categoria": "OTSP · Muros",
       "descripcion": "Esquina en L de cuatro por cuatro.",
       "celdas": [
-        {"dx":-3,"dy":-3,"dz":0,"items":[{"id":10735}]},
+        {"dx":-3,"dy":-3,"dz":0,"items":[{"id":10736}]},
         {"dx":-2,"dy":-3,"dz":0,"items":[{"id":10734}]},
         {"dx":-1,"dy":-3,"dz":0,"items":[{"id":10734}]},
         {"dx":0,"dy":-3,"dz":0,"items":[{"id":10734}]},
@@ -1063,10 +1095,10 @@
       "id": "otsp-habitacion-de-marmol-blanco",
       "nombre": "Habitación de Mármol blanco",
       "categoria": "OTSP · Habitaciones",
-      "descripcion": "Sala de 5x4 con tarima, puerta al sur.",
+      "descripcion": "Sala de 5x4 con tarima, puerta al sur y ventanas.",
       "celdas": [
-        {"dx":-6,"dy":-5,"dz":0,"items":[{"id":10735}],"suelo":10172},
-        {"dx":-5,"dy":-5,"dz":0,"items":[{"id":10734}],"suelo":10172},
+        {"dx":-6,"dy":-5,"dz":0,"items":[{"id":10736}],"suelo":10172},
+        {"dx":-5,"dy":-5,"dz":0,"items":[{"id":10746}],"suelo":10172},
         {"dx":-4,"dy":-5,"dz":0,"items":[{"id":10734}],"suelo":10172},
         {"dx":-3,"dy":-5,"dz":0,"items":[{"id":10734}],"suelo":10172},
         {"dx":-2,"dy":-5,"dz":0,"items":[{"id":10734}],"suelo":10172},
@@ -1085,7 +1117,7 @@
         {"dx":-3,"dy":-3,"dz":0,"items":[],"suelo":10172},
         {"dx":-2,"dy":-3,"dz":0,"items":[],"suelo":10172},
         {"dx":-1,"dy":-3,"dz":0,"items":[],"suelo":10172},
-        {"dx":0,"dy":-3,"dz":0,"items":[{"id":10733}],"suelo":10172},
+        {"dx":0,"dy":-3,"dz":0,"items":[{"id":10744}],"suelo":10172},
         {"dx":-6,"dy":-2,"dz":0,"items":[{"id":10733}],"suelo":10172},
         {"dx":-5,"dy":-2,"dz":0,"items":[],"suelo":10172},
         {"dx":-4,"dy":-2,"dz":0,"items":[],"suelo":10172},
@@ -1106,7 +1138,7 @@
         {"dx":-3,"dy":0,"dz":0,"items":[{"id":12503}],"suelo":10172},
         {"dx":-2,"dy":0,"dz":0,"items":[{"id":10734}],"suelo":10172},
         {"dx":-1,"dy":0,"dz":0,"items":[{"id":10734}],"suelo":10172},
-        {"dx":0,"dy":0,"dz":0,"items":[{"id":10736}],"suelo":10172}
+        {"dx":0,"dy":0,"dz":0,"items":[{"id":10738}],"suelo":10172}
       ],
       "parametros": []
     },
@@ -2338,7 +2370,7 @@
       "categoria": "OTSP · Edificios",
       "descripcion": "Templo de mármol: pasillo rojo, columnas, estatuas y fuente.",
       "celdas": [
-        {"dx":-14,"dy":-11,"dz":0,"items":[{"id":10735}],"suelo":10200},
+        {"dx":-14,"dy":-11,"dz":0,"items":[{"id":10736}],"suelo":10200},
         {"dx":-13,"dy":-11,"dz":0,"items":[{"id":10734}],"suelo":10200},
         {"dx":-12,"dy":-11,"dz":0,"items":[{"id":10734}],"suelo":10201},
         {"dx":-11,"dy":-11,"dz":0,"items":[{"id":10734}],"suelo":10200},
@@ -2517,7 +2549,7 @@
         {"dx":-3,"dy":0,"dz":0,"items":[{"id":10734}],"suelo":10202},
         {"dx":-2,"dy":0,"dz":0,"items":[{"id":10734}],"suelo":10201},
         {"dx":-1,"dy":0,"dz":0,"items":[{"id":10734}],"suelo":10200},
-        {"dx":0,"dy":0,"dz":0,"items":[{"id":10736}],"suelo":10202}
+        {"dx":0,"dy":0,"dz":0,"items":[{"id":10738}],"suelo":10202}
       ],
       "parametros": []
     },
@@ -2527,12 +2559,12 @@
       "categoria": "OTSP · Edificios",
       "descripcion": "Muros rotos de piedra negra con un cristal.",
       "celdas": [
-        {"dx":-6,"dy":-5,"dz":0,"items":[{"id":10578}],"suelo":10170},
+        {"dx":-6,"dy":-5,"dz":0,"items":[{"id":21100}],"suelo":10170},
         {"dx":-5,"dy":-5,"dz":0,"items":[{"id":10577}],"suelo":10170},
         {"dx":-4,"dy":-5,"dz":0,"items":[{"id":10577}],"suelo":10170},
         {"dx":-3,"dy":-5,"dz":0,"items":[],"suelo":10170},
         {"dx":-2,"dy":-5,"dz":0,"items":[],"suelo":10170},
-        {"dx":-1,"dy":-5,"dz":0,"items":[{"id":10578}],"suelo":10170},
+        {"dx":-1,"dy":-5,"dz":0,"items":[{"id":10585}],"suelo":10170},
         {"dx":0,"dy":-5,"dz":0,"items":[{"id":10577}],"suelo":10170},
         {"dx":-6,"dy":-4,"dz":0,"items":[{"id":10576}],"suelo":10170},
         {"dx":-5,"dy":-4,"dz":0,"items":[],"suelo":10170},
@@ -2778,38 +2810,6 @@
         {"dx":0,"dy":-1,"dz":0,"items":[{"id":11116}]},
         {"dx":-1,"dy":0,"dz":0,"items":[{"id":11110}]},
         {"dx":0,"dy":0,"dz":0,"items":[{"id":11185}]}
-      ],
-      "parametros": []
-    },
-    {
-      "id": "capturado",
-      "nombre": "Capturado",
-      "categoria": "Capturados",
-      "celdas": [
-        {"dx":-21,"dy":-21,"dz":0,"items":[{"id":111}]},
-        {"dx":-20,"dy":-21,"dz":0,"items":[{"id":111}]},
-        {"dx":-19,"dy":-21,"dz":0,"items":[{"id":111}]},
-        {"dx":-18,"dy":-21,"dz":0,"items":[{"id":111}]},
-        {"dx":-17,"dy":-21,"dz":0,"items":[{"id":111}]},
-        {"dx":-21,"dy":-20,"dz":0,"items":[{"id":111}]},
-        {"dx":-20,"dy":-20,"dz":0,"items":[{"id":1948,"attributes":{"actionId":100}}]},
-        {"dx":-19,"dy":-20,"dz":0,"items":[{"id":112}]},
-        {"dx":-18,"dy":-20,"dz":0,"items":[{"id":1387}]},
-        {"dx":-17,"dy":-20,"dz":0,"items":[{"id":111}]},
-        {"dx":-21,"dy":-19,"dz":0,"items":[{"id":111}]},
-        {"dx":-20,"dy":-19,"dz":0,"items":[{"id":3031,"count":50}]},
-        {"dx":-17,"dy":-19,"dz":0,"items":[{"id":111}]},
-        {"dx":-21,"dy":-18,"dz":0,"items":[{"id":111}]},
-        {"dx":-17,"dy":-18,"dz":0,"items":[{"id":111}]},
-        {"dx":-21,"dy":-17,"dz":0,"items":[{"id":111}]},
-        {"dx":-20,"dy":-17,"dz":0,"items":[{"id":111}]},
-        {"dx":-19,"dy":-17,"dz":0,"items":[{"id":111}]},
-        {"dx":-18,"dy":-17,"dz":0,"items":[{"id":111}]},
-        {"dx":-17,"dy":-17,"dz":0,"items":[{"id":111}]},
-        {"dx":-11,"dy":-11,"dz":0,"items":[],"suelo":105},
-        {"dx":-10,"dy":-11,"dz":0,"items":[],"suelo":105},
-        {"dx":-1,"dy":-1,"dz":0,"items":[{"id":111}]},
-        {"dx":0,"dy":0,"dz":0,"items":[{"id":111}]}
       ],
       "parametros": []
     }

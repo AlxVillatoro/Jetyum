@@ -3251,7 +3251,12 @@
         {"id":21050,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9236]},
         {"id":21051,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9237]},
         {"id":21052,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9238]},
-        {"id":21053,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9239]}
+        {"id":21053,"name":"bed","width":1,"height":1,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"notWalkable":true,"forceUse":true,"notMoveable":true},"sprites":[9239]},
+        {"id":21100,"name":"wall","width":2,"height":2,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notWalkable":true,"notMoveable":true,"blockProjectile":true,"minimap":43},"sprites":[9240,9241,9242,9243]},
+        {"id":21101,"name":"mountain","width":2,"height":2,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notWalkable":true,"notMoveable":true,"blockProjectile":true,"minimap":78},"sprites":[9244,9245,9246,9247]},
+        {"id":21102,"name":"mountain","width":2,"height":2,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notWalkable":true,"notMoveable":true,"blockProjectile":true,"minimap":78},"sprites":[9248,9249,9250,9251]},
+        {"id":21103,"name":"mountain","width":2,"height":2,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notWalkable":true,"notMoveable":true,"blockProjectile":true,"minimap":78},"sprites":[9252,9253,9254,9255]},
+        {"id":21104,"name":"mountain","width":2,"height":2,"exactSize":32,"layers":1,"patternX":1,"patternY":1,"patternZ":1,"frames":1,"flags":{"onBottom":true,"notWalkable":true,"notMoveable":true,"blockProjectile":true,"minimap":78},"sprites":[9256,9257,9258,9259]}
     ],
     "outfits": [
         {"id":1,"name":"aspecto 1","width":1,"height":1,"exactSize":32,"layers":1,"patternX":4,"patternY":1,"patternZ":1,"frames":3,"flags":{},"sprites":[885,882,879,888,886,883,880,889,887,884,881,890],"animation":{"mode":"async","loop":0,"start":0,"durations":[[200,200],[200,200],[200,200]]}},

@@ -142,6 +142,34 @@ async function main() {
             pieza(8, 5) + '');
     }
 
+    section('4b. Muros: la diagonal «/» (barra) y su remate');
+    {
+        // Como la roca gris: las piezas teñidas 21101 (escalón) y 21102 (remate).
+        const r = P.normalizarPinceles({ format: P.FORMATO_PINCELES, version: 1, muros: [{ id: 'prueba-barra',
+            piezas: { vertical: 10957, horizontal: 10956, poste: 10958, esquina: 10960 },
+            barra: { diagonal_se: 21101, esquina: 10957, remate: 21102 } }] }, items);
+        check('un muro con barra y remate es válido', r.problemas.length === 0, r.problemas.join('; '));
+        const ib = P.indexar(r.data);
+        const mb = r.data.muros[0];
+        const m = mapaVacio(items);
+        // Una escalera que sube hacia el noreste: (12,5)-(11,5), (11,6)-(10,6), (10,7)-(9,7).
+        const escalera = [[12, 5], [11, 5], [11, 6], [10, 6], [10, 7], [9, 7]].map(([x, y]) => ({ x, y }));
+        P.pintarMuro(m, ib, mb, escalera, 7);
+        const en = (x, y) => ids(m.tileAt(x, y, 7));
+        check('los escalones (este y sur) llevan la pieza de la barra', en(11, 5).includes(21101) && en(10, 6).includes(21101),
+            JSON.stringify([en(11, 5), en(10, 6)]));
+        check('las esquinas de la escalera (norte y oeste), la suya', en(11, 6).includes(10957) && en(10, 7).includes(10957));
+        check('el remate va al oeste de cada escalón, y no cuenta como muro', en(10, 5).includes(21102) && en(9, 6).includes(21102) &&
+            !ib.muroDeObjeto.has(21102), JSON.stringify([en(10, 5), en(9, 6)]));
+        P.pintarMuro(m, ib, mb, [{ x: 4, y: 4 }, { x: 5, y: 4 }, { x: 4, y: 5 }], 7);
+        check('fuera de la diagonal, las piezas de siempre', en(4, 4).includes(10958) && !en(3, 4).includes(21102));
+        m.erase(12, 5, 7);
+        m.erase(11, 5, 7);
+        P.rehacerAlrededor(m, ib, [{ x: 12, y: 5 }, { x: 11, y: 5 }], 7);
+        check('al borrar el escalón, su remate se va', !en(10, 5).includes(21102), JSON.stringify(en(10, 5)));
+        check('y el resto de la escalera conserva el suyo', en(9, 6).includes(21102), JSON.stringify(en(9, 6)));
+    }
+
     section('5. Alfombras y mesas');
     {
         const m = mapaVacio(items);

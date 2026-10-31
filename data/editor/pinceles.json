@@ -353,8 +353,9 @@
       "piezas": {
         "vertical": 10576,
         "horizontal": 10577,
-        "poste": 10578,
-        "esquina": 10579
+        "poste": 21100,
+        "esquina": 10578,
+        "fin_oeste": 10585
       },
       "puertas": {
         "vertical": 12416,
@@ -413,12 +414,16 @@
       "piezas": {
         "vertical": 10733,
         "horizontal": 10734,
-        "poste": 10735,
-        "esquina": 10736
+        "poste": 10736,
+        "esquina": 10738
       },
       "puertas": {
         "vertical": 12500,
         "horizontal": 12503
+      },
+      "ventanas": {
+        "vertical": 10744,
+        "horizontal": 10746
       }
     },
     {

@@ -47,6 +47,15 @@ const Z = 7;
  * y la esquina (el `.dat` marca los dos primeros con los ganchos `horizontal` y `vertical`). Las
  * puertas van en grupos de tres (dos cerradas y una abierta), vertical y luego horizontal: aquí
  * se guarda el primero del grupo vertical y el pincel usa la SEGUNDA cerrada de cada uno.
+ *
+ * NO TODOS SIGUEN ESE ORDEN: el mármol y la piedra negra tienen el poste y la esquina en otro sitio
+ * (el cuarto del mármol es una diagonal fina, y el de la piedra negra, una puerta). Esos los dicen
+ * en `piezas`. Se comprobó montando con cada material un anillo, una L y una diagonal.
+ *
+ * `piezas` también puede llevar cualquier tipo completo del pincel (`fin_oeste`, `diagonal_se`...),
+ * y `propias`, piezas que el pack NO trae, con ids del juego: la piedra negra no tiene poste y el
+ * suyo es la 21100, teñida de un poste de madera (`tools/generar-piezas-de-muro.mjs`). Lo de la
+ * piedra negra sale del muestrario de muros corregido a mano.
  */
 export const MUROS = [
     { id: 'piedra-gris', nombre: 'Piedra gris', v: 534, puertas: 2385, ventanas: [539, 541] },
@@ -54,11 +63,12 @@ export const MUROS = [
     { id: 'arenisca', nombre: 'Arenisca', v: 552, puertas: 2397 },
     { id: 'piedra-plata', nombre: 'Piedra plateada', v: 558, puertas: 2403 },
     { id: 'piedra-oscura', nombre: 'Piedra oscura', v: 569, puertas: 2409 },
-    { id: 'piedra-negra', nombre: 'Piedra negra', v: 576, puertas: 2415 },
+    { id: 'piedra-negra', nombre: 'Piedra negra', v: 576, puertas: 2415, piezas: { esquina: 578, fin_oeste: 585 },
+        propias: { poste: 21100 } },
     { id: 'beige', nombre: 'Estuco beige', v: 603, puertas: 2433 },
     { id: 'crema', nombre: 'Estuco crema', v: 617, puertas: 2439, ventanas: [621, 622] },
     { id: 'madera', nombre: 'Madera', v: 680, puertas: 2469 },
-    { id: 'marmol', nombre: 'Mármol blanco', v: 733, puertas: 2499 },
+    { id: 'marmol', nombre: 'Mármol blanco', v: 733, puertas: 2499, piezas: { poste: 736, esquina: 738 }, ventanas: [744, 746] },
     { id: 'amarillo', nombre: 'Estuco amarillo', v: 778, puertas: 2517, ventanas: [782, 784] },
     { id: 'rosa', nombre: 'Estuco rosa', v: 794, puertas: 2529 },
     { id: 'blanco', nombre: 'Estuco blanco', v: 806, puertas: 2535, ventanas: [810, 811] },
@@ -142,7 +152,11 @@ export function pincelesOtsp() {
         const muro = {
             id: 'otsp-' + m.id,
             nombre: m.nombre + ' (OTSP)',
-            piezas: { vertical: o(m.v), horizontal: o(m.v + 1), poste: o(m.v + 2), esquina: o(m.v + 3) },
+            piezas: {
+                vertical: o(m.v), horizontal: o(m.v + 1), poste: o(m.v + 2), esquina: o(m.v + 3),
+                ...Object.fromEntries(Object.entries(m.piezas || {}).map(([k, v]) => [k, o(v)])),
+                ...(m.propias || {})
+            },
             puertas: { vertical: o(m.puertas + 1), horizontal: o(m.puertas + 4) }
         };
         if (m.ventanas) {

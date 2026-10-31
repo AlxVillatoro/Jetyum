@@ -278,6 +278,12 @@ La **esquina** de Tibia es la que une hacia el **norte y el oeste**: la de abajo
 una habitación. Las puertas y las ventanas se ponen **encima de un muro** y toman su
 alineación (horizontal o vertical). Cuentan como muro para sus vecinos.
 
+**La diagonal «/» (`barra`).** Un muro en escalera que sube hacia el noreste no siempre se ve bien
+con las piezas rectas (las rocas, sobre todo). Un muro puede traer `barra`: piezas por tipo completo
+que se usan cuando la casilla tiene muro del mismo pincel en la diagonal NE o SO. Y un `remate`
+opcional, que se pone en la casilla al **oeste** de cada escalón (`diagonal_se`), se quita solo
+cuando el escalón deja de serlo y no cuenta como muro. La diagonal «\» no lo necesita.
+
 ### 4.3 Alfombras y mesas
 
 - **Alfombra:** se miran los 8 vecinos. Si está rodeada, toca el centro; si no, la pieza del
@@ -304,7 +310,13 @@ alineación (horizontal o vertical). Cuentan como muro para sus vecinos.
 - **Variantes de suelo.** Un suelo puede tener varias, cada una con su `chance`. Al pintar se
   elige una al azar, y «Aleatorizar» las vuelve a tirar.
 - **Piezas de muro.** Un muro puede dar todas las de `PIEZAS_DE_MURO` (`fin_norte`, `t_sur`,
-  `cruce`…). Las que falten se sustituyen por la tabla media.
+  `cruce`…). Las que falten se sustituyen por la tabla media. La `barra` lleva las mismas claves y
+  además `remate`, p. ej. `"barra": { "diagonal_se": 21101, "esquina": 10957, "remate": 21102 }`.
+- **Piezas que el pack no trae.** Cuando a un material le falta una pieza, se pone en el
+  muestrario de muros (`npm run muros:muestrario`) la de otro material con la forma buena, y
+  `npm run muros:piezas` (`tools/generar-piezas-de-muro.mjs`) la rehace con la textura y el color
+  del material: son las 21100-21104 (el poste de la piedra negra y las diagonales de la roca gris,
+  la nevada y la de arena).
 - **Arte de demostración.** El que hay ahora (bordes de hierba y tierra, muro de piedra, puertas,
   ventanas, alfombra roja y mesa) lo dibuja `npm run pinceles:generar` a partir de los suelos
   existentes. Para cambiarlo, basta reemplazar sus sprites en la pestaña Sprites: los pinceles
@@ -487,23 +499,44 @@ tus cambios con otro nombre o deja de usar el generador.
 con las mismas piezas y pinceles que «jetyum». Para jugarlo, pon `mapName: 'continente'` en
 `config.js`. La prueba es `npm run test:continente`.
 
+Está hecho como los mapas de Tibia, tomando como modelo el `world.otbm` de TFS 8.60: se estudió
+con sus sprites originales para ver cómo se construyen las montañas, las ciudades y las cuevas.
+Por eso casi nada es un rectángulo:
+
 - **Una isla de 256×256** rodeada de mar y con playa. Tiene la pradera del centro, la nieve del
   norte, el desierto del suroeste, el pantano del sureste y las tierras calcinadas del oeste.
-  Al este están el bosque y la granja, y un río que baja al mar con su puente.
-  - **Bordes:** los de la nieve, la arena y el barro son del pack.
+  Al este están el bosque y la granja, y un río que serpentea hasta el mar, con sus puentes.
+  - **Relieve:** la costa, las fronteras entre tierras, las manchas de tierra, las charcas y los
+    bosques salen de un **ruido** con semilla. La vegetación va en grupos: árboles donde hay
+    espesura, y arbustos y plantas pequeñas por todas partes.
+  - **Bordes:** los de la nieve, la arena, el barro y la roca de las cimas son del pack.
   - **Pinceles:** se usan solo en memoria y no se escriben en `pinceles.json`.
-- **Cuatro ciudades:** Jetyum, Escarcha, Arenal y Ciénaga. Cada una tiene:
-  - templo, depósito (sus cofres llevan `townId`: el depósito es de esa ciudad), buzón, banco y
-    tienda;
-  - casas alquilables con su cama;
+- **Seis montañas, como las de Tibia:**
+  - La base, en la planta 7, no se pisa y tiene peñascos en todo el contorno.
+  - Encima, en la planta 6, hay una **meseta** del mismo tamaño con su borde de roca. El cliente la
+    dibuja una casilla arriba a la izquierda, así que la base asoma como acantilado.
+  - Se sube por una **escalera de piedra** en el lado sur.
+  - En la cima hay vegetación y respawns; en la más alta, el campamento de los cíclopes.
+  - Una montaña no pisa calles ni edificios: si un camino la cruza, queda un desfiladero.
+- **Cuatro ciudades amuralladas:** Jetyum, Escarcha, Arenal y Ciénaga. Cada una tiene:
+  - **muralla** con cuatro puertas, calles empedradas que serpentean hasta ellas, plaza, farolas y
+    jardines;
+  - un templo **octogonal** (con las esquinas en escalera), depósito (sus cofres llevan `townId`:
+    el depósito es de esa ciudad), buzón, banco y tienda;
+  - casas alquilables con su cama, unas rectangulares y otras **en L**. Todas tienen **tejado** en
+    la planta de arriba, que el cliente esconde al entrar (como OTClient), y una de cada tres
+    tiene **piso de arriba** con escalera;
   - **dos marcas de ciudadano** en el templo. Al pisarlas te haces vecino de esa ciudad, como el
     `citizen.lua` de TFS: actionId 30020 + id de la ciudad, en
     `data/scripts/movements/tiles/ciudadano.js`.
   - La capital tiene además herrería, parque, una torre de dos pisos (plantas 6 y 5) y la entrada
     del museo.
-- **Monstruos y NPC:** los 27 monstruos tienen respawn en su tierra y los 8 NPC están colocados.
-  Sanador, guía, banquero y tendero aparecen en cada ciudad.
-- **Bajo tierra, en las plantas 8 a 10:**
+- **Monstruos y NPC:** todos los monstruos tienen respawn en su tierra (los importados de TFS, en
+  la zona que les toca: `ZONAS`) y los 8 NPC están colocados. Sanador, guía, banquero y tendero
+  aparecen en cada ciudad.
+- **Bajo tierra, en las plantas 8 a 10**, cuevas irregulares: salas y galerías que salen de un
+  autómata celular, unidas por túneles. Las naturales están rodeadas de roca (suelo de montaña con
+  peñascos); la cripta, la tumba y las alcantarillas, de muro de obra.
   - las alcantarillas de Jetyum;
   - las minas de Escarcha y el cubil de los cíclopes;
   - la tumba del desierto y el laberinto de los minotauros;

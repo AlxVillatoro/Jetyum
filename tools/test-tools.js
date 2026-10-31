@@ -67,8 +67,11 @@ function lienzoFalso(ancho, alto, x0, y0, cajaAncho, cajaAlto) {
     const contexto = {
         pintados: [],
         clearRect() {},
-        drawImage(lienzo, dx, dy) {
-            this.pintados.push({ lienzo: lienzo, dx: dx, dy: dy });
+        drawImage(lienzo, ...a) {
+            // Con recorte (9 argumentos) el destino va detrás del origen.
+            this.pintados.push(a.length >= 8
+                ? { lienzo: lienzo, dx: a[4], dy: a[5], ancho: a[6], alto: a[7] }
+                : { lienzo: lienzo, dx: a[0], dy: a[1] });
         },
         getImageData(cx, cy, w, h) {
             const datos = new Uint8ClampedArray(w * h * 4);
@@ -188,6 +191,7 @@ function firmaDeNpcs(map) {
             },
             appendChild(hijo) { this.hijos.push(hijo); return hijo; },
             addEventListener() {},
+            setAttribute(nombre, valor) { this.atributos = { ...(this.atributos || {}), [nombre]: String(valor) }; },
             querySelectorAll() { return []; }
         };
 
@@ -1061,10 +1065,28 @@ async function main() {
             check('el dibujo se centra en su hueco y no se pega al borde',
                 paleta.entradas.every((entrada) =>
                     entrada.lienzo.getContext('2d').pintados.length === 1 &&
-                    entrada.lienzo.getContext('2d').pintados[0].dx === 8 &&
-                    entrada.lienzo.getContext('2d').pintados[0].dy === 8),
+                    entrada.lienzo.getContext('2d').pintados[0].dx === 12 &&
+                    entrada.lienzo.getContext('2d').pintados[0].dy === 12),
                 'el dibujo de un objeto va apoyado en el suelo de su casilla; tal cual ' +
                 'dejaria media casilla vacia encima');
+
+            // Un objeto de varias casillas se ve ENTERO: reducido para que quepa, no cortado a
+            // la casilla del ancla. Un 2x2 lleno (64x64), uno de dos de alto (32x64) y una pieza
+            // diagonal (64x64 con dibujo sólo arriba a la izquierda y abajo a la derecha: su caja
+            // es la de las cuatro casillas).
+            const encajar = (ancho, alto, x0, y0, cajaAncho, cajaAlto) => {
+                const hueco = lienzoFalso(32, 32, 0, 0, 0, 0).getContext('2d');
+                Paleta.pintarEncajado(hueco, 32, lienzoFalso(ancho, alto, x0, y0, cajaAncho, cajaAlto));
+                return hueco.pintados[0];
+            };
+            const dosPorDos = encajar(64, 64, 0, 0, 64, 64);
+            const vertical = encajar(32, 64, 0, 0, 32, 64);
+            const diagonal = encajar(64, 64, 2, 3, 60, 59);
+            check('un objeto de 2x2, uno de dos de alto y una pieza diagonal se ven enteros en la paleta',
+                dosPorDos.ancho === 32 && dosPorDos.alto === 32 && dosPorDos.dx === 0 &&
+                vertical.alto === 32 && vertical.ancho === 16 && vertical.dx === 8 &&
+                diagonal.ancho <= 32 && diagonal.alto <= 32,
+                JSON.stringify([dosPorDos, vertical, diagonal].map((p) => [p.dx, p.dy, p.ancho, p.alto])));
 
             check('y no se repinta lo que ya estaba pintado',
                 paleta.refrescarPendientes() === 0 &&

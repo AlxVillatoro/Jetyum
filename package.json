@@ -61,6 +61,8 @@
         "otbm:exportar": "node tools/exportar-otbm.mjs",
         "materiales:rme": "node tools/importar-materiales-rme.mjs",
         "mapa:continente": "node tools/generar-continente.mjs",
+        "muros:muestrario": "node tools/generar-muestrario-muros.mjs",
+        "muros:piezas": "node tools/generar-piezas-de-muro.mjs",
         "monstruos:importar": "node tools/importar-monstruos.mjs",
         "mundo:otsp": "node tools/generar-mundo-otsp.mjs",
         "mundo:aldea": "node tools/generar-aldea-hd.mjs",

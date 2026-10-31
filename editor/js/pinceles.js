@@ -26,6 +26,12 @@
  * ESQUINA de Tibia es la que une hacia el NORTE y hacia el OESTE: la de abajo a la derecha de
  * una habitación. Las puertas y ventanas cuentan como muro y siguen su alineación.
  *
+ * LA DIAGONAL «/» (BARRA). Un muro en escalera que sube hacia el noreste no se ve bien con las piezas
+ * rectas en algunos materiales (las rocas): para eso un muro puede tener `barra`, piezas por tipo
+ * completo que se usan cuando la casilla tiene muro del mismo pincel en la diagonal NE o SO, y un
+ * `remate` opcional, que va en la casilla al OESTE de cada escalón (`diagonal_se`) y no cuenta como
+ * muro. Las de la diagonal «\» no lo necesitan: en perspectiva las rectas ya encajan.
+ *
  * ALFOMBRAS Y MESAS. Una alfombra elige su pieza por sus ocho vecinos (centro, lados y esquinas);
  * una mesa, por sus cuatro (sola, horizontal, vertical y extremos), como en RME.
  */
@@ -137,6 +143,16 @@ export function normalizarPinceles(raw, itemTypes) {
         if (!muro.piezas.horizontal && !muro.piezas.poste) {
             problemas.push('el muro ' + muro.id + ' necesita al menos la pieza horizontal o el poste');
         }
+        // Las piezas de la diagonal «/» y su remate.
+        if (m.barra) {
+            muro.barra = {};
+            PIEZAS_DE_MURO.concat(['remate']).forEach((p) => {
+                if (m.barra[p] !== undefined) {
+                    muro.barra[p] = Number(m.barra[p]);
+                    existe(muro.barra[p], 'muro ' + muro.id + '.barra.' + p);
+                }
+            });
+        }
         // Puertas y ventanas por alineación: {puerta: {horizontal, vertical}, ventana: {...}}.
         ['puerta', 'ventana'].forEach((tipo) => {
             const p = m[tipo + 's'];
@@ -179,15 +195,17 @@ export function indexar(pinceles) {
     const piezasDeBorde = new Set();
     pinceles.bordes.forEach((b) => Object.values(b.piezas).forEach((id) => piezasDeBorde.add(id)));
     const muroDeObjeto = new Map();
+    const remateDeObjeto = new Map();
     pinceles.muros.forEach((m) => {
         Object.values(m.piezas).forEach((id) => muroDeObjeto.set(id, m));
         ['puertas', 'ventanas'].forEach((t) => Object.values(m[t] || {}).forEach((id) => muroDeObjeto.set(id, m)));
+        Object.entries(m.barra || {}).forEach(([p, id]) => (p === 'remate' ? remateDeObjeto : muroDeObjeto).set(id, m));
     });
     const alfombraDeObjeto = new Map();
     (pinceles.alfombras || []).forEach((a) => Object.values(a.piezas).forEach((id) => alfombraDeObjeto.set(id, a)));
     const mesaDeObjeto = new Map();
     (pinceles.mesas || []).forEach((a) => Object.values(a.piezas).forEach((id) => mesaDeObjeto.set(id, a)));
-    return { pinceles, sueloDeObjeto, bordePorId, piezasDeBorde, muroDeObjeto, alfombraDeObjeto, mesaDeObjeto };
+    return { pinceles, sueloDeObjeto, bordePorId, piezasDeBorde, muroDeObjeto, remateDeObjeto, alfombraDeObjeto, mesaDeObjeto };
 }
 
 // ---------------------------------------------------------------------------
@@ -356,17 +374,60 @@ export function mascaraDeMuro(n, w, e, s) {
 
 /**
  * La pieza que toca: primero el tipo completo; si el muro no lo tiene, el medio; y si tampoco,
- * el poste o la horizontal.
+ * el poste o la horizontal. En la diagonal «/» (`barra`), la de la barra de ese tipo, si la hay.
  *
- * @returns {{tipo: string, id: number|null, alineacion: string}}
+ * @returns {{tipo: string, id: number|null, alineacion: string, barra: boolean}}
  */
-export function piezaDeMuro(muro, mascara) {
+export function piezaDeMuro(muro, mascara, barra) {
     const completo = TIPO_COMPLETO[mascara];
     const medio = TIPO_MEDIO[mascara];
-    const tipo = muro.piezas[completo] ? completo : (muro.piezas[medio] ? medio : (muro.piezas.poste ? 'poste' : 'horizontal'));
     // La alineación de una puerta: vertical si el muro corre de norte a sur.
     const alineacion = medio === 'vertical' ? 'vertical' : 'horizontal';
-    return { tipo, id: muro.piezas[tipo] || null, alineacion };
+    if (barra && muro.barra && muro.barra[completo]) {
+        return { tipo: completo, id: muro.barra[completo], alineacion, barra: true };
+    }
+    const tipo = muro.piezas[completo] ? completo : (muro.piezas[medio] ? medio : (muro.piezas.poste ? 'poste' : 'horizontal'));
+    return { tipo, id: muro.piezas[tipo] || null, alineacion, barra: false };
+}
+
+/** Si la casilla está en una diagonal «/» de su muro: muro del mismo pincel al NE o al SO. */
+function enBarra(mapa, idx, muro, x, y, z) {
+    return muroEn(mapa, idx, muro, x + 1, y - 1, z) || muroEn(mapa, idx, muro, x - 1, y + 1, z);
+}
+
+/** Si la casilla (x, y) es un escalón de la diagonal «/» que lleva remate al oeste. */
+function llevaRemate(mapa, idx, muro, x, y, z) {
+    if (!muro.barra || !muro.barra.remate || !muroEn(mapa, idx, muro, x, y, z)) {
+        return false;
+    }
+    const mascara = mascaraDeMuro(muroEn(mapa, idx, muro, x, y - 1, z), muroEn(mapa, idx, muro, x - 1, y, z),
+        muroEn(mapa, idx, muro, x + 1, y, z), muroEn(mapa, idx, muro, x, y + 1, z));
+    return TIPO_COMPLETO[mascara] === 'diagonal_se' && enBarra(mapa, idx, muro, x, y, z);
+}
+
+/** Pone o quita el remate de un muro en una casilla. @returns {boolean} si cambió algo */
+function ponerRemate(mapa, idx, muro, x, y, z, poner) {
+    if (!mapa.inBounds(x, y, z)) {
+        return false;
+    }
+    const tile = mapa.tileAt(x, y, z);
+    const tiene = !!tile && tile.items.some((i) => idx.remateDeObjeto.get(i.id) === muro);
+    if (tiene === poner) {
+        return false;
+    }
+    const editable = mapa.editableTile(x, y, z);
+    if (poner) {
+        editable.items.push({ id: muro.barra.remate });
+        mapa.markDirty(x, y, z);
+    } else {
+        editable.items = editable.items.filter((i) => idx.remateDeObjeto.get(i.id) !== muro);
+        if (mapa.isVoid(editable)) {
+            mapa.erase(x, y, z);
+        } else {
+            mapa.markDirty(x, y, z);
+        }
+    }
+    return true;
 }
 
 function muroEn(mapa, idx, muro, x, y, z) {
@@ -389,6 +450,17 @@ export function alinearMuro(mapa, idx, x, y, z) {
         return false;
     }
     let cambio = false;
+    // Los remates que ya no tienen su escalón al este se van.
+    const remates = new Set(tile.items.map((i) => idx.remateDeObjeto && idx.remateDeObjeto.get(i.id)).filter(Boolean));
+    remates.forEach((muro) => {
+        if (!llevaRemate(mapa, idx, muro, x + 1, y, z)) {
+            cambio = ponerRemate(mapa, idx, muro, x, y, z, false) || cambio;
+        }
+    });
+    if (!mapa.tileAt(x, y, z)) {
+        return cambio;
+    }
+    const conRemate = new Set();
     tile.items.forEach((item, i) => {
         const muro = idx.muroDeObjeto.get(item.id);
         if (!muro) {
@@ -396,17 +468,24 @@ export function alinearMuro(mapa, idx, x, y, z) {
         }
         const mascara = mascaraDeMuro(muroEn(mapa, idx, muro, x, y - 1, z), muroEn(mapa, idx, muro, x - 1, y, z),
             muroEn(mapa, idx, muro, x + 1, y, z), muroEn(mapa, idx, muro, x, y + 1, z));
-        const pieza = piezaDeMuro(muro, mascara);
+        const pieza = piezaDeMuro(muro, mascara, !!muro.barra && enBarra(mapa, idx, muro, x, y, z));
         const hueco = esPuertaOVentana(muro, item.id);
         const id = hueco ? (muro[hueco][pieza.alineacion] || muro[hueco].horizontal || item.id) : pieza.id;
         if (id && id !== item.id) {
             tile.items[i] = { ...item, id };
             cambio = true;
         }
+        if (muro.barra && muro.barra.remate) {
+            conRemate.add(muro);
+        }
     });
     if (cambio) {
         mapa.markDirty(x, y, z);
     }
+    // El remate del escalón, en la casilla del oeste.
+    conRemate.forEach((muro) => {
+        ponerRemate(mapa, idx, muro, x - 1, y, z, llevaRemate(mapa, idx, muro, x, y, z));
+    });
     return cambio;
 }
 
